@@ -82,6 +82,7 @@ outcomes:
   # --- Verify Token Flow ---
   token_invalid:
     priority: 1
+    error: VERIFY_TOKEN_INVALID
     given:
       - any:
           - field: token_hash
@@ -101,6 +102,7 @@ outcomes:
 
   token_expired:
     priority: 2
+    error: VERIFY_TOKEN_EXPIRED
     given:
       - field: token_hash
         source: db
@@ -128,6 +130,7 @@ outcomes:
 
   email_verified:
     priority: 10
+    transaction: true
     given:
       - field: token
         source: input
@@ -169,6 +172,7 @@ outcomes:
   # --- Resend Flow ---
   resend_rate_limited:
     priority: 1
+    error: VERIFY_RATE_LIMITED
     given:
       - field: resend_count
         source: computed
@@ -194,6 +198,7 @@ outcomes:
 
   resend_success:
     priority: 10
+    transaction: true
     given:
       - field: email
         source: input

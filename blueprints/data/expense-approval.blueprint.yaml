@@ -467,6 +467,8 @@ flows:
 
 outcomes:
   expense_submitted:
+    priority: 10
+    transaction: true
     given:
       - "user is authenticated"
       - field: title
@@ -508,6 +510,8 @@ outcomes:
     result: expense appears in manager's review queue
 
   manager_approves_under_threshold:
+    priority: 10
+    transaction: true
     given:
       - field: reviewer_role
         operator: eq
@@ -527,6 +531,8 @@ outcomes:
     result: expense is queued for payment
 
   manager_approves_over_threshold:
+    priority: 10
+    transaction: true
     given:
       - field: reviewer_role
         operator: eq
@@ -545,6 +551,8 @@ outcomes:
     result: expense is escalated to finance for review
 
   finance_approves:
+    priority: 10
+    transaction: true
     given:
       - field: reviewer_role
         operator: eq
@@ -559,6 +567,9 @@ outcomes:
     result: expense is queued for payment processing
 
   expense_rejected:
+    priority: 5
+    error: EXPENSE_INVALID_TRANSITION
+    transaction: true
     given:
       - field: reviewer_role
         operator: in
@@ -576,6 +587,8 @@ outcomes:
     result: employee can revise (status back to draft) and resubmit
 
   payment_processed:
+    priority: 10
+    transaction: true
     given:
       - field: status
         operator: eq
@@ -589,6 +602,7 @@ outcomes:
     result: employee receives reimbursement via direct deposit or payroll
 
   payment_failed:
+    error: EXPENSE_PAYMENT_FAILED
     given:
       - "payment system returns error"
     then:

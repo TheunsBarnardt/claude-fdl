@@ -147,6 +147,7 @@ rules:
 outcomes:
   rate_limited:
     priority: 1
+    error: SIGNUP_RATE_LIMITED
     given:
       - field: request_count
         source: computed
@@ -157,12 +158,14 @@ outcomes:
 
   validation_failed:
     priority: 2
+    error: SIGNUP_VALIDATION_ERROR
     given:
       - "any field fails its validation rules"
     result: show per-field error messages inline
 
   bot_detected:
     priority: 3
+    error: SIGNUP_RATE_LIMITED
     given:
       - any:
           - field: honeypot
@@ -182,6 +185,7 @@ outcomes:
 
   email_already_registered:
     priority: 4
+    error: SIGNUP_EMAIL_TAKEN
     given:
       - field: email
         source: db
@@ -200,6 +204,7 @@ outcomes:
 
   successful_signup:
     priority: 10
+    transaction: true
     given:
       - field: first_name
         source: input

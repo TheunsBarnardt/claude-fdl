@@ -218,7 +218,10 @@ Key features:
 - **Priority** — outcomes are checked in order (rate limit first, success last)
 - **Data sources** — each condition knows where its data comes from (input, db, request, session, system)
 - **Structured side effects** — actions like `set_field`, `emit_event`, `transition_state`, `notify` are machine-parseable
-- **Operators** — `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `matches`, `exists`, `not_exists`
+- **Operators with type contracts** — each operator has defined accepted types (e.g., `gt` accepts number/duration, `matches` accepts string regex)
+- **Error binding** — outcomes bind to specific error codes (`error: LOGIN_INVALID_CREDENTIALS`) so the code generator knows exactly which error to return
+- **Transaction boundaries** — `transaction: true` marks an outcome's side effects as atomic (all succeed or all roll back)
+- **Expression language** — `when:` conditions use a formal grammar: `failed_login_attempts >= 5`, `amount > 1000 and status == "submitted"`, `now - 60m`
 
 Plain text conditions still work alongside structured ones — use whichever is clearer.
 

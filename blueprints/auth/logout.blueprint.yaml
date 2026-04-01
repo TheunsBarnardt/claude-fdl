@@ -62,6 +62,7 @@ outcomes:
 
   successful_logout_current:
     priority: 2
+    transaction: true
     given:
       - field: session
         source: session
@@ -88,6 +89,7 @@ outcomes:
 
   successful_logout_all_devices:
     priority: 3
+    transaction: true
     given:
       - field: session
         source: session
