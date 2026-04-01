@@ -104,6 +104,7 @@ rules:
 outcomes:
   rate_limited:
     priority: 1
+    error: LOGIN_RATE_LIMITED
     # Checked FIRST — before any DB lookups or password comparisons
     given:
       - field: request_count
@@ -115,6 +116,7 @@ outcomes:
 
   account_locked:
     priority: 2
+    error: LOGIN_ACCOUNT_LOCKED
     # Checked after rate limit, before password comparison
     given:
       - field: failed_login_attempts
@@ -135,6 +137,7 @@ outcomes:
 
   account_disabled:
     priority: 3
+    error: LOGIN_ACCOUNT_DISABLED
     given:
       - field: status
         source: db
@@ -145,6 +148,9 @@ outcomes:
 
   invalid_credentials:
     priority: 4
+    error: LOGIN_INVALID_CREDENTIALS
+    transaction: true
+    # All side effects (increment + lock + emit) are atomic
     # Checked after lock/disable — uses OR grouping for user-not-found vs wrong-password
     given:
       - any:
@@ -167,7 +173,7 @@ outcomes:
         payload: [email, timestamp, ip_address, user_agent, attempt_count, reason]
       - action: set_field
         target: locked_until
-        value: "now + 15 minutes"
+        value: "now + 15m"
         description: "Lock account if attempts reach 5"
         when: "failed_login_attempts >= 5"
       - action: emit_event
@@ -178,6 +184,7 @@ outcomes:
 
   email_not_verified:
     priority: 5
+    error: LOGIN_EMAIL_NOT_VERIFIED
     given:
       - field: email_verified
         source: db
@@ -192,6 +199,8 @@ outcomes:
 
   successful_login:
     priority: 10
+    transaction: true
+    # All side effects (reset counter + create session + emit) are atomic
     # Only reached if ALL above outcomes did not match
     given:
       - field: email

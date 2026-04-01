@@ -17,6 +17,7 @@ import { glob } from "glob";
 import YAML from "yaml";
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
+import { validateExpression } from "./expression.js";
 
 // ─── JSON Schema equivalent of our FDL meta-schema ────────
 // This is the machine-readable validation layer
@@ -309,23 +310,72 @@ function validateFile(filePath) {
     );
   }
 
-  // Check: outcome structure — given/then/result, operators, sources, actions, priority, AND/OR
-  const validOperators = new Set([
-    "eq", "neq", "gt", "gte", "lt", "lte",
-    "in", "not_in", "matches", "exists", "not_exists",
-  ]);
+  // ─── Operator contracts ─────────────────────────────────
+  // Each operator has a name, expected value type(s), and semantics
+
+  const operatorContracts = {
+    eq:         { accepts: ["string", "number", "boolean"], semantics: "=== strict equality" },
+    neq:        { accepts: ["string", "number", "boolean"], semantics: "!== strict inequality" },
+    gt:         { accepts: ["number", "duration"],          semantics: "> greater than" },
+    gte:        { accepts: ["number", "duration"],          semantics: ">= greater than or equal" },
+    lt:         { accepts: ["number", "duration"],          semantics: "< less than" },
+    lte:        { accepts: ["number", "duration"],          semantics: "<= less than or equal" },
+    in:         { accepts: ["array"],                       semantics: "value is contained in list" },
+    not_in:     { accepts: ["array"],                       semantics: "value is not in list" },
+    matches:    { accepts: ["string"],                      semantics: "regex test (value is the pattern)" },
+    exists:     { accepts: [],                              semantics: "field is not null/undefined" },
+    not_exists: { accepts: [],                              semantics: "field is null/undefined" },
+  };
+
+  const validOperators = new Set(Object.keys(operatorContracts));
   const validSources = new Set([
     "input", "db", "request", "session", "system", "computed",
   ]);
-  const validActions = new Set([
-    "set_field", "emit_event", "transition_state", "notify",
-    "invalidate", "create_record", "delete_record", "call_service",
+
+  // ─── Value type system ─────────────────────────────────
+  // Typed values replace ambiguous strings
+
+  const VALUE_TYPES = new Set([
+    "string", "number", "boolean", "duration", "field_ref", "expression", "array", "null",
   ]);
 
-  // Recursively validate a single condition (supports any/all groups)
+  function inferValueType(value) {
+    if (value === null || value === undefined) return "null";
+    if (typeof value === "boolean") return "boolean";
+    if (typeof value === "number") return "number";
+    if (Array.isArray(value)) return "array";
+    if (typeof value === "string") {
+      // Duration: 5s, 10m, 1h, 7d, 30d
+      if (/^\d+(s|m|h|d)$/.test(value)) return "duration";
+      // Field reference: starts with letter, contains dots or underscores
+      if (/^[a-z][a-z0-9_.]*$/.test(value) && !value.includes(" ")) return "field_ref";
+      // Expression: contains operators
+      if (/[><=!]|and |or /.test(value)) return "expression";
+      return "string";
+    }
+    return "unknown";
+  }
+
+  // ─── Action contracts ──────────────────────────────────
+  // Each action has required and optional properties
+
+  const actionContracts = {
+    set_field:        { required: ["target"], optional: ["value", "description", "when"] },
+    emit_event:       { required: ["event"],  optional: ["payload", "description", "when"] },
+    transition_state: { required: ["field"],  optional: ["from", "to", "description", "when"] },
+    notify:           { required: ["channel"], optional: ["template", "to", "description", "when"] },
+    invalidate:       { required: ["target"], optional: ["scope", "description", "when"] },
+    create_record:    { required: ["target"], optional: ["description", "when"] },
+    delete_record:    { required: ["target"], optional: ["description", "when"] },
+    call_service:     { required: ["target"], optional: ["description", "when"] },
+  };
+
+  const validActions = new Set(Object.keys(actionContracts));
+
+  // ─── Validate conditions (recursive, supports any/all) ─
+
   function validateCondition(condition, path) {
-    // String = plain-text condition, always valid
-    if (typeof condition === "string") return;
+    if (typeof condition === "string") return; // plain-text, always valid
     if (typeof condition !== "object" || condition === null) return;
 
     // Logical group: any (OR) or all (AND)
@@ -342,7 +392,7 @@ function validateFile(filePath) {
       return;
     }
 
-    // Structured condition — validate field, operator, source
+    // Structured condition
     if (!condition.field) {
       customErrors.push(`  ${path}: structured condition must have a "field" property`);
     }
@@ -352,27 +402,71 @@ function validateFile(filePath) {
       customErrors.push(
         `  ${path}: unknown operator "${condition.operator}" — valid: ${[...validOperators].join(", ")}`
       );
+    } else {
+      // Type-check: validate value type matches operator contract
+      const contract = operatorContracts[condition.operator];
+      if (contract.accepts.length > 0 && condition.value !== undefined) {
+        const valueType = inferValueType(condition.value);
+        if (valueType !== "unknown" && valueType !== "field_ref" && valueType !== "expression"
+            && !contract.accepts.includes(valueType)) {
+          customWarnings.push(
+            `${path}: operator "${condition.operator}" expects ${contract.accepts.join("|")} but got ${valueType}`
+          );
+        }
+      }
     }
     if (condition.source && !validSources.has(condition.source)) {
       customErrors.push(
         `  ${path}: unknown source "${condition.source}" — valid: ${[...validSources].join(", ")}`
       );
     }
-  }
-
-  // Validate a single structured side effect in then[]
-  function validateSideEffect(effect, path) {
-    if (typeof effect === "string") return; // plain-text, always valid
-    if (typeof effect !== "object" || effect === null) return;
-    if (effect.action && !validActions.has(effect.action)) {
-      customErrors.push(
-        `  ${path}: unknown action "${effect.action}" — valid: ${[...validActions].join(", ")}`
-      );
+    // Validate when: expression if present
+    if (condition.when) {
+      const exprResult = validateExpression(condition.when);
+      if (!exprResult.valid) {
+        customErrors.push(`  ${path}.when: invalid expression — ${exprResult.error}`);
+      }
     }
   }
 
+  // ─── Validate side effects ─────────────────────────────
+
+  function validateSideEffect(effect, path) {
+    if (typeof effect === "string") return;
+    if (typeof effect !== "object" || effect === null) return;
+
+    if (!effect.action) return; // no action key = plain-text-like object, skip
+
+    if (!validActions.has(effect.action)) {
+      customErrors.push(
+        `  ${path}: unknown action "${effect.action}" — valid: ${[...validActions].join(", ")}`
+      );
+      return;
+    }
+
+    // Validate required properties for this action
+    const contract = actionContracts[effect.action];
+    for (const req of contract.required) {
+      if (effect[req] === undefined) {
+        customErrors.push(`  ${path}: action "${effect.action}" requires "${req}" property`);
+      }
+    }
+
+    // Validate when: expression if present
+    if (effect.when) {
+      const exprResult = validateExpression(effect.when);
+      if (!exprResult.valid) {
+        customErrors.push(`  ${path}.when: invalid expression — ${exprResult.error}`);
+      }
+    }
+  }
+
+  // ─── Validate outcomes ─────────────────────────────────
+
   if (data.outcomes) {
-    const validOutcomeKeys = new Set(["given", "then", "result", "priority"]);
+    const validOutcomeKeys = new Set(["given", "then", "result", "priority", "error", "transaction"]);
+    const errorCodes = new Set((data.errors || []).map((e) => e.code));
+
     for (const [name, outcome] of Object.entries(data.outcomes)) {
       if (typeof outcome !== "object" || outcome === null) {
         customErrors.push(`  outcomes.${name}: must be an object with given/then/result keys`);
@@ -389,6 +483,18 @@ function validateFile(filePath) {
       // Validate priority
       if (outcome.priority !== undefined && typeof outcome.priority !== "number") {
         customErrors.push(`  outcomes.${name}.priority: must be a number`);
+      }
+
+      // Validate error binding — must reference a defined error code
+      if (outcome.error && !errorCodes.has(outcome.error)) {
+        customErrors.push(
+          `  outcomes.${name}.error: "${outcome.error}" is not defined in errors[]`
+        );
+      }
+
+      // Validate transaction boundary
+      if (outcome.transaction !== undefined && typeof outcome.transaction !== "boolean") {
+        customErrors.push(`  outcomes.${name}.transaction: must be a boolean`);
       }
 
       // Validate conditions in given[]

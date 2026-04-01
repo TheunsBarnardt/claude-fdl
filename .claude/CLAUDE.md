@@ -99,17 +99,62 @@ then:
     to: approved
 ```
 
-**Actions:** `set_field`, `emit_event`, `transition_state`, `notify`, `invalidate`, `create_record`, `delete_record`, `call_service`
+**Actions:** `set_field`, `emit_event`, `transition_state`, `notify`, `invalidate`, `create_record`, `delete_record`, `call_service`. Each action has required properties validated by the validator (e.g., `emit_event` requires `event`).
 
-### Outcome Priority
-
-Outcomes have an optional `priority` (number) that defines evaluation order. Lower = checked first:
+### Outcome Priority, Error Binding, and Transactions
 
 ```yaml
-rate_limited:    { priority: 1 }   # checked first
-account_locked:  { priority: 2 }   # then this
-successful:      { priority: 10 }  # last resort
+rate_limited:
+  priority: 1           # checked first (lower = earlier)
+  error: LOGIN_RATE_LIMITED  # binds to a defined error code
+
+invalid_credentials:
+  priority: 4
+  error: LOGIN_INVALID_CREDENTIALS
+  transaction: true     # all then[] actions are atomic (rollback on failure)
+
+successful:
+  priority: 10          # checked last
+  transaction: true
 ```
+
+- **`priority`** — evaluation order (number, lower = checked first)
+- **`error`** — binds to an error code from `errors[]` (validated: must exist)
+- **`transaction`** — boolean, wraps all `then[]` actions in an atomic transaction
+
+### Expression Language (`when:`)
+
+Side effects and conditions can use `when:` with a formal expression syntax:
+
+```yaml
+when: "failed_login_attempts >= 5"
+when: "amount > 1000 and status == \"submitted\""
+when: "token.created_at < now - 60m"
+```
+
+**Grammar:** `expression = comparison ( ("and" | "or") comparison )*`
+**Operators:** `==`, `!=`, `>`, `>=`, `<`, `<=`
+**Literals:** numbers, strings, booleans, durations (`5s`, `10m`, `1h`, `7d`), `now`, `null`
+**Logic:** `and`, `or`, `is null`, `is not null`
+**Field refs:** dotted paths like `user.email`, `token.created_at`
+
+The expression parser (`scripts/expression.js`) validates syntax at validation time.
+
+### Operator Type Contracts
+
+Each operator has a defined value type contract:
+
+| Operator | Accepts | Semantics |
+|----------|---------|-----------|
+| `eq` | string, number, boolean | `===` strict equality |
+| `neq` | string, number, boolean | `!==` strict inequality |
+| `gt`, `gte` | number, duration | `>`, `>=` |
+| `lt`, `lte` | number, duration | `<`, `<=` |
+| `in`, `not_in` | array | value in/not in list |
+| `matches` | string (regex) | regex test |
+| `exists`, `not_exists` | (none) | null check |
+
+The validator warns if a value type doesn't match the operator's contract.
 
 ### Workflow / Business Process Fields
 

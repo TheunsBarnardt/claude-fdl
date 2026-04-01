@@ -202,6 +202,52 @@ required:
     #   delete_record     — remove a record
     #   call_service      — invoke an external service
     #
+    # ─── ERROR BINDING ─────────────────────────────────────
+    #
+    # Outcomes can bind to a specific error code:
+    #   error: LOGIN_INVALID_CREDENTIALS
+    # The code generator returns this error when the outcome matches.
+    # The error code must exist in the errors[] section.
+    #
+    # ─── TRANSACTION BOUNDARIES ────────────────────────────
+    #
+    # Outcomes can mark their side effects as atomic:
+    #   transaction: true
+    # All then[] actions execute in a single transaction.
+    # If any action fails, all are rolled back.
+    #
+    # ─── VALUE TYPE SYSTEM ─────────────────────────────────
+    #
+    # Typed values replace ambiguous strings:
+    #   string:    "submitted", "active"
+    #   number:    5, 1000, 0.01
+    #   boolean:   true, false
+    #   duration:  15m, 1h, 7d, 30d, 24h
+    #   field_ref: stored_hash, user.email (reference to another field)
+    #   now:       current timestamp
+    #   null:      absence of value
+    #   array:     [active, pending, submitted]
+    #
+    # ─── EXPRESSION LANGUAGE (when:) ───────────────────────
+    #
+    # The when: property uses a formal expression language:
+    #
+    # Grammar:
+    #   expression = comparison ( ("and" | "or") comparison )*
+    #   comparison = operand operator operand | operand "is" ["not"] "null"
+    #   operand    = field_ref | number | string | boolean | duration | "now"
+    #   operator   = "==" | "!=" | ">" | ">=" | "<" | "<="
+    #
+    # Examples:
+    #   when: "failed_login_attempts >= 5"
+    #   when: "amount > 1000 and status == \"submitted\""
+    #   when: "token.created_at < now - 60m"
+    #
+    # Duration literals: 5s (seconds), 10m (minutes), 1h (hours), 7d (days)
+    # Arithmetic: now - 15m, now + 7d
+    # Logical: and, or
+    # Field refs: dotted paths like user.email, token.created_at
+    #
 
 # ─── OPTIONAL TOP-LEVEL FIELDS ─────────────────────────────
 
