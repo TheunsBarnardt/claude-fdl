@@ -79,63 +79,153 @@ rules:
 # ─── OUTCOMES ─────────────────────────────────────────────
 
 outcomes:
-  email_verified:
-    given:
-      - token is present in URL
-      - SHA-256 hash of token matches a record in database
-      - token has not expired (created_at + 24 hours > now)
-      - token has not been used before (single-use)
-      - user account exists and is not disabled
-    then:
-      - user.email_verified is set to true
-      - token is marked as used
-      - email_verification.success event is emitted with user_id, email, timestamp
-    result: redirect to /login with message "Email verified! You can now sign in."
-
-  already_verified:
-    given:
-      - token is valid but user.email_verified is already true
-    then:
-      - no changes made
-    result: redirect to /login with message "Email already verified. Please sign in."
-
+  # --- Verify Token Flow ---
   token_invalid:
+    priority: 1
     given:
-      - token hash not found in database OR token already used
+      - any:
+          - field: token_hash
+            source: db
+            operator: not_exists
+            description: "Token hash not found in database"
+          - field: token_used
+            source: db
+            operator: eq
+            value: true
+            description: "Token has already been used"
     then:
-      - email_verification.token_invalid event is emitted
+      - action: emit_event
+        event: email_verification.token_invalid
+        payload: [token_hash, timestamp, ip_address]
     result: show "This verification link is invalid." with option to request a new one
 
   token_expired:
+    priority: 2
     given:
-      - token exists but created_at + 24 hours < now
+      - field: token_hash
+        source: db
+        operator: exists
+      - field: token_created_at
+        source: db
+        operator: lt
+        value: "now - 24 hours"
+        description: "Token has expired (older than 24 hours)"
     then:
-      - email_verification.token_expired event is emitted
+      - action: emit_event
+        event: email_verification.token_expired
+        payload: [user_id, timestamp, ip_address]
     result: show "This verification link has expired." with option to request a new one
 
-  resend_success:
+  already_verified:
+    priority: 3
     given:
-      - email is valid format, normalized
-      - user exists and email is not yet verified
-      - not rate limited (max 3 resends per hour per email)
+      - field: email_verified
+        source: db
+        operator: eq
+        value: true
+        description: "Email is already verified"
+    result: redirect to /login with message "Email already verified. Please sign in."
+
+  email_verified:
+    priority: 10
+    given:
+      - field: token
+        source: input
+        operator: exists
+        description: "Token is present in URL"
+      - field: token_hash
+        source: db
+        operator: exists
+        description: "SHA-256 hash matches a DB record"
+      - field: token_created_at
+        source: db
+        operator: gte
+        value: "now - 24 hours"
+        description: "Token has not expired"
+      - field: token_used
+        source: db
+        operator: eq
+        value: false
+        description: "Token has not been used (single-use)"
+      - field: status
+        source: db
+        operator: neq
+        value: disabled
+        description: "User account is not disabled"
     then:
-      - previous verification tokens for this user are invalidated
-      - new token is generated (crypto.randomBytes(32)), hashed, stored
-      - verification email is sent with new link
-      - email_verification.resent event is emitted
-    result: show "If an account with that email exists, we've sent a new verification link."
+      - action: set_field
+        target: email_verified
+        value: true
+        description: "Mark email as verified"
+      - action: set_field
+        target: token_used
+        value: true
+        description: "Mark token as used (single-use)"
+      - action: emit_event
+        event: email_verification.success
+        payload: [user_id, email, timestamp, ip_address]
+    result: redirect to /login with message "Email verified! You can now sign in."
+
+  # --- Resend Flow ---
+  resend_rate_limited:
+    priority: 1
+    given:
+      - field: resend_count
+        source: computed
+        operator: gt
+        value: 3
+        description: "More than 3 resend requests in 1 hour for this email"
+    result: show "If an account with that email exists, we've sent a new verification link." (same as success)
 
   resend_unknown_email:
+    priority: 2
     given:
-      - email not found in database OR already verified
-    then:
-      - no action
+      - any:
+          - field: user
+            source: db
+            operator: not_exists
+            description: "Email not found in database"
+          - field: email_verified
+            source: db
+            operator: eq
+            value: true
+            description: "Email is already verified"
     result: show SAME message as resend_success (enumeration prevention)
 
-  resend_rate_limited:
+  resend_success:
+    priority: 10
     given:
-      - more than 3 resend requests in 1 hour for this email
-    result: show SAME message as resend_success (don't reveal rate limiting)
+      - field: email
+        source: input
+        operator: matches
+        value: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        description: "Email is valid format"
+      - field: user
+        source: db
+        operator: exists
+        description: "User exists"
+      - field: email_verified
+        source: db
+        operator: eq
+        value: false
+        description: "Email is not yet verified"
+    then:
+      - action: invalidate
+        target: verification_tokens
+        scope: all_for_user
+        description: "Invalidate previous verification tokens"
+      - action: create_record
+        target: verification_token
+        description: "Generate crypto.randomBytes(32), store SHA-256 hash, expires in 24h"
+      - action: notify
+        channel: email
+        template: verification_email
+        to: user
+        description: "Send new verification link"
+      - action: emit_event
+        event: email_verification.resent
+        payload: [user_id, email, timestamp, expires_at]
+    result: show "If an account with that email exists, we've sent a new verification link."
 
 # ─── ERRORS ───────────────────────────────────────────────
 

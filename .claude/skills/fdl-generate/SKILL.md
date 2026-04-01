@@ -31,13 +31,49 @@ Generate a complete implementation from an FDL blueprint. Your job is to produce
 **DO NOT treat this as a recipe to follow step by step.**
 
 Instead, think of it like this:
-1. Read the `outcomes` — these are your acceptance criteria
+1. Read the `outcomes` — these are your acceptance criteria, sorted by `priority` (lower = check first)
 2. Read the `rules` — these are your constraints (security, business logic)
 3. Read the `fields` — these are your data model
 4. Read the `errors` — these are the error responses you must return
 5. Now write the code that makes ALL of it true, using the best patterns for the target framework
 
 The blueprint tells you WHAT. You decide HOW based on the framework.
+
+## Handling Structured Outcomes
+
+Outcomes may use structured conditions and side effects. Here's how to translate them to code:
+
+### Priority → execution order
+Outcomes with `priority: 1` are checked FIRST (rate limit, validation). `priority: 10` is checked last (success). Generate guard clauses in this order.
+
+### Structured conditions → guard clauses
+- `field` + `source` tells you WHERE to get the data (input = request body, db = database query, session = auth state, computed = derived)
+- `operator` tells you the comparison (eq → ===, gt → >, matches → regex test, exists → != null)
+- `value` is the comparand
+
+### AND/OR groups → logical expressions
+- Top-level given[] items are AND (all must pass)
+- `any:` groups are OR (at least one must pass)
+- `all:` groups are nested AND
+
+```typescript
+// any: [user not_exists, password neq stored_hash]
+if (!user || !(await bcrypt.compare(password, user.hash))) { ... }
+
+// all: [status eq active, email_verified eq true]  (default AND)
+if (user.status === 'active' && user.email_verified) { ... }
+```
+
+### Structured side effects → function calls
+- `action: set_field` → database update or variable assignment
+- `action: emit_event` → event bus / console.log placeholder
+- `action: transition_state` → status field update with validation
+- `action: notify` → email/push service call
+- `action: invalidate` → token/session revocation
+- `action: create_record` → database insert
+- `action: call_service` → external API call
+
+When `when:` is present on a side effect, wrap it in a conditional.
 
 ## Conversation with the User (max 2 questions)
 
@@ -66,47 +102,65 @@ For each outcome in the blueprint, your generated code must:
 2. **Perform every `then` action** — these become the side effects (DB writes, events, notifications)
 3. **Produce the `result`** — this becomes the response (redirect, error message, return value)
 
-### Example: Translating an Outcome to Code
+### Example: Translating a Structured Outcome to Code
 
-**Blueprint outcome:**
+**Blueprint outcome (with priority, sources, AND/OR, structured effects):**
 ```yaml
 invalid_credentials:
+  priority: 4
   given:
-    - user not found OR password does not match
+    - any:                              # OR group
+        - field: user
+          source: db
+          operator: not_exists
+        - field: password
+          source: input
+          operator: neq
+          value: stored_hash
   then:
-    - failed attempt counter is incremented
-    - if attempts reach 5, account is locked for 15 minutes
-    - login.failed event is emitted
+    - action: set_field
+      target: failed_login_attempts
+      value: "increment"
+    - action: emit_event
+      event: login.failed
+      payload: [email, timestamp, ip_address, attempt_count, reason]
+    - action: set_field
+      target: locked_until
+      value: "now + 15 minutes"
+      when: "failed_login_attempts >= 5"
   result: show "Invalid email or password" (SAME message for both cases)
 ```
 
-**Generated Next.js code (your implementation chooses the HOW):**
+**Generated code (any language — this example is TypeScript):**
 ```typescript
-// FDL outcome: invalid_credentials
-// Given: user not found OR password does not match
-if (!user) {
-  await emitLoginFailed({ email: normalizedEmail, reason: "user_not_found", ... });
-  return { success: false, error: AUTH_ERRORS.LOGIN_INVALID_CREDENTIALS };
-}
+// FDL outcome: invalid_credentials (priority: 4)
+// Given: any[user not_exists, password neq stored_hash]
+if (!user || !(await bcrypt.compare(input.password, user.password_hash))) {
+  // Then: set_field failed_login_attempts = increment
+  const newAttempts = (user?.failed_login_attempts ?? 0) + 1;
 
-const passwordValid = await compare(input.password, user.password_hash);
-if (!passwordValid) {
-  // Then: attempt counter incremented, lock if >= 5
-  const newAttempts = user.failed_login_attempts + 1;
-  const lockUntil = newAttempts >= MAX_ATTEMPTS
-    ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000)
+  // Then: set_field locked_until (when: attempts >= 5)
+  const lockUntil = newAttempts >= 5
+    ? new Date(Date.now() + 15 * 60_000)
     : null;
-  await updateLoginAttempts(user.id, newAttempts, lockUntil);
+  await updateLoginAttempts(user?.id, newAttempts, lockUntil);
 
-  // Then: login.failed event emitted
-  await emitLoginFailed({ email: normalizedEmail, reason: "invalid_password", ... });
+  // Then: emit_event login.failed
+  await emitLoginFailed({ email, timestamp: new Date(), ip_address, attempt_count: newAttempts, reason: !user ? "not_found" : "wrong_password" });
 
-  // Result: SAME error message (enumeration prevention)
+  // Result: same error for both cases (enumeration prevention)
   return { success: false, error: AUTH_ERRORS.LOGIN_INVALID_CREDENTIALS };
 }
 ```
 
-Notice: the outcome said "increment counter" and "lock if >= 5" — the code implements those semantics using whatever patterns make sense for the framework. The outcome didn't say "call updateLoginAttempts" — that's the code's choice.
+**What the code generator did:**
+- `any:` group → `||` in the if condition
+- `source: db` → looked up via database query earlier in the function
+- `source: input` → came from the request body
+- `action: set_field` → database update call
+- `action: emit_event` → event emitter call with specified payload
+- `when:` on a side effect → wrapped in a conditional
+- `priority: 4` → this guard runs after rate-limit (1), lock-check (2), and disabled-check (3)
 
 ## What to Generate
 

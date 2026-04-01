@@ -145,46 +145,109 @@ rules:
 # ─── OUTCOMES ─────────────────────────────────────────────
 
 outcomes:
-  successful_signup:
-    given:
-      - first_name and last_name are valid (1-100 chars, Unicode letters/hyphens/apostrophes)
-      - email is valid format, normalized (lowercase, trimmed)
-      - email is not already registered
-      - password meets requirements (8-64 chars, uppercase + lowercase + digit)
-      - confirm_password matches password
-      - terms_accepted is true
-      - not rate limited (max 5 signups per hour per IP)
-    then:
-      - password is hashed with bcrypt (12 salt rounds)
-      - user record is created with role "user" and email_verified false
-      - verification email is sent
-      - signup.success event is emitted with user_id, email, timestamp, ip, user_agent
-    result: redirect to confirmation page with "Account created! Please check your email to verify."
-
-  email_already_registered:
-    given:
-      - email already exists in database
-    then:
-      - signup.duplicate_email event is emitted
-      - existing-account notification sent to the email owner
-    result: show SAME success response as new signup (enumeration prevention)
-
-  bot_detected:
-    given:
-      - honeypot field is filled OR captcha failed (when bot protection enabled)
-    then:
-      - signup.bot_detected event is emitted
-    result: show generic rate limit error (don't reveal bot detection triggered)
-
   rate_limited:
+    priority: 1
     given:
-      - more than 5 signup attempts in 1 hour from this IP
+      - field: request_count
+        source: computed
+        operator: gt
+        value: 5
+        description: "More than 5 signup attempts in 1 hour from this IP"
     result: show "Too many attempts. Please try again later."
 
   validation_failed:
+    priority: 2
     given:
-      - any field fails validation
+      - "any field fails its validation rules"
     result: show per-field error messages inline
+
+  bot_detected:
+    priority: 3
+    given:
+      - any:
+          - field: honeypot
+            source: input
+            operator: exists
+            description: "Hidden honeypot field was filled (bots only)"
+          - field: captcha
+            source: input
+            operator: eq
+            value: false
+            description: "CAPTCHA verification failed"
+    then:
+      - action: emit_event
+        event: signup.bot_detected
+        payload: [ip_address, timestamp, detection_method]
+    result: show generic rate limit error (don't reveal bot detection triggered)
+
+  email_already_registered:
+    priority: 4
+    given:
+      - field: email
+        source: db
+        operator: exists
+        description: "Email already exists in database"
+    then:
+      - action: emit_event
+        event: signup.duplicate_email
+        payload: [email, timestamp, ip_address]
+      - action: notify
+        channel: email
+        template: existing_account_notification
+        to: existing_user
+        description: "Alert the existing account holder"
+    result: show SAME success response as new signup (enumeration prevention)
+
+  successful_signup:
+    priority: 10
+    given:
+      - field: first_name
+        source: input
+        operator: matches
+        value: "^[\\p{L}\\s'-]+$"
+        description: "First name is valid (Unicode letters, hyphens, apostrophes)"
+      - field: last_name
+        source: input
+        operator: matches
+        value: "^[\\p{L}\\s'-]+$"
+        description: "Last name is valid"
+      - field: email
+        source: input
+        operator: matches
+        value: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        description: "Email is valid format"
+      - field: email
+        source: db
+        operator: not_exists
+        description: "Email is not already registered"
+      - field: password
+        source: input
+        operator: matches
+        value: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,64}$"
+        description: "Password meets requirements (8-64 chars, upper+lower+digit)"
+      - field: confirm_password
+        source: input
+        operator: eq
+        value: password
+        description: "Confirm password matches password"
+      - field: terms_accepted
+        source: input
+        operator: eq
+        value: true
+        description: "User accepted terms of service"
+    then:
+      - action: create_record
+        target: user
+        description: "Create user with hashed password (bcrypt, 12 rounds), role 'user', email_verified false"
+      - action: notify
+        channel: email
+        template: verification_email
+        to: user
+        description: "Send email verification link"
+      - action: emit_event
+        event: signup.success
+        payload: [user_id, email, timestamp, ip_address, user_agent]
+    result: redirect to confirmation page with "Account created! Please check your email to verify."
 
 # ─── ERRORS ───────────────────────────────────────────────
 

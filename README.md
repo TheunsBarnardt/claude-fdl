@@ -199,9 +199,28 @@ FDL has two ways to describe what a feature does:
 **Flows** describe **what steps to follow**:
 > "Step 1: Validate fields. Step 2: Look up user. Step 3: Compare password. Step 4: Create session."
 
-**Why outcomes are better for AI:** When you tell Claude *what* must be true instead of *how* to do it, it picks the best implementation for your specific framework. Outcomes are like acceptance criteria — flows are like recipes.
+**Why outcomes are better for AI:** When you tell any AI *what* must be true instead of *how* to do it, it picks the best implementation for your specific framework. Outcomes are like acceptance criteria — flows are like recipes.
 
 **When to use flows:** For business processes where humans need documented procedures (expense approvals, employee onboarding, support ticket escalation).
+
+### Structured Conditions (machine-precise)
+
+Outcomes can use structured conditions that are unambiguous and machine-parseable:
+
+```
+INSTEAD OF:  "amount is over $1,000 and status is submitted"
+USE:         field: amount, source: input, operator: gt, value: 1000
+             field: status, source: db, operator: eq, value: submitted
+```
+
+Key features:
+- **AND/OR logic** — top-level conditions are AND; use `any:` for OR groups
+- **Priority** — outcomes are checked in order (rate limit first, success last)
+- **Data sources** — each condition knows where its data comes from (input, db, request, session, system)
+- **Structured side effects** — actions like `set_field`, `emit_event`, `transition_state`, `notify` are machine-parseable
+- **Operators** — `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `matches`, `exists`, `not_exists`
+
+Plain text conditions still work alongside structured ones — use whichever is clearer.
 
 ---
 
@@ -231,6 +250,8 @@ FDL comes with a starter set of blueprints you can use, modify, or learn from:
 | `login` | Email + password authentication with rate limiting, account lockout, session management |
 | `signup` | User registration with email verification, password requirements, enumeration prevention |
 | `password-reset` | Two-step reset via email with secure tokens, session invalidation |
+| `logout` | End session (single device or all devices), CSRF-protected |
+| `email-verification` | Confirm email ownership via one-time token, with resend flow |
 
 ### Workflow Example
 

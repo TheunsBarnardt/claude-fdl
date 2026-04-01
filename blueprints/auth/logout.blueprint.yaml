@@ -51,34 +51,66 @@ rules:
 # ─── OUTCOMES ─────────────────────────────────────────────
 
 outcomes:
-  successful_logout_current:
+  not_authenticated:
+    priority: 1
     given:
-      - user is authenticated
-      - logout_scope is "current" (or default)
+      - field: session
+        source: session
+        operator: not_exists
+        description: "User is not logged in (no valid tokens)"
+    result: redirect to /login (no error — graceful handling)
+
+  successful_logout_current:
+    priority: 2
+    given:
+      - field: session
+        source: session
+        operator: exists
+        description: "User is authenticated"
+      - field: logout_scope
+        source: input
+        operator: in
+        value: ["current", null]
+        description: "Logout scope is current device (or default)"
     then:
-      - access token cookie is cleared
-      - refresh token cookie is cleared
-      - refresh token is invalidated server-side (DB record marked as revoked)
-      - logout.success event is emitted with user_id, session_id, timestamp
+      - action: invalidate
+        target: access_token
+        scope: current_session
+        description: "Clear access token cookie"
+      - action: invalidate
+        target: refresh_token
+        scope: current_session
+        description: "Clear refresh token cookie and revoke in DB"
+      - action: emit_event
+        event: logout.success
+        payload: [user_id, session_id, timestamp, ip_address]
     result: redirect to /login
 
   successful_logout_all_devices:
+    priority: 3
     given:
-      - user is authenticated
-      - logout_scope is "all"
+      - field: session
+        source: session
+        operator: exists
+        description: "User is authenticated"
+      - field: logout_scope
+        source: input
+        operator: eq
+        value: "all"
+        description: "User chose to sign out of all devices"
     then:
-      - ALL refresh tokens for this user are invalidated server-side
-      - access token cookie is cleared on current device
-      - refresh token cookie is cleared on current device
-      - logout.all_devices event is emitted with user_id, timestamp, device_count
+      - action: invalidate
+        target: refresh_token
+        scope: all_sessions
+        description: "Invalidate ALL refresh tokens for this user"
+      - action: invalidate
+        target: access_token
+        scope: current_session
+        description: "Clear cookies on current device"
+      - action: emit_event
+        event: logout.all_devices
+        payload: [user_id, timestamp, ip_address, revoked_session_count]
     result: redirect to /login
-
-  not_authenticated:
-    given:
-      - user is not logged in (no valid tokens)
-    then:
-      - no action needed
-    result: redirect to /login (no error — graceful handling)
 
 # ─── ERRORS ───────────────────────────────────────────────
 
