@@ -310,6 +310,11 @@ function validateFile(filePath) {
   }
 
   // Check: outcome structure — each outcome should have given, then, or result
+  const validOperators = new Set([
+    "eq", "neq", "gt", "gte", "lt", "lte",
+    "in", "not_in", "matches", "exists", "not_exists",
+  ]);
+
   if (data.outcomes) {
     const validOutcomeKeys = new Set(["given", "then", "result"]);
     for (const [name, outcome] of Object.entries(data.outcomes)) {
@@ -323,6 +328,32 @@ function validateFile(filePath) {
         customErrors.push(
           `  outcomes.${name}: must have at least one of "given", "then", or "result"`
         );
+      }
+
+      // Validate structured conditions in given[]
+      if (Array.isArray(outcome.given)) {
+        for (let i = 0; i < outcome.given.length; i++) {
+          const condition = outcome.given[i];
+          // Strings are plain-text conditions — always valid
+          if (typeof condition === "string") continue;
+          // Objects are structured conditions — validate operator
+          if (typeof condition === "object" && condition !== null) {
+            if (!condition.field) {
+              customErrors.push(
+                `  outcomes.${name}.given[${i}]: structured condition must have a "field" property`
+              );
+            }
+            if (!condition.operator) {
+              customErrors.push(
+                `  outcomes.${name}.given[${i}]: structured condition must have an "operator" property`
+              );
+            } else if (!validOperators.has(condition.operator)) {
+              customErrors.push(
+                `  outcomes.${name}.given[${i}]: unknown operator "${condition.operator}" — valid: ${[...validOperators].join(", ")}`
+              );
+            }
+          }
+        }
       }
     }
   }

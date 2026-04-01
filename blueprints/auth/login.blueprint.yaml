@@ -104,13 +104,29 @@ rules:
 outcomes:
   successful_login:
     given:
-      - email is valid format
-      - email is normalized (lowercase, trimmed)
-      - user exists in database
-      - account is not locked (failed_attempts < 5 or lockout expired)
-      - account is not disabled (status != disabled)
-      - password matches stored hash (constant-time comparison via bcrypt)
-      - email is verified (when rules.email.require_verified is true)
+      - field: email
+        operator: matches
+        value: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        description: "Email is valid format"
+      - field: email
+        operator: exists
+        description: "User exists in database (after lowercase + trim normalization)"
+      - field: failed_login_attempts
+        operator: lt
+        value: 5
+        description: "Account is not locked (or lockout has expired)"
+      - field: status
+        operator: neq
+        value: disabled
+        description: "Account is active"
+      - field: password
+        operator: eq
+        value: stored_hash
+        description: "Password matches stored hash (constant-time comparison via bcrypt)"
+      - field: email_verified
+        operator: eq
+        value: true
+        description: "Email is verified (when rules.email.require_verified is true)"
     then:
       - failed attempt counter is reset to 0
       - access token is created (JWT, 15-min expiry)
@@ -122,36 +138,62 @@ outcomes:
 
   invalid_credentials:
     given:
-      - user not found OR password does not match
+      - field: user
+        operator: not_exists
+        description: "User not found in database"
+      # OR
+      - field: password
+        operator: neq
+        value: stored_hash
+        description: "Password does not match"
     then:
       - failed attempt counter is incremented
-      - if attempts reach 5, account is locked for 15 minutes
+      - field: failed_login_attempts
+        operator: gte
+        value: 5
+        description: "If attempts reach 5, account is locked for 15 minutes"
       - login.failed event is emitted
       - if newly locked, login.locked event is emitted
     result: show "Invalid email or password" (SAME message for both cases — enumeration prevention)
 
   account_locked:
     given:
-      - failed_attempts >= 5 AND lockout period has not expired
+      - field: failed_login_attempts
+        operator: gte
+        value: 5
+        description: "Max attempts exceeded"
+      - field: locked_until
+        operator: gt
+        value: now
+        description: "Lockout period has not expired"
     then:
       - login.locked event is emitted
     result: show "Account temporarily locked. Please try again later."
 
   email_not_verified:
     given:
-      - user exists, password correct, but email_verified is false
+      - field: email_verified
+        operator: eq
+        value: false
+        description: "User exists, password correct, but email not verified"
     then:
       - login.unverified event is emitted
     result: redirect to email-verification with message "Please verify your email before logging in"
 
   account_disabled:
     given:
-      - user.status is disabled
+      - field: status
+        operator: eq
+        value: disabled
+        description: "Account deactivated by admin or user"
     result: show "This account has been disabled. Please contact support."
 
   rate_limited:
     given:
-      - more than 10 requests in 60 seconds from this IP
+      - field: request_count
+        operator: gt
+        value: 10
+        description: "More than 10 requests in 60 seconds from this IP"
     result: show "Too many login attempts. Please wait a moment."
 
 # ─── ERRORS ───────────────────────────────────────────────

@@ -51,6 +51,23 @@ A blueprint must have at least one of `outcomes` or `flows` (or both).
 
 Use `outcomes` alone for technical features (login, CRUD, checkout). Use both for business processes where humans need documented procedures (approvals, onboarding).
 
+### Structured Conditions in Outcomes
+
+Conditions in `given` can be plain-text strings OR structured objects with `field`, `operator`, `value`, and `description`. Structured conditions are machine-parseable and remove ambiguity:
+
+```yaml
+# Plain text (human-readable, AI-interpreted)
+- "user is authenticated"
+
+# Structured (machine-parseable, deterministic)
+- field: amount
+  operator: gt
+  value: 1000
+  description: "Expense exceeds finance approval threshold"
+```
+
+Valid operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `matches`, `exists`, `not_exists`. Mix plain-text and structured conditions freely within the same outcome.
+
 ### Workflow / Business Process Fields
 
 - **`actors`** — who participates (human roles, systems, external parties). Each actor has `id`, `name`, `type` (human/system/external), optional `description` and `role`.

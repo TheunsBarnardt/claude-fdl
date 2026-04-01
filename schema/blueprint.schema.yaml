@@ -72,6 +72,23 @@ required:
     minKeys: 1
     # Preferred for AI code generation. Describe given/then/result for each scenario.
     # Required if flows is not provided.
+    #
+    # Each outcome has:
+    #   given: list of conditions (each can be a string OR a structured condition)
+    #   then: list of actions/effects
+    #   result: what the user sees
+    #
+    # Structured conditions use the format:
+    #   - field: amount
+    #     operator: gt
+    #     value: 1000
+    #     description: "Expense exceeds finance approval threshold"
+    #
+    # Plain-text conditions are also valid:
+    #   - "user is authenticated"
+    #
+    # Operators: eq, neq, gt, gte, lt, lte, in, not_in, matches, exists, not_exists
+    # This makes conditions machine-parseable while keeping them human-readable.
 
 # ─── OPTIONAL TOP-LEVEL FIELDS ─────────────────────────────
 

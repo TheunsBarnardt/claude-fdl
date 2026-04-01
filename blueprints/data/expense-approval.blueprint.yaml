@@ -468,15 +468,38 @@ flows:
 outcomes:
   expense_submitted:
     given:
-      - user is authenticated
-      - title is provided (max 200 chars)
-      - amount is between $0.01 and $50,000
-      - category is one of the valid options
-      - date is within last 90 days
-      - description has at least 10 characters
-      - receipt is attached if amount > $25 (PDF/PNG/JPG, max 10MB)
-      - no duplicate expense exists (same amount + date + category)
-      - not rate limited (max 20 per hour per user)
+      - "user is authenticated"
+      - field: title
+        operator: exists
+        description: "Title is provided"
+      - field: amount
+        operator: gte
+        value: 0.01
+        description: "Amount is at least $0.01"
+      - field: amount
+        operator: lte
+        value: 50000
+        description: "Amount does not exceed $50,000"
+      - field: category
+        operator: in
+        value: [travel, meals, supplies, software, equipment, other]
+        description: "Category is a valid option"
+      - field: date_incurred
+        operator: gte
+        value: "today - 90 days"
+        description: "Expense is within the last 90 days"
+      - field: description
+        operator: gte
+        value: 10
+        description: "Description has at least 10 characters (minLength)"
+      - field: receipt
+        operator: exists
+        description: "Receipt is attached when amount > $25"
+        when: "amount > 25"
+      - field: request_count
+        operator: lte
+        value: 20
+        description: "Not rate limited (max 20 per hour per user)"
     then:
       - status transitions from draft to submitted
       - direct manager is notified via email
@@ -484,21 +507,52 @@ outcomes:
       - all state transitions are logged for audit (actor, timestamp, IP)
     result: expense appears in manager's review queue
 
-  manager_approves:
+  manager_approves_under_threshold:
     given:
-      - reviewer has manager role for the submitting employee
-      - expense is in submitted status
+      - field: reviewer_role
+        operator: eq
+        value: manager
+        description: "Reviewer has manager role for the submitting employee"
+      - field: status
+        operator: eq
+        value: submitted
+        description: "Expense is in submitted status"
+      - field: amount
+        operator: lte
+        value: 1000
+        description: "Amount is at or below finance threshold"
     then:
-      - if amount <= $1,000, status transitions to approved (auto-skip finance)
-      - if amount > $1,000, status transitions to pending_finance
+      - status transitions to approved (auto-skip finance)
       - expense.manager_reviewed event is emitted
-    result: expense moves to next stage based on amount threshold
+    result: expense is queued for payment
+
+  manager_approves_over_threshold:
+    given:
+      - field: reviewer_role
+        operator: eq
+        value: manager
+        description: "Reviewer has manager role"
+      - field: status
+        operator: eq
+        value: submitted
+      - field: amount
+        operator: gt
+        value: 1000
+        description: "Amount exceeds finance threshold"
+    then:
+      - status transitions to pending_finance
+      - expense.manager_reviewed event is emitted
+    result: expense is escalated to finance for review
 
   finance_approves:
     given:
-      - reviewer has finance_manager role
-      - expense is in pending_finance status
-      - department has remaining budget for this expense
+      - field: reviewer_role
+        operator: eq
+        value: finance_manager
+      - field: status
+        operator: eq
+        value: pending_finance
+      - "department has remaining budget for this expense"
     then:
       - status transitions to approved
       - expense.approved event is emitted
@@ -506,9 +560,15 @@ outcomes:
 
   expense_rejected:
     given:
-      - reviewer is manager or finance_manager
-      - expense is in submitted or pending_finance status
-      - rejection reason is provided (mandatory)
+      - field: reviewer_role
+        operator: in
+        value: [manager, finance_manager]
+      - field: status
+        operator: in
+        value: [submitted, pending_finance]
+      - field: rejection_reason
+        operator: exists
+        description: "Rejection reason is mandatory"
     then:
       - status transitions to rejected
       - employee is notified with rejection reason
@@ -517,8 +577,10 @@ outcomes:
 
   payment_processed:
     given:
-      - expense is in approved status
-      - payment system is available
+      - field: status
+        operator: eq
+        value: approved
+      - "payment system is available"
     then:
       - reimbursement is created in payroll system
       - status transitions to paid
@@ -528,7 +590,7 @@ outcomes:
 
   payment_failed:
     given:
-      - payment system returns error
+      - "payment system returns error"
     then:
       - expense.payment_failed event is emitted
       - finance team is alerted
@@ -536,9 +598,20 @@ outcomes:
 
   sla_breached:
     given:
-      - manager review exceeds 48 hours
-      - OR finance review exceeds 72 hours
-      - OR end-to-end exceeds 30 days
+      - field: time_in_submitted
+        operator: gt
+        value: "48h"
+        description: "Manager review exceeds 48 hours"
+      # OR
+      - field: time_in_pending_finance
+        operator: gt
+        value: "72h"
+        description: "Finance review exceeds 72 hours"
+      # OR
+      - field: time_since_submitted
+        operator: gt
+        value: "30d"
+        description: "End-to-end exceeds 30 days"
     then:
       - expense.sla_breached event is emitted
       - escalation notification sent (department head or CFO)
