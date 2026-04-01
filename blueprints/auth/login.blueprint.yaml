@@ -2,19 +2,18 @@
 # LOGIN — Feature Blueprint
 # FDL v0.1.0 | Blueprint v1.0.0
 # ============================================================
-# Authenticates a user with email and password.
-# This is the most rebuilt feature in software — this blueprint
-# ensures nothing gets missed.
+# Sign in to a SaaS web application with email and password.
+# Security-first: constant-time comparison, account lockout,
+# rate limiting, and enumeration prevention are all mandatory.
 # ============================================================
 
 feature: login
 version: "1.0.0"
 description: Authenticate a user with email and password
 category: auth
-tags: [authentication, session, security, identity]
+tags: [authentication, session, security, identity, saas]
 
-# ─── FIELDS ────────────────────────────────────────────────
-# What the user provides to log in
+# ─── FIELDS ───────────────────────────────────────────────
 
 fields:
   - name: email
@@ -55,166 +54,52 @@ fields:
     label: "Remember me"
     default: false
 
-# ─── RULES ─────────────────────────────────────────────────
-# Business logic and security policies
+# ─── RULES ────────────────────────────────────────────────
 
 rules:
   security:
     max_attempts: 5
     lockout_duration_minutes: 15
     lockout_scope: per_email
-    # per_email: only that account locks (default, least disruptive)
-    # per_ip: that IP locks (prevents credential stuffing)
-    # both: both lock (strictest, use for high-security apps)
+    # per_email locks only that account (least disruptive)
 
     rate_limit:
       window_seconds: 60
       max_requests: 10
       scope: per_ip
-      # 10 login attempts per minute per IP — catches automated attacks
-      # without affecting normal users
+      # 10 login attempts per minute per IP
 
     password_comparison:
       constant_time: true
       # MANDATORY: use bcrypt.compare() or equivalent
       # Never use == or === for password comparison
-      # Timing attacks can reveal password length
 
     credential_error_handling:
       generic_message: true
       # CRITICAL: always return "Invalid email or password"
       # NEVER return "User not found" vs "Wrong password"
-      # This prevents user enumeration attacks
 
   session:
     type: jwt
-    # jwt: stateless, scalable, good for SPAs and APIs
-    # session-cookie: stateful, simpler, good for SSR apps
-    # opaque-token: stateful with DB lookup, most secure
-
     access_token:
       expiry_minutes: 15
-      # Short-lived — forces refresh, limits damage if stolen
     refresh_token:
       expiry_days: 7
       rotate_on_use: true
-      # Issue new refresh token on each use — detects token theft
     remember_me_expiry_days: 30
-
     extend_on_activity: true
-    # Reset the expiry timer on each authenticated request
-
     secure_flags:
-      http_only: true # Prevent XSS access to tokens
-      secure: true # HTTPS only
-      same_site: strict # Prevent CSRF
+      http_only: true
+      secure: true
+      same_site: strict
 
   email:
     require_verified: true
-    # If false, unverified users can still log in
-    # If true, redirect to email-verification flow
     case_sensitive: false
-    # ALWAYS normalize to lowercase before DB lookup
-    # "User@Email.com" and "user@email.com" are the same account
     trim_whitespace: true
-    # Remove leading/trailing spaces — common paste error
 
-# ─── FLOWS ─────────────────────────────────────────────────
-# Every path a user can take through this feature
-
-flows:
-  happy_path:
-    description: "Successful login"
-    steps:
-      - id: validate
-        action: validate_fields
-        description: "Check email format and password length client-side"
-      - id: normalize
-        action: normalize_email
-        description: "Lowercase and trim the email"
-      - id: lookup
-        action: lookup_user_by_email
-        description: "Find user in database"
-        on_fail: invalid_credentials
-      - id: check_lock
-        action: check_account_not_locked
-        description: "Verify account is not in lockout period"
-        on_fail: account_locked
-      - id: check_disabled
-        action: check_account_not_disabled
-        description: "Verify account is active"
-        on_fail: account_disabled
-      - id: compare_password
-        action: compare_password_hash
-        description: "bcrypt.compare(input, stored_hash)"
-        on_fail: invalid_credentials
-      - id: check_verified
-        action: check_email_verified
-        description: "Only if rules.email.require_verified is true"
-        on_fail: email_not_verified
-      - id: reset_attempts
-        action: reset_attempt_counter
-        description: "Clear failed attempt count on success"
-      - id: create_session
-        action: generate_session_tokens
-        description: "Create access + refresh tokens"
-      - id: emit_success
-        action: emit
-        event: login.success
-      - id: redirect
-        action: redirect
-        target: dashboard
-
-  invalid_credentials:
-    description: "Wrong email or wrong password — same response for both"
-    trigger: "password_mismatch OR user_not_found"
-    steps:
-      - action: increment_attempt_counter
-      - action: emit
-        event: login.failed
-      - action: show_error
-        error: LOGIN_INVALID_CREDENTIALS
-    # SECURITY: identical response prevents user enumeration
-
-  account_locked:
-    description: "Too many failed attempts"
-    trigger: "attempt_count >= rules.security.max_attempts"
-    steps:
-      - action: emit
-        event: login.locked
-      - action: show_error
-        error: LOGIN_ACCOUNT_LOCKED
-      - action: send_notification
-        template: account_locked_email
-        # Optional: email the user that their account was locked
-
-  email_not_verified:
-    description: "User exists but hasn't confirmed email"
-    trigger: "user.email_verified == false"
-    steps:
-      - action: emit
-        event: login.unverified
-      - action: redirect
-        target: email-verification
-        message: "Please verify your email before logging in"
-
-  account_disabled:
-    description: "Account deactivated by admin or user"
-    trigger: "user.status == disabled"
-    steps:
-      - action: show_error
-        error: LOGIN_ACCOUNT_DISABLED
-
-  rate_limited:
-    description: "Too many requests from this IP"
-    trigger: "request_count >= rules.security.rate_limit.max_requests"
-    steps:
-      - action: show_error
-        error: LOGIN_RATE_LIMITED
-
-# ─── OUTCOMES ──────────────────────────────────────────────
-# Acceptance criteria — what must be true for each scenario
-# AI code generators should use these instead of flows
+# ─── OUTCOMES ─────────────────────────────────────────────
+# What must be true in each scenario — AI decides how to implement
 
 outcomes:
   successful_login:
@@ -242,7 +127,7 @@ outcomes:
       - failed attempt counter is incremented
       - if attempts reach 5, account is locked for 15 minutes
       - login.failed event is emitted
-      - if newly locked, login.locked event is emitted and optional lockout email sent
+      - if newly locked, login.locked event is emitted
     result: show "Invalid email or password" (SAME message for both cases — enumeration prevention)
 
   account_locked:
@@ -269,22 +154,18 @@ outcomes:
       - more than 10 requests in 60 seconds from this IP
     result: show "Too many login attempts. Please wait a moment."
 
-# ─── ERRORS ────────────────────────────────────────────────
-# Every error this feature can return
-# Messages are user-safe — no internal details
+# ─── ERRORS ───────────────────────────────────────────────
 
 errors:
   - code: LOGIN_INVALID_CREDENTIALS
     status: 401
     message: "Invalid email or password"
     retry: true
-    # Intentionally vague — same message for wrong email AND wrong password
 
   - code: LOGIN_ACCOUNT_LOCKED
     status: 423
     message: "Account temporarily locked. Please try again later."
     retry: false
-    # Don't reveal exact lockout duration to attackers
 
   - code: LOGIN_EMAIL_NOT_VERIFIED
     status: 403
@@ -307,33 +188,26 @@ errors:
     message: "Please check your input and try again"
     retry: true
 
-# ─── EVENTS ────────────────────────────────────────────────
-# Signals emitted for other features to consume
-# Think of these as hooks — audit logs, analytics, notifications
+# ─── EVENTS ───────────────────────────────────────────────
 
 events:
   - name: login.success
     description: "User successfully authenticated"
     payload: [user_id, email, timestamp, ip_address, user_agent, session_id]
-    # Consumers: audit log, analytics, last-login tracker, session manager
 
   - name: login.failed
     description: "Authentication attempt failed"
     payload: [email, timestamp, ip_address, user_agent, attempt_count, reason]
-    # Consumers: security monitoring, brute-force detection, rate limiter
 
   - name: login.locked
     description: "Account locked due to too many failures"
     payload: [email, user_id, timestamp, lockout_until, attempt_count]
-    # Consumers: notification system, admin alerts, security dashboard
 
   - name: login.unverified
     description: "Login blocked — email not verified"
     payload: [user_id, email, timestamp]
-    # Consumers: email verification resend, analytics
 
-# ─── RELATIONSHIPS ─────────────────────────────────────────
-# How this feature connects to others
+# ─── RELATIONSHIPS ────────────────────────────────────────
 
 related:
   - feature: signup
@@ -344,7 +218,7 @@ related:
 
   - feature: password-reset
     type: recommended
-    reason: "Users will forget passwords — #1 support request"
+    reason: "Users will forget passwords"
     ui_link: "Forgot password?"
     ui_link_position: below_password_field
 
@@ -352,29 +226,16 @@ related:
     type: recommended
     reason: "Required when rules.email.require_verified is true"
 
-  - feature: mfa
-    type: optional
-    reason: "Second factor after password verification"
-    insert_after: "flows.happy_path.compare_password"
-    # MFA step inserts between password check and session creation
-
   - feature: logout
     type: required
     reason: "Every login needs a logout"
 
-  - feature: session-management
-    type: optional
-    reason: "View and revoke active sessions across devices"
-
-# ─── UI HINTS ──────────────────────────────────────────────
-# Suggestions for UI implementation — adapters may ignore these
-# These are NOT requirements, just sensible defaults
+# ─── UI HINTS ─────────────────────────────────────────────
 
 ui_hints:
   layout: single_column_centered
   max_width: 420px
   show_logo: true
-
   fields_order: [email, password, remember_me]
 
   actions:
@@ -382,7 +243,6 @@ ui_hints:
       label: "Sign in"
       type: submit
       full_width: true
-    secondary: []
 
   links:
     - label: "Forgot password?"
@@ -397,18 +257,14 @@ ui_hints:
     autocomplete:
       email: username
       password: current-password
-    # autocomplete hints help password managers
     aria_live_region: true
-    # Announce errors to screen readers
 
   loading:
     disable_button: true
     show_spinner: true
     prevent_double_submit: true
 
-# ─── EXTENSIONS ────────────────────────────────────────────
-# Framework-specific overrides — keyed by adapter name
-# These provide implementation hints without affecting the core spec
+# ─── EXTENSIONS ───────────────────────────────────────────
 
 extensions:
   nextjs:
@@ -416,25 +272,12 @@ extensions:
     layout: "(auth)"
     server_action: true
     middleware_redirect: "/dashboard"
-    # Use Next.js middleware to redirect authenticated users away from /login
-
-  payload_cms:
-    collection: "users"
-    auth:
-      tokenExpiration: 900 # 15 min in seconds
-      maxLoginAttempts: 5
-      lockTime: 900000 # 15 min in ms
-
-  laravel:
-    guard: "web"
-    middleware: ["guest"]
-    throttle: "5,1"
 
   express:
     route: "/api/auth/login"
     middleware: ["rate-limit", "cors"]
 
-  flutter:
-    screen: "LoginScreen"
-    state_management: "riverpod"
-    secure_storage: true
+  laravel:
+    guard: "web"
+    middleware: ["guest"]
+    throttle: "5,1"

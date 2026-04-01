@@ -2,7 +2,7 @@
 
 **Define what your software should do. Let AI build it.**
 
-FDL is a system for writing "blueprints" — plain-language specifications that describe software features. You write the what (rules, data, expected outcomes). Claude Code reads the blueprint and generates the complete implementation for your chosen framework.
+FDL is a system for writing "blueprints" — plain-language specifications that describe software features. You write the what (rules, data, expected outcomes). Any AI tool reads the blueprint and generates the complete implementation for your chosen language and framework.
 
 No code. No YAML knowledge. Just describe what you need.
 
@@ -39,12 +39,14 @@ There are three ways to create a blueprint:
 | **Extract from a document** | You have a BRD, policy doc, or SOP | `/fdl-extract docs/policy.pdf` |
 | **Write YAML directly** | You're technical and want full control | Create a `.blueprint.yaml` file |
 
-Once you have a blueprint, generate code:
+Once you have a blueprint, generate code for any language or framework:
 
 ```
 /fdl-generate login nextjs
 /fdl-generate signup express
-/fdl-generate expense-approval laravel
+/fdl-generate login angular
+/fdl-generate signup csharp
+/fdl-generate expense-approval python
 ```
 
 ---
@@ -155,7 +157,7 @@ Pick a blueprint and a framework. Claude generates a complete, working implement
 /fdl-generate expense-approval nextjs
 ```
 
-**Supported frameworks:** Next.js, Express, Laravel, Flutter, Payload CMS
+**Works with any language or framework.** Some blueprints include optional hints for specific frameworks (Next.js, Express, Laravel, etc.), but the core specification is language-agnostic. C#, Rust, Angular, Python, Go, Ruby — if Claude can write it, FDL can generate it.
 
 **What you get:**
 - Backend: routes, validation, business logic, error handling, security rules
@@ -350,11 +352,11 @@ The validator checks:
 **Do I need to know YAML?**
 No. The `/fdl-create` and `/fdl-extract` commands handle everything through plain-language questions. You only see YAML if you choose to edit blueprints directly.
 
-**Can I use this without Claude Code?**
-The blueprints are standard YAML files. Any AI tool that can read YAML can use them. The `/fdl-create`, `/fdl-extract`, and `/fdl-generate` commands are Claude Code skills, but the blueprints themselves are tool-agnostic.
+**Does this only work with Claude?**
+No. The blueprints are standard YAML files — any AI tool can read them. You can paste a blueprint into ChatGPT, Copilot, Gemini, or any other AI and ask it to generate code. The `/fdl-create`, `/fdl-extract`, and `/fdl-generate` slash commands are Claude Code skills that make the experience smoother, but the blueprints themselves are AI-agnostic.
 
-**What frameworks are supported?**
-Next.js (App Router), Express, Laravel, Flutter, and Payload CMS. Adding more is just a matter of creating extension patterns in the blueprints.
+**What languages and frameworks are supported?**
+All of them. Blueprints describe what the feature does, not how to build it. Any language, any framework: Next.js, Express, Laravel, Angular, React, Vue, C#/.NET, Rust, Python/Django, Go, Ruby on Rails, Flutter, Swift, and anything else. Some blueprints include optional `extensions` with hints for specific frameworks, but they're not required.
 
 **Can I use this for business processes, not just UI features?**
 Yes. Blueprints support actors (who does what), state machines (status lifecycles), SLAs (time limits), and approval chains. The expense-approval blueprint is a full example.
@@ -362,8 +364,8 @@ Yes. Blueprints support actors (who does what), state machines (status lifecycle
 **Can I extract rules from existing documents?**
 Yes. `/fdl-extract` reads PDFs, Word docs, text files, and even images of flowcharts. It extracts the rules and creates a blueprint, with references back to the source document.
 
-**How is this different from just asking Claude to "build login"?**
-Without FDL, Claude guesses what "login" means. With FDL, there's a complete specification: 5 failed attempts = lockout, 15-minute duration, constant-time password comparison, generic error messages to prevent user enumeration, JWT with 15-minute access tokens. Nothing is left to chance.
+**How is this different from just asking AI to "build login"?**
+Without FDL, the AI guesses what "login" means. With FDL, there's a complete specification: 5 failed attempts = lockout, 15-minute duration, constant-time password comparison, generic error messages to prevent user enumeration, JWT with 15-minute access tokens. Nothing is left to chance. Every AI tool gets the same spec and produces consistent results.
 
 ---
 

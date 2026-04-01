@@ -34,7 +34,7 @@ Schema Layer (schema/)           — Meta-schema that validates all blueprints
 
 - **Schema:** `schema/blueprint.schema.yaml` is the meta-schema. `scripts/validate.js` embeds a JSON Schema equivalent and uses AJV for validation. Two validation passes: file-level (structure) then cross-reference (relationship targets exist).
 - **Blueprints:** `blueprints/{category}/{feature}.blueprint.yaml` — self-contained feature specs. Current categories in schema: auth, data, access, ui, integration, notification, payment, workflow.
-- **Skills:** `/fdl-create` generates new blueprint YAML from a feature description. `/fdl-generate` produces implementation code from a blueprint for a target framework (nextjs, express, laravel, flutter, payload_cms). `/fdl-extract` reads a document (PDF, DOCX, etc.) and extracts rules into a blueprint. All skills are conversational — users don't need to know YAML.
+- **Skills:** `/fdl-create` generates new blueprint YAML from a feature description. `/fdl-generate` produces implementation code from a blueprint for any language or framework. `/fdl-extract` reads a document (PDF, DOCX, etc.) and extracts rules into a blueprint. All skills are conversational — users don't need to know YAML.
 
 ## Blueprint Structure
 

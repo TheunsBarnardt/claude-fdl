@@ -1,0 +1,257 @@
+# ============================================================
+# EMAIL VERIFICATION — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Confirm the user owns the email address they signed up with.
+# Without this, anyone can register with any email — enabling
+# account squatting, spam, and impersonation.
+# ============================================================
+
+feature: email-verification
+version: "1.0.0"
+description: Verify user email ownership via a one-time token link
+category: auth
+tags: [email, verification, security, identity, onboarding]
+
+# ─── FIELDS ───────────────────────────────────────────────
+
+fields:
+  - name: token
+    type: token
+    required: true
+    sensitive: true
+    # Token from the verification email link — never shown to user
+    # Passed via URL parameter: /verify-email?token=xxx
+    validation:
+      - type: required
+        message: "Verification token is missing"
+
+  - name: email
+    type: email
+    required: true
+    label: "Email Address"
+    placeholder: "you@example.com"
+    # Used on the "resend verification" form
+    validation:
+      - type: required
+        message: "Email is required"
+      - type: email
+        message: "Please enter a valid email address"
+
+# ─── RULES ────────────────────────────────────────────────
+
+rules:
+  security:
+    token:
+      type: cryptographic_random
+      length_bytes: 32
+      # MUST be crypto.randomBytes(32) or equivalent
+      hash_before_storage: true
+      algorithm: sha256
+      # Store SHA-256 hash in DB, not the raw token
+
+    token_expiry:
+      hours: 24
+      # 24 hours is generous but standard
+      # Shorter = more secure, less convenient
+
+    single_use: true
+    # Token is invalidated after successful verification
+
+    rate_limit_resend:
+      window_seconds: 3600
+      max_requests: 3
+      scope: per_email
+      # 3 resend requests per hour per email — prevents email bombing
+
+    rate_limit_verify:
+      window_seconds: 60
+      max_requests: 10
+      scope: per_ip
+      # 10 verification attempts per minute per IP
+
+  email:
+    case_sensitive: false
+    trim_whitespace: true
+    enumeration_prevention: true
+    # Resend endpoint returns same message whether email exists or not
+
+# ─── OUTCOMES ─────────────────────────────────────────────
+
+outcomes:
+  email_verified:
+    given:
+      - token is present in URL
+      - SHA-256 hash of token matches a record in database
+      - token has not expired (created_at + 24 hours > now)
+      - token has not been used before (single-use)
+      - user account exists and is not disabled
+    then:
+      - user.email_verified is set to true
+      - token is marked as used
+      - email_verification.success event is emitted with user_id, email, timestamp
+    result: redirect to /login with message "Email verified! You can now sign in."
+
+  already_verified:
+    given:
+      - token is valid but user.email_verified is already true
+    then:
+      - no changes made
+    result: redirect to /login with message "Email already verified. Please sign in."
+
+  token_invalid:
+    given:
+      - token hash not found in database OR token already used
+    then:
+      - email_verification.token_invalid event is emitted
+    result: show "This verification link is invalid." with option to request a new one
+
+  token_expired:
+    given:
+      - token exists but created_at + 24 hours < now
+    then:
+      - email_verification.token_expired event is emitted
+    result: show "This verification link has expired." with option to request a new one
+
+  resend_success:
+    given:
+      - email is valid format, normalized
+      - user exists and email is not yet verified
+      - not rate limited (max 3 resends per hour per email)
+    then:
+      - previous verification tokens for this user are invalidated
+      - new token is generated (crypto.randomBytes(32)), hashed, stored
+      - verification email is sent with new link
+      - email_verification.resent event is emitted
+    result: show "If an account with that email exists, we've sent a new verification link."
+
+  resend_unknown_email:
+    given:
+      - email not found in database OR already verified
+    then:
+      - no action
+    result: show SAME message as resend_success (enumeration prevention)
+
+  resend_rate_limited:
+    given:
+      - more than 3 resend requests in 1 hour for this email
+    result: show SAME message as resend_success (don't reveal rate limiting)
+
+# ─── ERRORS ───────────────────────────────────────────────
+
+errors:
+  - code: VERIFY_TOKEN_INVALID
+    status: 400
+    message: "This verification link is invalid. Please request a new one."
+    retry: false
+    redirect: resend-verification
+
+  - code: VERIFY_TOKEN_EXPIRED
+    status: 400
+    message: "This verification link has expired. Please request a new one."
+    retry: false
+    redirect: resend-verification
+
+  - code: VERIFY_RATE_LIMITED
+    status: 429
+    message: "Too many requests. Please wait before trying again."
+    retry: false
+
+  - code: VERIFY_VALIDATION_ERROR
+    status: 422
+    message: "Please check your input and try again"
+    retry: true
+
+# ─── EVENTS ───────────────────────────────────────────────
+
+events:
+  - name: email_verification.success
+    description: "User successfully verified their email"
+    payload: [user_id, email, timestamp, ip_address]
+
+  - name: email_verification.token_invalid
+    description: "Invalid or tampered verification token submitted"
+    payload: [token_hash, timestamp, ip_address]
+
+  - name: email_verification.token_expired
+    description: "Expired verification token submitted"
+    payload: [user_id, timestamp, ip_address]
+
+  - name: email_verification.resent
+    description: "New verification email sent"
+    payload: [user_id, email, timestamp, expires_at]
+
+# ─── RELATIONSHIPS ────────────────────────────────────────
+
+related:
+  - feature: signup
+    type: required
+    reason: "Verification is triggered by signup"
+
+  - feature: login
+    type: required
+    reason: "After verification, user logs in"
+    ui_link: "Back to sign in"
+    ui_link_position: below_form
+
+# ─── UI HINTS ─────────────────────────────────────────────
+
+ui_hints:
+  screens:
+    verify:
+      # This is not a form — user clicks a link from email
+      # The page just shows success or error
+      layout: single_column_centered
+      max_width: 420px
+      show_logo: true
+      title: "Verifying your email..."
+      # Shows a loading state while the token is checked server-side
+
+    resend:
+      layout: single_column_centered
+      max_width: 420px
+      show_logo: true
+      title: "Resend verification email"
+      subtitle: "Enter your email and we'll send a new verification link"
+      fields_order: [email]
+      actions:
+        primary:
+          label: "Resend verification email"
+          type: submit
+          full_width: true
+      links:
+        - label: "Back to sign in"
+          target: login
+          position: below_form
+
+  accessibility:
+    aria_live_region: true
+
+  loading:
+    disable_button: true
+    show_spinner: true
+    prevent_double_submit: true
+
+# ─── EXTENSIONS ───────────────────────────────────────────
+
+extensions:
+  nextjs:
+    routes:
+      verify: "/verify-email"
+      resend: "/resend-verification"
+    layout: "(auth)"
+    server_action: true
+    # Token passed as URL search param: /verify-email?token=xxx
+
+  express:
+    routes:
+      verify: "/api/auth/verify-email"
+      resend: "/api/auth/resend-verification"
+    middleware: ["rate-limit", "cors"]
+
+  laravel:
+    routes:
+      verify: "/verify-email/{token}"
+      resend: "/resend-verification"
+    middleware: ["guest"]
+    notification: "VerifyEmail"

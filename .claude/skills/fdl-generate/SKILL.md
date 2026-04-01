@@ -16,13 +16,15 @@ Generate a complete implementation from an FDL blueprint. Your job is to produce
 /fdl-generate login nextjs
 /fdl-generate signup laravel
 /fdl-generate password-reset express
-/fdl-generate expense-approval nextjs
+/fdl-generate login angular
+/fdl-generate signup csharp
+/fdl-generate expense-approval rust
 ```
 
 ## Arguments
 
 - `<feature>` — The blueprint feature name (e.g., `login`, `signup`, `password-reset`)
-- `<framework>` — Target framework (e.g., `nextjs`, `express`, `laravel`, `flutter`, `payload_cms`)
+- `<framework>` — Target language or framework (e.g., `nextjs`, `express`, `laravel`, `angular`, `csharp`, `rust`, `python`, `go`, `flutter`, or any other)
 
 ## How to Think About Code Generation
 
@@ -196,6 +198,8 @@ DEMO CREDENTIALS (mock data):
 
 ## Framework Patterns
 
+Use the target framework's idiomatic file structure. Here are examples — but adapt to whatever the user asks for:
+
 ### Next.js (App Router)
 ```
 src/app/{route}/page.tsx           — Server component (page)
@@ -221,6 +225,41 @@ app/Services/{Category}/{Feature}Service.php
 resources/views/{category}/{feature}.blade.php
 routes/{category}.php
 ```
+
+### C# / ASP.NET
+```
+Controllers/{Category}/{Feature}Controller.cs
+Services/{Category}/{Feature}Service.cs
+Models/{Category}/{Feature}Request.cs
+Models/{Category}/{Feature}Response.cs
+```
+
+### Angular
+```
+src/app/{category}/{feature}/{feature}.component.ts
+src/app/{category}/{feature}/{feature}.component.html
+src/app/{category}/{feature}/{feature}.service.ts
+src/app/{category}/{feature}/{feature}.model.ts
+```
+
+### Rust (Actix / Axum)
+```
+src/handlers/{category}/{feature}.rs
+src/services/{category}/{feature}.rs
+src/models/{category}.rs
+src/errors/{category}.rs
+```
+
+### Python (Django / FastAPI)
+```
+{category}/views.py or {category}/routes.py
+{category}/services/{feature}.py
+{category}/models.py
+{category}/schemas.py
+```
+
+### Any Other Framework
+Follow that framework's conventions. The blueprint gives you WHAT to build — you decide the file structure, naming patterns, and idioms that are standard for the target.
 
 ## Non-Negotiable Rules
 

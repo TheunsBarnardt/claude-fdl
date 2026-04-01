@@ -1,19 +1,19 @@
 # ============================================================
-# SIGNUP — Feature Blueprint
+# SIGNUP (REGISTER) — Feature Blueprint
 # FDL v0.1.0 | Blueprint v1.0.0
 # ============================================================
-# Creates a new user account. This is the entry point to any
-# authenticated system — get it wrong and everything downstream
-# is compromised.
+# Create a new account for a SaaS web application.
+# This is the entry point to any authenticated system — get it
+# wrong and everything downstream is compromised.
 # ============================================================
 
 feature: signup
 version: "1.0.0"
 description: Register a new user account with email and password
 category: auth
-tags: [registration, onboarding, account-creation, identity]
+tags: [registration, onboarding, account-creation, identity, saas]
 
-# ─── FIELDS ────────────────────────────────────────────────
+# ─── FIELDS ───────────────────────────────────────────────
 
 fields:
   - name: first_name
@@ -68,9 +68,7 @@ fields:
         message: "Email is too long"
       - type: unique
         message: "An account with this email already exists"
-        # SECURITY NOTE: in the API response, use a generic message
-        # to prevent user enumeration. The specific "already exists"
-        # message is for client-side UX only (async check).
+        # NOTE: API response uses generic message for enumeration prevention
 
   - name: password
     type: password
@@ -89,8 +87,6 @@ fields:
       - type: pattern
         value: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).+$"
         # At least one lowercase, one uppercase, one digit
-        # NIST 800-63B recommends length over complexity, but most
-        # clients still expect basic complexity rules
         message: "Password must contain uppercase, lowercase, and a number"
 
   - name: confirm_password
@@ -114,134 +110,39 @@ fields:
       - type: required
         message: "You must accept the terms to create an account"
 
-# ─── RULES ─────────────────────────────────────────────────
+# ─── RULES ────────────────────────────────────────────────
 
 rules:
   security:
     password_hashing:
       algorithm: bcrypt
-      # bcrypt is the standard. Argon2id is newer and better but
-      # less universally supported. Either is acceptable.
       salt_rounds: 12
-      # 12 rounds = ~250ms on modern hardware. Good balance of
-      # security and performance.
+      # 12 rounds = ~250ms on modern hardware
 
     rate_limit:
       window_seconds: 3600
       max_requests: 5
       scope: per_ip
-      # 5 signups per hour per IP — prevents mass account creation
-      # More restrictive than login because signup is less frequent
+      # 5 signups per hour per IP
 
     email_enumeration_prevention:
       enabled: true
       # API must return the same response whether email exists or not
-      # "If an account with this email exists, we've sent a verification email"
-      # Never: "Email already taken"
-
-    disposable_email_blocking:
-      enabled: false
-      # Set to true to block throwaway email services (mailinator, etc.)
-      # Requires a blocklist or third-party service
 
     bot_protection:
       type: none
-      # none: no bot check (simplest)
-      # honeypot: hidden field that bots fill in
-      # captcha: reCAPTCHA, hCaptcha, Turnstile
-      # rate_limit: rely on rate limiting only
+      # Options: none, honeypot, captcha, rate_limit
 
   account:
     default_role: "user"
-    # New accounts get this role by default
     email_verified_on_signup: false
-    # If true, skip email verification (only for internal tools)
     auto_login_after_signup: false
-    # If true, create session immediately after signup
-    # If false, redirect to login page
 
   email:
     case_sensitive: false
     trim_whitespace: true
-    # Same normalization rules as login — consistency is key
 
-# ─── FLOWS ─────────────────────────────────────────────────
-
-flows:
-  happy_path:
-    description: "Successful account creation"
-    steps:
-      - id: validate
-        action: validate_fields
-        description: "Client-side validation of all fields"
-      - id: normalize
-        action: normalize_email
-        description: "Lowercase and trim email"
-      - id: check_unique
-        action: check_email_available
-        description: "Verify email not already registered"
-        on_fail: email_taken
-      - id: check_bot
-        action: verify_bot_protection
-        description: "Honeypot / CAPTCHA check if configured"
-        on_fail: bot_detected
-      - id: hash_password
-        action: hash_password
-        description: "bcrypt.hash(password, salt_rounds)"
-      - id: create_account
-        action: create_user_record
-        description: "Insert user into database with default_role"
-      - id: send_verification
-        action: send_verification_email
-        description: "Send email with verification link/code"
-      - id: emit_success
-        action: emit
-        event: signup.success
-      - id: redirect
-        action: redirect
-        target: signup-confirmation
-        message: "Account created! Please check your email to verify."
-
-  email_taken:
-    description: "Email already registered"
-    trigger: "email exists in database"
-    steps:
-      - action: emit
-        event: signup.duplicate_email
-      - action: show_message
-        # SECURITY: same success message to prevent enumeration
-        message: "If this email isn't already registered, you'll receive a verification email shortly."
-        # Behind the scenes: send a "you already have an account" email
-      - action: send_notification
-        template: existing_account_notification
-        # Email the existing user: "Someone tried to create an account with your email"
-
-  bot_detected:
-    description: "Bot protection triggered"
-    trigger: "honeypot filled OR captcha failed"
-    steps:
-      - action: emit
-        event: signup.bot_detected
-      - action: show_error
-        error: SIGNUP_RATE_LIMITED
-        # Don't reveal that bot detection triggered — just rate limit
-
-  rate_limited:
-    description: "Too many signup attempts from this IP"
-    trigger: "request_count >= rules.security.rate_limit.max_requests"
-    steps:
-      - action: show_error
-        error: SIGNUP_RATE_LIMITED
-
-  validation_failed:
-    description: "Input validation errors"
-    trigger: "any field validation fails"
-    steps:
-      - action: show_field_errors
-        description: "Display per-field error messages"
-
-# ─── OUTCOMES ──────────────────────────────────────────────
-# Acceptance criteria — what must be true for each scenario
+# ─── OUTCOMES ─────────────────────────────────────────────
 
 outcomes:
   successful_signup:
@@ -285,7 +186,7 @@ outcomes:
       - any field fails validation
     result: show per-field error messages inline
 
-# ─── ERRORS ────────────────────────────────────────────────
+# ─── ERRORS ───────────────────────────────────────────────
 
 errors:
   - code: SIGNUP_VALIDATION_ERROR
@@ -297,8 +198,6 @@ errors:
     status: 409
     message: "Unable to create account. Please try a different email or sign in."
     retry: true
-    # Slightly more helpful than pure enumeration prevention
-    # Use only if enumeration prevention is disabled
 
   - code: SIGNUP_RATE_LIMITED
     status: 429
@@ -320,30 +219,26 @@ errors:
     message: "Passwords do not match"
     retry: true
 
-# ─── EVENTS ────────────────────────────────────────────────
+# ─── EVENTS ───────────────────────────────────────────────
 
 events:
   - name: signup.success
     description: "New account created successfully"
     payload: [user_id, email, timestamp, ip_address, user_agent]
-    # Consumers: welcome email, analytics, CRM sync, admin notifications
 
   - name: signup.duplicate_email
     description: "Signup attempted with an existing email"
     payload: [email, timestamp, ip_address]
-    # Consumers: security monitoring, existing user notification
 
   - name: signup.bot_detected
     description: "Bot protection triggered during signup"
     payload: [ip_address, timestamp, detection_method]
-    # Consumers: security dashboard, IP blocklist
 
   - name: signup.verification_sent
     description: "Verification email dispatched"
     payload: [user_id, email, timestamp, expires_at]
-    # Consumers: email delivery tracking
 
-# ─── RELATIONSHIPS ─────────────────────────────────────────
+# ─── RELATIONSHIPS ────────────────────────────────────────
 
 related:
   - feature: login
@@ -360,25 +255,18 @@ related:
     type: recommended
     reason: "Users who just signed up may still need password reset"
 
-  - feature: onboarding
-    type: optional
-    reason: "Guide new users through setup after signup"
-    insert_after: "flows.happy_path.redirect"
-
-# ─── UI HINTS ──────────────────────────────────────────────
+# ─── UI HINTS ─────────────────────────────────────────────
 
 ui_hints:
   layout: single_column_centered
   max_width: 480px
   show_logo: true
-
   fields_order: [first_name, last_name, email, password, confirm_password, terms_accepted]
 
   field_grouping:
     - group: name
       fields: [first_name, last_name]
       layout: side_by_side
-      # First and last name on the same row
 
   actions:
     primary:
@@ -417,9 +305,8 @@ ui_hints:
   password_strength:
     show_meter: true
     show_requirements: true
-    # Display a strength indicator and list of requirements
 
-# ─── EXTENSIONS ────────────────────────────────────────────
+# ─── EXTENSIONS ───────────────────────────────────────────
 
 extensions:
   nextjs:
@@ -428,17 +315,11 @@ extensions:
     server_action: true
     middleware_redirect: "/dashboard"
 
-  payload_cms:
-    collection: "users"
-    auth:
-      verify: true
-      maxLoginAttempts: 5
+  express:
+    route: "/api/auth/signup"
+    middleware: ["rate-limit", "cors"]
 
   laravel:
     guard: "web"
     middleware: ["guest"]
     notification: "VerifyEmail"
-
-  express:
-    route: "/api/auth/signup"
-    middleware: ["rate-limit", "cors"]

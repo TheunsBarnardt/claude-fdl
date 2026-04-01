@@ -1,0 +1,156 @@
+# ============================================================
+# LOGOUT — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# End a user's authenticated session. Sounds simple, but done
+# wrong it leaves sessions active, tokens reusable, or users
+# confused about their auth state.
+# ============================================================
+
+feature: logout
+version: "1.0.0"
+description: End a user session and clear all authentication tokens
+category: auth
+tags: [authentication, session, security, identity]
+
+# ─── FIELDS ───────────────────────────────────────────────
+
+fields:
+  - name: logout_scope
+    type: select
+    required: false
+    label: "Sign out from"
+    default: "current"
+    options:
+      - { value: "current", label: "This device" }
+      - { value: "all", label: "All devices" }
+
+# ─── RULES ────────────────────────────────────────────────
+
+rules:
+  security:
+    requires_auth: true
+    # Must be logged in to log out (otherwise just redirect)
+
+    csrf_protection: true
+    # Logout must be a POST request with CSRF token
+    # Prevents logout CSRF attacks (malicious site logging users out)
+
+    rate_limit:
+      window_seconds: 60
+      max_requests: 10
+      scope: per_user
+
+  session:
+    clear_access_token: true
+    clear_refresh_token: true
+    invalidate_server_side: true
+    # CRITICAL: don't just delete the cookie — invalidate the refresh
+    # token in the database so it can't be replayed
+
+# ─── OUTCOMES ─────────────────────────────────────────────
+
+outcomes:
+  successful_logout_current:
+    given:
+      - user is authenticated
+      - logout_scope is "current" (or default)
+    then:
+      - access token cookie is cleared
+      - refresh token cookie is cleared
+      - refresh token is invalidated server-side (DB record marked as revoked)
+      - logout.success event is emitted with user_id, session_id, timestamp
+    result: redirect to /login
+
+  successful_logout_all_devices:
+    given:
+      - user is authenticated
+      - logout_scope is "all"
+    then:
+      - ALL refresh tokens for this user are invalidated server-side
+      - access token cookie is cleared on current device
+      - refresh token cookie is cleared on current device
+      - logout.all_devices event is emitted with user_id, timestamp, device_count
+    result: redirect to /login
+
+  not_authenticated:
+    given:
+      - user is not logged in (no valid tokens)
+    then:
+      - no action needed
+    result: redirect to /login (no error — graceful handling)
+
+# ─── ERRORS ───────────────────────────────────────────────
+
+errors:
+  - code: LOGOUT_CSRF_INVALID
+    status: 403
+    message: "Invalid request. Please try again."
+    retry: true
+    # Don't reveal CSRF details
+
+  - code: LOGOUT_RATE_LIMITED
+    status: 429
+    message: "Too many requests. Please wait a moment."
+    retry: true
+
+# ─── EVENTS ───────────────────────────────────────────────
+
+events:
+  - name: logout.success
+    description: "User logged out from current device"
+    payload: [user_id, session_id, timestamp, ip_address]
+
+  - name: logout.all_devices
+    description: "User logged out from all devices"
+    payload: [user_id, timestamp, ip_address, revoked_session_count]
+
+# ─── RELATIONSHIPS ────────────────────────────────────────
+
+related:
+  - feature: login
+    type: required
+    reason: "Logout ends what login started"
+
+  - feature: session-management
+    type: optional
+    reason: "View active sessions before choosing which to revoke"
+
+# ─── UI HINTS ─────────────────────────────────────────────
+
+ui_hints:
+  # Logout is typically a button, not a page
+  # But "log out all devices" may be a confirmation dialog
+  trigger: button
+  # The logout button is usually in a navbar/header, not a standalone page
+
+  confirmation:
+    show_for: all_devices_only
+    # Only show "Are you sure?" when logging out of all devices
+    message: "This will sign you out of all devices. Continue?"
+
+  actions:
+    primary:
+      label: "Sign out"
+      type: submit
+      method: POST
+      # MUST be POST for CSRF protection — never GET
+
+# ─── EXTENSIONS ───────────────────────────────────────────
+
+extensions:
+  nextjs:
+    route: "/api/auth/logout"
+    method: POST
+    server_action: true
+    redirect_after: "/login"
+
+  express:
+    route: "/api/auth/logout"
+    method: POST
+    middleware: ["auth", "csrf"]
+
+  laravel:
+    route: "/logout"
+    method: POST
+    middleware: ["auth"]
