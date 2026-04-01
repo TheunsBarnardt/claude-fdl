@@ -73,22 +73,135 @@ required:
     # Preferred for AI code generation. Describe given/then/result for each scenario.
     # Required if flows is not provided.
     #
+    # ─── OUTCOME STRUCTURE ─────────────────────────────────
+    #
     # Each outcome has:
-    #   given: list of conditions (each can be a string OR a structured condition)
-    #   then: list of actions/effects
+    #   priority: number (lower = checked first, e.g., 1 before 2)
+    #   given: conditions that must be true (AND/OR grouping supported)
+    #   then: structured side effects
     #   result: what the user sees
     #
-    # Structured conditions use the format:
-    #   - field: amount
-    #     operator: gt
-    #     value: 1000
-    #     description: "Expense exceeds finance approval threshold"
+    # ─── PRIORITY (execution order) ────────────────────────
     #
-    # Plain-text conditions are also valid:
-    #   - "user is authenticated"
+    # Outcomes are evaluated in priority order (lowest number first).
+    # This resolves "what runs first?" ambiguity.
     #
-    # Operators: eq, neq, gt, gte, lt, lte, in, not_in, matches, exists, not_exists
-    # This makes conditions machine-parseable while keeping them human-readable.
+    # Example:
+    #   rate_limited:
+    #     priority: 1    # checked before anything else
+    #   account_locked:
+    #     priority: 2    # checked after rate limit
+    #   invalid_credentials:
+    #     priority: 3    # checked after lock
+    #   successful_login:
+    #     priority: 10   # only if everything above passes
+    #
+    # ─── CONDITIONS (given) ────────────────────────────────
+    #
+    # Conditions can be:
+    #   1. Plain text string (human-readable, AI-interpreted):
+    #      - "user is authenticated"
+    #
+    #   2. Structured condition (machine-parseable):
+    #      - field: amount
+    #        source: input          # where the data comes from
+    #        operator: gt
+    #        value: 1000
+    #        description: "Expense exceeds threshold"
+    #
+    #   3. Logical groups (AND/OR):
+    #      - any:                   # OR — at least one must be true
+    #          - field: user
+    #            source: db
+    #            operator: not_exists
+    #          - field: password
+    #            source: input
+    #            operator: neq
+    #            value: stored_hash
+    #      - all:                   # AND — all must be true (default for top-level)
+    #          - field: status
+    #            operator: eq
+    #            value: active
+    #          - field: email_verified
+    #            operator: eq
+    #            value: true
+    #
+    # Top-level given[] items are AND by default.
+    # Use "any:" for OR groups, "all:" for nested AND groups.
+    #
+    # ─── DATA SOURCES ──────────────────────────────────────
+    #
+    # The "source" property on conditions specifies where data comes from:
+    #   input    — user/client input (form fields, request body)
+    #   db       — database lookup result
+    #   request  — HTTP request metadata (IP, user-agent, headers)
+    #   session  — current session/auth state
+    #   system   — system state (time, config, external service)
+    #   computed — derived from other fields (e.g., attempt count)
+    #
+    # When source is omitted, it's inferred from context.
+    #
+    # ─── OPERATORS ─────────────────────────────────────────
+    #
+    # Comparison:
+    #   eq        — equals (===)
+    #   neq       — not equals (!==)
+    #   gt        — greater than (>)
+    #   gte       — greater than or equal (>=)
+    #   lt        — less than (<)
+    #   lte       — less than or equal (<=)
+    #
+    # Collection:
+    #   in        — value is in a list (e.g., status in [active, pending])
+    #   not_in    — value is not in a list
+    #
+    # Pattern:
+    #   matches   — regex match (e.g., email format)
+    #
+    # Existence:
+    #   exists     — field has a non-null value
+    #   not_exists — field is null/missing
+    #
+    # ─── SIDE EFFECTS (then) ───────────────────────────────
+    #
+    # Side effects can be:
+    #   1. Plain text string (human-readable):
+    #      - "confirmation email is sent"
+    #
+    #   2. Structured action (machine-parseable):
+    #      - action: set_field
+    #        target: failed_login_attempts
+    #        value: 0
+    #        description: "Reset attempt counter on success"
+    #
+    #      - action: emit_event
+    #        event: login.success
+    #        payload: [user_id, email, timestamp, ip_address]
+    #
+    #      - action: transition_state
+    #        field: status
+    #        from: submitted
+    #        to: approved
+    #
+    #      - action: notify
+    #        channel: email
+    #        template: account_locked_email
+    #        to: user
+    #
+    #      - action: invalidate
+    #        target: refresh_token
+    #        scope: current_session  # or all_sessions
+    #
+    # Action types:
+    #   set_field         — update a field value
+    #   emit_event        — fire an event with payload
+    #   transition_state  — change state machine status
+    #   notify            — send notification (email, push, in-app)
+    #   invalidate        — revoke tokens, sessions, or cached data
+    #   create_record     — insert a new record
+    #   delete_record     — remove a record
+    #   call_service      — invoke an external service
+    #
 
 # ─── OPTIONAL TOP-LEVEL FIELDS ─────────────────────────────
 

@@ -53,7 +53,7 @@ Use `outcomes` alone for technical features (login, CRUD, checkout). Use both fo
 
 ### Structured Conditions in Outcomes
 
-Conditions in `given` can be plain-text strings OR structured objects with `field`, `operator`, `value`, and `description`. Structured conditions are machine-parseable and remove ambiguity:
+Conditions in `given` can be plain-text strings OR structured objects. Structured conditions are machine-parseable:
 
 ```yaml
 # Plain text (human-readable, AI-interpreted)
@@ -61,12 +61,55 @@ Conditions in `given` can be plain-text strings OR structured objects with `fiel
 
 # Structured (machine-parseable, deterministic)
 - field: amount
+  source: input        # where the data comes from
   operator: gt
   value: 1000
   description: "Expense exceeds finance approval threshold"
+
+# AND/OR grouping
+- any:                  # OR — at least one must be true
+    - field: user
+      source: db
+      operator: not_exists
+    - field: password
+      source: input
+      operator: neq
+      value: stored_hash
 ```
 
-Valid operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `matches`, `exists`, `not_exists`. Mix plain-text and structured conditions freely within the same outcome.
+**Operators:** `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `matches`, `exists`, `not_exists`
+**Data sources:** `input` (form/request body), `db` (database), `request` (HTTP metadata), `session`, `system`, `computed`
+**Logic:** Top-level given[] items are AND. Use `any:` for OR groups, `all:` for nested AND groups.
+
+### Structured Side Effects in Outcomes
+
+Side effects in `then` can also be structured:
+
+```yaml
+then:
+  - action: set_field
+    target: failed_login_attempts
+    value: 0
+  - action: emit_event
+    event: login.success
+    payload: [user_id, email, timestamp]
+  - action: transition_state
+    field: status
+    from: submitted
+    to: approved
+```
+
+**Actions:** `set_field`, `emit_event`, `transition_state`, `notify`, `invalidate`, `create_record`, `delete_record`, `call_service`
+
+### Outcome Priority
+
+Outcomes have an optional `priority` (number) that defines evaluation order. Lower = checked first:
+
+```yaml
+rate_limited:    { priority: 1 }   # checked first
+account_locked:  { priority: 2 }   # then this
+successful:      { priority: 10 }  # last resort
+```
 
 ### Workflow / Business Process Fields
 

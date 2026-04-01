@@ -102,99 +102,132 @@ rules:
 # What must be true in each scenario — AI decides how to implement
 
 outcomes:
-  successful_login:
+  rate_limited:
+    priority: 1
+    # Checked FIRST — before any DB lookups or password comparisons
     given:
-      - field: email
-        operator: matches
-        value: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
-        description: "Email is valid format"
-      - field: email
-        operator: exists
-        description: "User exists in database (after lowercase + trim normalization)"
-      - field: failed_login_attempts
-        operator: lt
-        value: 5
-        description: "Account is not locked (or lockout has expired)"
-      - field: status
-        operator: neq
-        value: disabled
-        description: "Account is active"
-      - field: password
-        operator: eq
-        value: stored_hash
-        description: "Password matches stored hash (constant-time comparison via bcrypt)"
-      - field: email_verified
-        operator: eq
-        value: true
-        description: "Email is verified (when rules.email.require_verified is true)"
-    then:
-      - failed attempt counter is reset to 0
-      - access token is created (JWT, 15-min expiry)
-      - refresh token is created (7-day expiry, or 30-day if remember_me)
-      - refresh token rotates on each use
-      - tokens are set as cookies (httpOnly, secure, sameSite strict)
-      - login.success event is emitted with user_id, email, timestamp, ip, user_agent, session_id
-    result: redirect to /dashboard
-
-  invalid_credentials:
-    given:
-      - field: user
-        operator: not_exists
-        description: "User not found in database"
-      # OR
-      - field: password
-        operator: neq
-        value: stored_hash
-        description: "Password does not match"
-    then:
-      - failed attempt counter is incremented
-      - field: failed_login_attempts
-        operator: gte
-        value: 5
-        description: "If attempts reach 5, account is locked for 15 minutes"
-      - login.failed event is emitted
-      - if newly locked, login.locked event is emitted
-    result: show "Invalid email or password" (SAME message for both cases — enumeration prevention)
+      - field: request_count
+        source: computed
+        operator: gt
+        value: 10
+        description: "More than 10 requests in 60 seconds from this IP"
+    result: show "Too many login attempts. Please wait a moment."
 
   account_locked:
+    priority: 2
+    # Checked after rate limit, before password comparison
     given:
       - field: failed_login_attempts
+        source: db
         operator: gte
         value: 5
         description: "Max attempts exceeded"
       - field: locked_until
+        source: db
         operator: gt
         value: now
         description: "Lockout period has not expired"
     then:
-      - login.locked event is emitted
+      - action: emit_event
+        event: login.locked
+        payload: [email, user_id, timestamp, lockout_until, attempt_count]
     result: show "Account temporarily locked. Please try again later."
 
-  email_not_verified:
-    given:
-      - field: email_verified
-        operator: eq
-        value: false
-        description: "User exists, password correct, but email not verified"
-    then:
-      - login.unverified event is emitted
-    result: redirect to email-verification with message "Please verify your email before logging in"
-
   account_disabled:
+    priority: 3
     given:
       - field: status
+        source: db
         operator: eq
         value: disabled
         description: "Account deactivated by admin or user"
     result: show "This account has been disabled. Please contact support."
 
-  rate_limited:
+  invalid_credentials:
+    priority: 4
+    # Checked after lock/disable — uses OR grouping for user-not-found vs wrong-password
     given:
-      - field: request_count
-        operator: gt
-        value: 10
-        description: "More than 10 requests in 60 seconds from this IP"
-    result: show "Too many login attempts. Please wait a moment."
+      - any:
+          - field: user
+            source: db
+            operator: not_exists
+            description: "User not found in database"
+          - field: password
+            source: input
+            operator: neq
+            value: stored_hash
+            description: "Password does not match (constant-time comparison)"
+    then:
+      - action: set_field
+        target: failed_login_attempts
+        value: "increment"
+        description: "Increment failed attempt counter"
+      - action: emit_event
+        event: login.failed
+        payload: [email, timestamp, ip_address, user_agent, attempt_count, reason]
+      - action: set_field
+        target: locked_until
+        value: "now + 15 minutes"
+        description: "Lock account if attempts reach 5"
+        when: "failed_login_attempts >= 5"
+      - action: emit_event
+        event: login.locked
+        payload: [email, user_id, timestamp, lockout_until, attempt_count]
+        when: "failed_login_attempts >= 5"
+    result: show "Invalid email or password" (SAME message for both cases — enumeration prevention)
+
+  email_not_verified:
+    priority: 5
+    given:
+      - field: email_verified
+        source: db
+        operator: eq
+        value: false
+        description: "User exists, password correct, but email not verified"
+    then:
+      - action: emit_event
+        event: login.unverified
+        payload: [user_id, email, timestamp]
+    result: redirect to /verify-email with message "Please verify your email before logging in"
+
+  successful_login:
+    priority: 10
+    # Only reached if ALL above outcomes did not match
+    given:
+      - field: email
+        source: input
+        operator: matches
+        value: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        description: "Email is valid format"
+      - field: user
+        source: db
+        operator: exists
+        description: "User found in database (after lowercase + trim normalization)"
+      - field: password
+        source: input
+        operator: eq
+        value: stored_hash
+        description: "Password matches stored hash (constant-time via bcrypt)"
+      - field: status
+        source: db
+        operator: neq
+        value: disabled
+      - field: email_verified
+        source: db
+        operator: eq
+        value: true
+    then:
+      - action: set_field
+        target: failed_login_attempts
+        value: 0
+        description: "Reset attempt counter on success"
+      - action: create_record
+        target: session
+        description: "Create JWT access token (15-min) + refresh token (7-day, or 30-day if remember_me)"
+      - action: emit_event
+        event: login.success
+        payload: [user_id, email, timestamp, ip_address, user_agent, session_id]
+    result: redirect to /dashboard
 
 # ─── ERRORS ───────────────────────────────────────────────
 

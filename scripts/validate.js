@@ -309,14 +309,70 @@ function validateFile(filePath) {
     );
   }
 
-  // Check: outcome structure — each outcome should have given, then, or result
+  // Check: outcome structure — given/then/result, operators, sources, actions, priority, AND/OR
   const validOperators = new Set([
     "eq", "neq", "gt", "gte", "lt", "lte",
     "in", "not_in", "matches", "exists", "not_exists",
   ]);
+  const validSources = new Set([
+    "input", "db", "request", "session", "system", "computed",
+  ]);
+  const validActions = new Set([
+    "set_field", "emit_event", "transition_state", "notify",
+    "invalidate", "create_record", "delete_record", "call_service",
+  ]);
+
+  // Recursively validate a single condition (supports any/all groups)
+  function validateCondition(condition, path) {
+    // String = plain-text condition, always valid
+    if (typeof condition === "string") return;
+    if (typeof condition !== "object" || condition === null) return;
+
+    // Logical group: any (OR) or all (AND)
+    if (condition.any || condition.all) {
+      const groupKey = condition.any ? "any" : "all";
+      const items = condition[groupKey];
+      if (!Array.isArray(items)) {
+        customErrors.push(`  ${path}.${groupKey}: must be an array of conditions`);
+        return;
+      }
+      for (let j = 0; j < items.length; j++) {
+        validateCondition(items[j], `${path}.${groupKey}[${j}]`);
+      }
+      return;
+    }
+
+    // Structured condition — validate field, operator, source
+    if (!condition.field) {
+      customErrors.push(`  ${path}: structured condition must have a "field" property`);
+    }
+    if (!condition.operator) {
+      customErrors.push(`  ${path}: structured condition must have an "operator" property`);
+    } else if (!validOperators.has(condition.operator)) {
+      customErrors.push(
+        `  ${path}: unknown operator "${condition.operator}" — valid: ${[...validOperators].join(", ")}`
+      );
+    }
+    if (condition.source && !validSources.has(condition.source)) {
+      customErrors.push(
+        `  ${path}: unknown source "${condition.source}" — valid: ${[...validSources].join(", ")}`
+      );
+    }
+  }
+
+  // Validate a single structured side effect in then[]
+  function validateSideEffect(effect, path) {
+    if (typeof effect === "string") return; // plain-text, always valid
+    if (typeof effect !== "object" || effect === null) return;
+    if (effect.action && !validActions.has(effect.action)) {
+      customErrors.push(
+        `  ${path}: unknown action "${effect.action}" — valid: ${[...validActions].join(", ")}`
+      );
+    }
+  }
 
   if (data.outcomes) {
-    const validOutcomeKeys = new Set(["given", "then", "result"]);
+    const validOutcomeKeys = new Set(["given", "then", "result", "priority"]);
     for (const [name, outcome] of Object.entries(data.outcomes)) {
       if (typeof outcome !== "object" || outcome === null) {
         customErrors.push(`  outcomes.${name}: must be an object with given/then/result keys`);
@@ -330,29 +386,22 @@ function validateFile(filePath) {
         );
       }
 
-      // Validate structured conditions in given[]
+      // Validate priority
+      if (outcome.priority !== undefined && typeof outcome.priority !== "number") {
+        customErrors.push(`  outcomes.${name}.priority: must be a number`);
+      }
+
+      // Validate conditions in given[]
       if (Array.isArray(outcome.given)) {
         for (let i = 0; i < outcome.given.length; i++) {
-          const condition = outcome.given[i];
-          // Strings are plain-text conditions — always valid
-          if (typeof condition === "string") continue;
-          // Objects are structured conditions — validate operator
-          if (typeof condition === "object" && condition !== null) {
-            if (!condition.field) {
-              customErrors.push(
-                `  outcomes.${name}.given[${i}]: structured condition must have a "field" property`
-              );
-            }
-            if (!condition.operator) {
-              customErrors.push(
-                `  outcomes.${name}.given[${i}]: structured condition must have an "operator" property`
-              );
-            } else if (!validOperators.has(condition.operator)) {
-              customErrors.push(
-                `  outcomes.${name}.given[${i}]: unknown operator "${condition.operator}" — valid: ${[...validOperators].join(", ")}`
-              );
-            }
-          }
+          validateCondition(outcome.given[i], `outcomes.${name}.given[${i}]`);
+        }
+      }
+
+      // Validate structured side effects in then[]
+      if (Array.isArray(outcome.then)) {
+        for (let i = 0; i < outcome.then.length; i++) {
+          validateSideEffect(outcome.then[i], `outcomes.${name}.then[${i}]`);
         }
       }
     }
