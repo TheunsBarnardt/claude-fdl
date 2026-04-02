@@ -1,0 +1,976 @@
+# ============================================================
+# BLOCKRADAR-API — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://docs.blockradar.co/en/introduction
+# Pages crawled: 24 (17 docs + 5 security + 2 API reference) + Postman collection
+# Stablecoin wallet infrastructure API for fintechs — wallets,
+# addresses, deposits, withdrawals, swaps, gateway, checkout,
+# virtual accounts, signing, and webhooks.
+# ============================================================
+
+feature: blockradar-api
+version: "1.0.0"
+description: "Blockradar stablecoin wallet infrastructure API — multi-chain wallets, addresses, deposits, withdrawals, swaps, gateway, checkout, and fiat offramp"
+category: integration
+tags: [blockchain, stablecoin, crypto, wallet, api, payments, usdc, usdt, defi, fintech]
+
+actors:
+  - id: client_application
+    name: "Client Application"
+    type: system
+    description: "The fintech application integrating with Blockradar via REST API"
+    role: "api-consumer"
+
+  - id: blockradar
+    name: "Blockradar Platform"
+    type: external
+    description: "Stablecoin wallet infrastructure that orchestrates multi-chain operations"
+    role: "platform"
+
+  - id: blockchain_network
+    name: "Blockchain Network"
+    type: external
+    description: "Underlying blockchain networks (Ethereum, BSC, Polygon, Base, Tron, Solana, etc.)"
+    role: "settlement"
+
+fields:
+  # ─── Authentication ─────────────────────────────────────
+  - name: api_key
+    type: token
+    required: true
+    label: "API Key"
+    sensitive: true
+    # Source: https://docs.blockradar.co/en/introduction
+    # "Generate an API key from Dashboard → Developers"
+
+  # ─── Wallet Fields ──────────────────────────────────────
+  - name: wallet_id
+    type: token
+    required: true
+    label: "Master Wallet ID"
+    immutable: true
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+
+  - name: blockchain
+    type: text
+    required: true
+    label: "Blockchain Network"
+    # Source: https://docs.blockradar.co/en/essentials/integrations
+    # Supported: ethereum, bsc, polygon, tron, base, arbitrum, optimism, solana, celo, lisk, avalanche, etc.
+
+  - name: network
+    type: select
+    required: true
+    label: "Environment"
+    options:
+      - value: "testnet"
+        label: "Testnet"
+      - value: "mainnet"
+        label: "Mainnet"
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+    # "Wallets are isolated per environment"
+
+  - name: webhook_url
+    type: url
+    required: true
+    label: "Webhook URL"
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+    # "Configure your wallet webhook URL for notifications"
+
+  # ─── Address Fields ─────────────────────────────────────
+  - name: address_id
+    type: token
+    required: false
+    label: "Address ID"
+
+  - name: address
+    type: text
+    required: false
+    label: "Blockchain Address"
+    # Source: https://docs.blockradar.co/en/essentials/addresses
+
+  - name: address_name
+    type: text
+    required: false
+    label: "Address Name"
+
+  - name: disable_auto_sweep
+    type: boolean
+    required: false
+    label: "Disable Auto Sweep"
+    default: false
+    # Source: https://docs.blockradar.co/en/essentials/addresses
+
+  - name: enable_gasless_withdraw
+    type: boolean
+    required: false
+    label: "Enable Gasless Withdraw"
+    default: false
+
+  - name: show_private_key
+    type: boolean
+    required: false
+    label: "Show Private Key"
+    default: false
+    # CAUTION: exposing private keys can compromise security
+
+  - name: metadata
+    type: json
+    required: false
+    label: "Custom Metadata"
+    # Source: https://docs.blockradar.co/en/essentials/addresses
+    # "Custom metadata you can attach for your own reference"
+
+  # ─── Blockchain / Asset Response Fields ──────────────────
+  # Source: Postman collection — confirmed from example responses
+  - name: blockchain_id
+    type: token
+    required: false
+    label: "Blockchain UUID"
+    # Postman confirmed: UUID format e.g. "b80d3d5e-16f1-4d99-be5e-6dfcd27f89aa"
+
+  - name: blockchain_slug
+    type: text
+    required: false
+    label: "Blockchain Slug"
+    # Postman confirmed: e.g. "ethereum", "bnb-smart-chain", "base", "tron"
+
+  - name: is_evm_compatible
+    type: boolean
+    required: false
+    label: "EVM Compatible"
+    # Postman confirmed: true for ETH/BSC/Polygon/Base/etc., false for Tron/Solana
+
+  - name: token_standard
+    type: text
+    required: false
+    label: "Token Standard"
+    # Postman confirmed: "ERC20", "BEP20", null (varies by chain)
+
+  - name: derivation_path
+    type: text
+    required: false
+    label: "BIP44 Derivation Path"
+    # Postman confirmed: e.g. "m/44'/60'/0'/0" for EVM, "m/44'/60'/0'/0/87" for addresses
+
+  - name: wallet_status
+    type: select
+    required: false
+    label: "Wallet Status"
+    options:
+      - value: "ACTIVE"
+        label: "Active"
+    # Postman confirmed: "ACTIVE" in example responses
+
+  # ─── Transaction Fields ─────────────────────────────────
+  - name: asset_id
+    type: token
+    required: true
+    label: "Asset ID"
+    # UUID of the stablecoin asset (USDT, USDC, DAI, etc.)
+    # Postman confirmed: UUID format e.g. "ef2458b5-b292-4f5a-89c4-71c8576e6272"
+
+  - name: amount
+    type: text
+    required: true
+    label: "Amount"
+    # String type to handle blockchain precision
+    validation:
+      - type: required
+        message: "Amount is required"
+
+  - name: destination_address
+    type: text
+    required: false
+    label: "Destination Address"
+
+  - name: reference
+    type: text
+    required: false
+    label: "Internal Reference"
+    # Source: https://docs.blockradar.co/en/essentials/withdrawals
+    # "Your internal tracking ID"
+
+  - name: note
+    type: text
+    required: false
+    label: "Note"
+    # "A short message or internal remark. Not visible on-chain."
+
+  - name: transaction_hash
+    type: text
+    required: false
+    label: "Transaction Hash"
+    # Used for deposit finder/rescan
+
+  # ─── Fiat Withdrawal Fields ─────────────────────────────
+  - name: currency
+    type: select
+    required: false
+    label: "Fiat Currency"
+    # Source: https://docs.blockradar.co/en/essentials/withdraw-fiat
+    options:
+      - value: "NGN"
+        label: "Nigerian Naira"
+      - value: "KES"
+        label: "Kenyan Shilling"
+      - value: "TZS"
+        label: "Tanzanian Shilling"
+      - value: "UGX"
+        label: "Ugandan Shilling"
+      - value: "BRL"
+        label: "Brazilian Real"
+      - value: "MWK"
+        label: "Malawian Kwacha"
+
+  - name: account_identifier
+    type: text
+    required: false
+    label: "Bank Account Number"
+
+  - name: institution_identifier
+    type: text
+    required: false
+    label: "Bank/Institution Identifier"
+
+  # ─── Gateway Fields ─────────────────────────────────────
+  - name: gateway_balance
+    type: number
+    required: false
+    label: "Unified USDC Gateway Balance"
+    # Source: https://docs.blockradar.co/en/essentials/gateway
+    # Cross-chain unified balance — USDC only
+
+  # ─── Auto Settlement Fields ─────────────────────────────
+  - name: settlement_rule_name
+    type: text
+    required: false
+    label: "Settlement Rule Name"
+
+  - name: slippage_tolerance
+    type: text
+    required: false
+    label: "Slippage Tolerance (%)"
+    # Source: https://docs.blockradar.co/en/essentials/auto-settlements
+    # "-1 for unlimited (default)"
+
+  - name: settlement_order
+    type: select
+    required: false
+    label: "Execution Priority"
+    options:
+      - value: "FASTEST"
+        label: "Fastest"
+      - value: "CHEAPEST"
+        label: "Cheapest"
+      - value: "RECOMMENDED"
+        label: "Recommended"
+      - value: "NO_SLIPPAGE"
+        label: "No Slippage"
+
+  # ─── Checkout Fields ────────────────────────────────────
+  - name: payment_link_id
+    type: token
+    required: false
+    label: "Payment Link ID"
+
+  - name: payment_link_url
+    type: url
+    required: false
+    label: "Payment Link URL"
+
+  # ─── Signing Fields ────────────────────────────────────
+  - name: message
+    type: text
+    required: false
+    label: "Message to Sign"
+    validation:
+      - type: maxLength
+        value: 4096
+        message: "Message must not exceed 4,096 characters"
+    # Source: https://docs.blockradar.co/en/essentials/signing
+
+states:
+  field: transaction_status
+  values:
+    - id: pending
+      label: "Pending"
+      initial: true
+      # Source: https://docs.blockradar.co/en/essentials/webhooks
+      # "Transaction is being processed but not yet confirmed"
+    - id: processing
+      label: "Processing"
+      # "Transaction is currently being processed"
+    - id: success
+      label: "Success"
+      terminal: true
+      # "Transaction has been successfully executed and confirmed"
+    - id: failed
+      label: "Failed"
+      terminal: true
+      # "Transaction failed to execute or was rejected"
+    - id: incomplete
+      label: "Incomplete"
+      # "Transaction is incomplete and may require additional steps"
+    - id: cancelled
+      label: "Cancelled"
+      terminal: true
+      # "Transaction was cancelled before completion"
+
+  transitions:
+    - from: pending
+      to: processing
+      actor: blockradar
+      description: "Transaction accepted and being processed"
+
+    - from: processing
+      to: success
+      actor: blockchain_network
+      description: "Transaction confirmed on the blockchain"
+
+    - from: processing
+      to: failed
+      actor: blockchain_network
+      description: "Transaction failed or was rejected"
+
+    - from: pending
+      to: cancelled
+      actor: client_application
+      description: "Transaction cancelled before processing"
+
+    - from: processing
+      to: incomplete
+      actor: blockradar
+      description: "Transaction requires additional steps"
+
+rules:
+  authentication:
+    api_key_header: "x-api-key"
+    api_key_required: "All API operations require the x-api-key header"
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+    separate_keys: "Use separate API keys for testnet and mainnet environments"
+    # Source: https://docs.blockradar.co/en/essentials/integrations
+
+  wallets:
+    one_per_chain: "Only one Master Wallet per blockchain network per account"
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+    environment_isolation: "Wallets created in live are isolated from test, and vice versa"
+    fund_native_token: "Master wallet must hold native blockchain tokens (ETH, BNB, MATIC, etc.) for gas fees"
+    evm_address_sharing: "Addresses from one EVM wallet can receive deposits on other EVM-compatible chains (isEvmCompatible: true)"
+    # Except Tron and Solana which are non-EVM
+
+  auto_sweep:
+    default_enabled: true
+    default_threshold: 0
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+    # "By default auto sweeping is set to true and threshold is 0"
+    address_override: "Address-level settings override master wallet configuration"
+
+  gasless:
+    default_enabled: false
+    threshold_operators: [gt, gte, lt, lte, eq]
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+    address_override: "Address-level settings override master wallet configuration"
+
+  withdrawals:
+    batch_max: 20
+    batch_min: 1
+    # Source: https://docs.blockradar.co/en/essentials/withdrawals
+    # "Maximum batch size 20 withdrawals per request"
+    amount_positive: "Amount must be greater than 0"
+
+  gateway:
+    usdc_only: "Gateway only supports USDC for cross-chain operations"
+    # Source: https://docs.blockradar.co/en/essentials/gateway
+    no_direct_transfer: "Do NOT send USDC directly to Gateway Wallet contract — permanent loss of funds"
+    finality_required: "Funds credited only after transaction reaches finality on source chain"
+
+  virtual_accounts:
+    mainnet_only: "Virtual accounts are only available on MAINNET"
+    compliance_required: "Must complete Due Diligence Form before using virtual accounts"
+    # Source: https://docs.blockradar.co/en/essentials/virtual-accounts
+
+  fiat_withdrawal:
+    compliance_ngn: "NGN requires Naira-only onboarding form"
+    compliance_african: "KES, TZS, UGX, MWK require African currencies partner onboarding"
+    # Source: https://docs.blockradar.co/en/essentials/withdraw-fiat
+
+  signing:
+    message_max_length: 4096
+    # Source: https://docs.blockradar.co/en/essentials/signing
+    broadcast_retries: 10
+    broadcast_interval: "5m"
+    # "The broadcast queue retries up to 10 times with 5-minute intervals"
+
+  auto_settlement:
+    rule_isolation: "Rules are isolated per blockchain — a rule on Ethereum does NOT affect Base"
+    address_override: "Child address rules completely override master wallet rules (no merging)"
+    # Source: https://docs.blockradar.co/en/essentials/auto-settlements
+
+  webhooks:
+    retry_attempts: 5
+    retry_backoff: "5 min → 80 min (total ~2h35m)"
+    # Source: https://docs.blockradar.co/en/essentials/webhooks
+    signature_header: "x-blockradar-signature"
+    signature_algorithm: "HMAC-SHA512 using API key"
+    must_return_200: "Webhook endpoint must return HTTP 200 OK"
+    https_required: "HTTPS required for production (HTTP allowed for local testing)"
+
+  security:
+    https_required: "All API requests must be made over HTTPS"
+    # Source: https://docs.blockradar.co/en/api-reference/authentication
+    ssl_verification: "Do not set VERIFY_PEER to FALSE — ensure SSL connection is verified"
+    # Source: https://docs.blockradar.co/en/api-reference/authentication
+    api_key_secret: "API keys must not be committed to git or used in client-side code"
+    # Source: https://docs.blockradar.co/en/api-reference/authentication
+    api_key_per_wallet: "Each wallet has its own API key"
+    key_rotation: "Compromised API keys can be reset from the dashboard"
+    aml_screening: "New addresses are screened against OFAC sanctions list"
+    # Source: https://docs.blockradar.co/en/essentials/addresses — AML config in response
+    private_key_caution: "showPrivateKey exposes sensitive information — use only in secure environments"
+    non_custodial: "Blockradar never stores private keys — only encrypted seed phrases and derivation paths"
+    # Source: https://docs.blockradar.co/en/security/key-management
+    encryption: "AES-256-GCM with PBKDF2 key derivation, random IV, and authentication tags"
+    # Source: https://docs.blockradar.co/en/security/key-management
+    real_time_key_computation: "Private keys computed on-demand for signing, then immediately wiped from memory"
+    # Source: https://docs.blockradar.co/en/security/key-management
+    dual_seed_system: "Separate encrypted seed phrases for mainnet and testnet environments"
+    # Source: https://docs.blockradar.co/en/security/key-management
+    seed_backup_required: "Users must back up seed phrases immediately — if compromised, Blockradar cannot recover funds"
+    # Source: https://docs.blockradar.co/en/security/disaster-recovery
+    shared_responsibility: "Blockradar secures the platform; customer secures integration, API keys, and seed phrase backups"
+    # Source: https://docs.blockradar.co/en/security/shared-responsibility
+    vulnerability_reporting: "Report vulnerabilities to support@blockradar.co"
+    # Source: https://docs.blockradar.co/en/security/report-vulnerability
+
+outcomes:
+  # ─── Wallet Operations ─────────────────────────────────
+  wallet_created:
+    priority: 1
+    given:
+      - "Client is authenticated with valid API key"
+      - "No master wallet exists for the selected blockchain"
+    then:
+      - action: call_service
+        target: "blockradar_api.create_wallet"
+        description: "POST /v1/wallets — create master wallet for a blockchain"
+      - action: emit_event
+        event: wallet.created
+        payload: [wallet_id, blockchain, network]
+    result: "Master wallet created — ready to generate addresses and receive deposits"
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+
+  deposit_received:
+    priority: 2
+    given:
+      - "Customer deposits stablecoins to a dedicated address"
+      - "Transaction is confirmed on the blockchain"
+    then:
+      - action: emit_event
+        event: deposit.success
+        payload: [wallet_id, address_id, amount, asset_id, transaction_hash]
+      - action: call_service
+        target: "auto_sweep"
+        description: "Funds automatically swept to master wallet (if auto-sweep enabled)"
+    result: "Deposit notification sent via webhook — client updates customer record"
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+
+  deposit_sweep_success:
+    priority: 3
+    given:
+      - "Deposit was received at a child address"
+      - "Auto-sweep is enabled for this address"
+      - "Master wallet has sufficient native token for gas"
+    then:
+      - action: emit_event
+        event: deposit.swept.success
+        payload: [wallet_id, address_id, amount, transaction_hash]
+    result: "Deposited funds swept to master wallet"
+
+  deposit_sweep_failed:
+    priority: 4
+    error: DEPOSIT_SWEEP_FAILED
+    given:
+      - "Auto-sweep is enabled but master wallet has insufficient native token for gas"
+    then:
+      - action: emit_event
+        event: deposit.swept.failed
+        payload: [wallet_id, address_id, error_code]
+    result: "Auto-sweep failed — fund master wallet with native tokens"
+
+  # ─── Address Operations ─────────────────────────────────
+  address_created:
+    priority: 5
+    given:
+      - "Client is authenticated"
+      - "Master wallet exists and is funded"
+    then:
+      - action: call_service
+        target: "blockradar_api.create_address"
+        description: "POST /v1/wallets/{walletId}/addresses"
+      - action: emit_event
+        event: address.created
+        payload: [wallet_id, address_id, address, blockchain]
+    result: "Dedicated address generated for customer — can receive deposits across EVM chains"
+    # Source: https://docs.blockradar.co/en/essentials/addresses
+
+  address_whitelisted:
+    priority: 6
+    given:
+      - "Client provides an external address to monitor"
+    then:
+      - action: call_service
+        target: "blockradar_api.whitelist_address"
+        description: "POST /v1/wallets/{walletId}/addresses/whitelist"
+      - action: emit_event
+        event: address.whitelisted
+        payload: [wallet_id, address_id, address]
+    result: "External address whitelisted for deposit monitoring"
+    # Source: https://docs.blockradar.co/en/essentials/addresses
+
+  # ─── Withdrawal Operations ──────────────────────────────
+  withdrawal_success:
+    priority: 7
+    given:
+      - "Client is authenticated"
+      - "Master wallet has sufficient stablecoin balance"
+      - field: amount
+        source: input
+        operator: gt
+        value: 0
+        description: "Withdrawal amount is positive"
+    then:
+      - action: call_service
+        target: "blockradar_api.withdraw"
+        description: "POST /v1/wallets/{walletId}/withdraw"
+      - action: emit_event
+        event: withdraw.success
+        payload: [wallet_id, amount, asset_id, destination_address, transaction_hash]
+    result: "Stablecoins sent to destination address and confirmed on blockchain"
+    # Source: https://docs.blockradar.co/en/essentials/withdrawals
+
+  withdrawal_failed:
+    priority: 8
+    error: WITHDRAWAL_FAILED
+    given:
+      - "Withdrawal was initiated but failed on the blockchain"
+    then:
+      - action: emit_event
+        event: withdraw.failed
+        payload: [wallet_id, error_code]
+    result: "Withdrawal failed — check balance and destination address"
+
+  batch_withdrawal:
+    priority: 9
+    given:
+      - "Client provides array of 1-20 withdrawal recipients"
+      - "Master wallet has sufficient balance for total amount"
+    then:
+      - action: call_service
+        target: "blockradar_api.batch_withdraw"
+        description: "POST /v1/wallets/{walletId}/withdraw with assets[] array (max 20)"
+    result: "Batch withdrawal queued — individual webhook notifications per recipient"
+    # Source: https://docs.blockradar.co/en/essentials/withdrawals
+
+  # ─── Fiat Offramp ───────────────────────────────────────
+  fiat_withdrawal_success:
+    priority: 10
+    given:
+      - "Client is authenticated"
+      - "Compliance requirements met for target currency"
+      - "Bank account verified via institution-account-verification"
+      - "Quote obtained and accepted"
+    then:
+      - action: call_service
+        target: "blockradar_api.withdraw_fiat_execute"
+        description: "POST /v1/wallets/{walletId}/withdraw/fiat/execute"
+      - action: emit_event
+        event: offramp.success
+        payload: [wallet_id, amount, currency, institution_identifier]
+    result: "Stablecoins converted to fiat and sent to bank account"
+    transaction: true
+    # Source: https://docs.blockradar.co/en/essentials/withdraw-fiat
+
+  fiat_withdrawal_failed:
+    priority: 11
+    error: OFFRAMP_FAILED
+    given:
+      - "Fiat withdrawal was initiated but failed"
+    then:
+      - action: emit_event
+        event: offramp.failed
+        payload: [wallet_id, error_code]
+    result: "Fiat withdrawal failed"
+
+  # ─── Gateway (Cross-chain USDC) ─────────────────────────
+  gateway_deposit_success:
+    priority: 12
+    given:
+      - "Client is authenticated"
+      - "Wallet is on a Gateway-supported chain"
+      - "Wallet has USDC balance"
+    then:
+      - action: call_service
+        target: "blockradar_api.gateway_deposit"
+        description: "POST /v1/wallets/{walletId}/gateway/deposit"
+      - action: emit_event
+        event: gateway.deposit.success
+        payload: [wallet_id, amount, source_chain]
+    result: "USDC deposited to unified Gateway balance (after chain finality)"
+    # Source: https://docs.blockradar.co/en/essentials/gateway
+
+  gateway_withdraw_success:
+    priority: 13
+    given:
+      - "Client has sufficient Gateway USDC balance"
+      - "Destination chain is supported"
+    then:
+      - action: call_service
+        target: "blockradar_api.gateway_withdraw"
+        description: "POST /v1/wallets/{walletId}/gateway/withdraw"
+      - action: emit_event
+        event: gateway.withdraw.success
+        payload: [wallet_id, amount, destination_chain]
+    result: "USDC minted and withdrawn on destination chain"
+    # Source: https://docs.blockradar.co/en/essentials/gateway
+
+  # ─── Checkout (Payment Links) ───────────────────────────
+  payment_link_created:
+    priority: 14
+    given:
+      - "Client is authenticated"
+      - "Master wallet exists"
+    then:
+      - action: call_service
+        target: "blockradar_api.create_payment_link"
+        description: "POST /v1/wallets/{walletId}/payment-links"
+      - action: emit_event
+        event: checkout.link_created
+        payload: [payment_link_id, payment_link_url, wallet_id]
+    result: "Shareable payment link generated — customers can pay via stablecoins"
+    # Source: https://docs.blockradar.co/en/essentials/checkout
+
+  # ─── Auto Settlement ────────────────────────────────────
+  auto_settlement_executed:
+    priority: 15
+    given:
+      - "Deposit matches an active auto-settlement rule"
+      - "Amount is within rule's min/max thresholds"
+    then:
+      - action: call_service
+        target: "blockradar_api.auto_settle"
+        description: "Automatic swap to destination asset on destination chain"
+      - action: emit_event
+        event: swap.success
+        payload: [wallet_id, source_asset, destination_asset, amount]
+    result: "Deposit automatically converted and routed to destination chain"
+    # Source: https://docs.blockradar.co/en/essentials/auto-settlements
+
+  # ─── Swap & Bridge ──────────────────────────────────────
+  swap_success:
+    priority: 16
+    given:
+      - "Client is authenticated"
+      - "Source asset balance is sufficient"
+      - "Swap quote obtained"
+    then:
+      - action: call_service
+        target: "blockradar_api.execute_swap"
+        description: "POST /v1/wallets/{walletId}/swap"
+      - action: emit_event
+        event: swap.success
+        payload: [wallet_id, from_asset, to_asset, amount]
+    result: "Asset swap executed successfully"
+    # Source: https://docs.blockradar.co/en/essentials/swap
+
+  # ─── Signing ────────────────────────────────────────────
+  message_signed:
+    priority: 17
+    given:
+      - "Client is authenticated"
+      - field: message
+        source: input
+        operator: exists
+        description: "Message to sign is provided"
+    then:
+      - action: call_service
+        target: "blockradar_api.sign_message"
+        description: "POST /v1/wallets/{walletId}/signing/message"
+      - action: emit_event
+        event: signed.success
+        payload: [wallet_id, signature]
+    result: "Message signed with wallet's private key"
+    # Source: https://docs.blockradar.co/en/essentials/signing
+
+  transaction_broadcast:
+    priority: 18
+    given:
+      - "Client provides raw transaction data"
+    then:
+      - action: call_service
+        target: "blockradar_api.sign_and_broadcast"
+        description: "POST /v1/wallets/{walletId}/signing/broadcast"
+      - action: emit_event
+        event: signed.success
+        payload: [wallet_id, transaction_hash]
+    result: "Transaction signed and broadcast — retries up to 10x at 5-min intervals"
+    # Source: https://docs.blockradar.co/en/essentials/signing
+
+  # ─── Asset Recovery ─────────────────────────────────────
+  asset_recovered:
+    priority: 19
+    given:
+      - "Assets were sent to correct address on wrong blockchain"
+      - "Client provides sender/recipient addresses and blockchain"
+    then:
+      - action: call_service
+        target: "blockradar_api.salvage"
+        description: "POST /v1/wallets/{walletId}/salvage"
+      - action: emit_event
+        event: salvage.success
+        payload: [wallet_id, amount, blockchain]
+    result: "Stuck assets recovered and transferred to recipient address"
+    # Source: https://docs.blockradar.co/en/essentials/asset-recovery
+
+  # ─── Deposit Finder ─────────────────────────────────────
+  deposit_rescanned:
+    priority: 20
+    given:
+      - "Client has a transaction hash for a missing deposit"
+    then:
+      - action: call_service
+        target: "blockradar_api.rescan_blocks"
+        description: "POST /v1/wallets/{walletId}/rescan/blocks"
+    result: "Blockchain rescanned — missing deposit webhook will be sent if found"
+    # Source: https://docs.blockradar.co/en/essentials/wallets
+
+  # ─── Webhook Verification ───────────────────────────────
+  webhook_verified:
+    priority: 21
+    given:
+      - "Webhook received with x-blockradar-signature header"
+      - "HMAC-SHA512 of request body using API key matches signature"
+    then:
+      - "Process the webhook event"
+    result: "Webhook origin verified as Blockradar — safe to process"
+    # Source: https://docs.blockradar.co/en/essentials/webhooks
+
+  webhook_signature_invalid:
+    priority: 22
+    error: WEBHOOK_SIGNATURE_INVALID
+    given:
+      - "Webhook received but signature does not match"
+    then:
+      - "Reject the webhook"
+    result: "Webhook rejected — potential tampering or misconfiguration"
+
+errors:
+  # Source: https://docs.blockradar.co/en/api-reference/errors
+  # HTTP 200 = success, 201 = created, 400 = validation error, 401 = unauthorized, 404 = not found, 5xx = server error
+
+  - code: BLOCKRADAR_AUTH_FAILED
+    status: 401
+    message: "Invalid or missing API key"
+    # Source: https://docs.blockradar.co/en/api-reference/authentication
+    # "API requests made without authentication will fail with 401:Unauthorized"
+
+  - code: BLOCKRADAR_VALIDATION_ERROR
+    status: 400
+    message: "A validation or client-side error occurred"
+    # Source: https://docs.blockradar.co/en/api-reference/errors
+
+  - code: BLOCKRADAR_NOT_FOUND
+    status: 404
+    message: "Requested resource does not exist"
+    # Source: https://docs.blockradar.co/en/api-reference/errors
+
+  - code: BLOCKRADAR_SERVER_ERROR
+    status: 500
+    message: "An internal error occurred on Blockradar's end"
+    # Source: https://docs.blockradar.co/en/api-reference/errors — "please report as soon as you encounter"
+    retry: true
+
+  - code: BLOCKRADAR_WALLET_EXISTS
+    status: 409
+    message: "A master wallet already exists for this blockchain"
+    # Source: rules.wallets.one_per_chain
+
+  - code: BLOCKRADAR_INSUFFICIENT_BALANCE
+    status: 422
+    message: "Insufficient balance for this operation"
+
+  - code: BLOCKRADAR_INSUFFICIENT_GAS
+    status: 422
+    message: "Master wallet needs native tokens for gas fees"
+
+  - code: WITHDRAWAL_FAILED
+    status: 422
+    message: "Withdrawal failed to execute on the blockchain"
+    retry: true
+
+  - code: DEPOSIT_SWEEP_FAILED
+    status: 422
+    message: "Auto-sweep failed — fund master wallet with native tokens"
+    retry: true
+
+  - code: OFFRAMP_FAILED
+    status: 422
+    message: "Fiat withdrawal failed"
+    retry: true
+
+  - code: GATEWAY_DIRECT_TRANSFER
+    status: 400
+    message: "Do not send USDC directly to Gateway contract — use the API"
+    # Source: https://docs.blockradar.co/en/essentials/gateway
+
+  - code: BATCH_SIZE_EXCEEDED
+    status: 400
+    message: "Batch withdrawal cannot exceed 20 recipients"
+    # Source: rules.withdrawals.batch_max
+
+  - code: VIRTUAL_ACCOUNT_TESTNET
+    status: 400
+    message: "Virtual accounts are only available on mainnet"
+    # Source: rules.virtual_accounts.mainnet_only
+
+  - code: WEBHOOK_SIGNATURE_INVALID
+    status: 403
+    message: "Webhook signature verification failed"
+
+  - code: SWAP_FAILED
+    status: 422
+    message: "Swap transaction failed"
+    retry: true
+
+events:
+  # ─── Deposit Events ─────────────────────────────────────
+  - name: deposit.success
+    payload: [wallet_id, address_id, amount, asset_id, transaction_hash, metadata]
+    description: "Deposit confirmed on the blockchain"
+
+  - name: deposit.processing
+    payload: [wallet_id, address_id, amount, asset_id]
+    description: "Deposit detected, awaiting confirmation"
+
+  - name: deposit.failed
+    payload: [wallet_id, address_id, error_code]
+    description: "Deposit failed to be processed"
+
+  - name: deposit.swept.success
+    payload: [wallet_id, address_id, amount, transaction_hash]
+    description: "Funds auto-swept from child address to master wallet"
+
+  - name: deposit.swept.failed
+    payload: [wallet_id, address_id, error_code]
+    description: "Auto-sweep failed (likely insufficient gas)"
+
+  # ─── Withdrawal Events ──────────────────────────────────
+  - name: withdraw.success
+    payload: [wallet_id, amount, asset_id, destination_address, transaction_hash]
+    description: "Withdrawal confirmed on blockchain"
+
+  - name: withdraw.failed
+    payload: [wallet_id, error_code]
+    description: "Withdrawal failed"
+
+  # ─── Fiat Offramp Events ────────────────────────────────
+  - name: offramp.processing
+    payload: [wallet_id, amount, currency]
+    description: "Fiat withdrawal being processed"
+
+  - name: offramp.success
+    payload: [wallet_id, amount, currency, institution_identifier]
+    description: "Fiat withdrawal completed"
+
+  - name: offramp.failed
+    payload: [wallet_id, error_code]
+    description: "Fiat withdrawal failed"
+
+  # ─── Gateway Events ─────────────────────────────────────
+  - name: gateway.deposit.success
+    payload: [wallet_id, amount, source_chain]
+    description: "USDC deposited to Gateway unified balance"
+
+  - name: gateway.withdraw.success
+    payload: [wallet_id, amount, destination_chain]
+    description: "USDC withdrawn from Gateway to destination chain"
+
+  # ─── Swap Events ────────────────────────────────────────
+  - name: swap.success
+    payload: [wallet_id, from_asset, to_asset, amount]
+    description: "Asset swap executed successfully"
+
+  - name: swap.failed
+    payload: [wallet_id, error_code]
+    description: "Swap transaction failed"
+
+  # ─── Signing Events ─────────────────────────────────────
+  - name: signed.success
+    payload: [wallet_id, transaction_hash]
+    description: "Transaction signed and broadcast successfully"
+
+  - name: signed.failed
+    payload: [wallet_id, error_code]
+    description: "Transaction broadcast failed after all retries"
+
+  # ─── Recovery Events ────────────────────────────────────
+  - name: salvage.success
+    payload: [wallet_id, amount, blockchain]
+    description: "Asset recovery completed"
+
+  - name: salvage.failed
+    payload: [wallet_id, error_code]
+    description: "Asset recovery failed"
+
+related: []
+
+extensions:
+  api:
+    base_url: "https://api.blockradar.co/v1"
+    auth:
+      method: "API Key"
+      header: "x-api-key"
+      scope: "per-wallet"
+      # Source: https://docs.blockradar.co/en/api-reference/authentication
+      # "We provide api key for each wallet you create"
+    content_type: "application/json"
+    postman_collection: "https://documenter.getpostman.com/view/7709133/2s93eSYaVs"
+    # Source: https://docs.blockradar.co/en/api-reference/introduction — "View the Postman Collection"
+    # Confirmed: 19 folders matching all API categories, example requests + responses with full JSON schemas
+    github: "https://github.com/blockradar"
+    # Source: https://docs.blockradar.co/en/api-reference/introduction
+    response_format:
+      statusCode: "number — request status code"
+      message: "string — summary of response"
+      data: "object|array — results of the request"
+      meta: "object — pagination info (totalItems, itemCount, itemsPerPage, totalPages, currentPage)"
+      # Source: https://docs.blockradar.co/en/api-reference/introduction
+    pagination:
+      default_page_size: 100
+      default_page: 1
+    environments:
+      testnet: "Test environment with faucet tokens"
+      mainnet: "Live environment with real assets"
+    supported_blockchains:
+      evm: [ethereum, bsc, polygon, base, arbitrum, optimism, celo, lisk, avalanche]
+      non_evm: [tron, solana]
+      additional: [asset-chain, plasma, arc, tempo]
+    supported_stablecoins: [USDT, USDC, DAI, BUSD, cUSD, cNGN, EURC, IDRX, ZARP, JPYC, AlphaUSD]
+    webhook_signature: "HMAC-SHA512 via x-blockradar-signature header"
+    total_endpoints: 127
+    # Source: https://docs.blockradar.co/en/api-reference/introduction
+    # Full endpoint list across: wallet (7), addresses (10), withdraw (6), withdraw-fiat (9),
+    # swap (4), virtual-accounts (12), smart-contract (8), signing (8), asset (4),
+    # transactions (7), aml (1), auto-settlements (14), gateway (13), beneficiaries (5),
+    # payment-links (5), asset-recovery (2), liquidity-pool (6), miscellaneous (3)
+  security:
+    architecture: "Non-custodial — private keys never stored, only encrypted seed phrases"
+    encryption: "Custom AES-256-GCM with PBKDF2 key derivation"
+    key_computation: "Real-time on-demand — computed for signing, immediately wiped"
+    seed_system: "Dual encrypted seeds (mainnet/testnet) per business account"
+    compliance: [SOC2, ISO27001, PCI-DSS, GDPR]
+    # Source: https://docs.blockradar.co/en/security/key-management
+    aml_provider: "OFAC sanctions screening on address creation"
+    disaster_recovery: "Geo-distributed encrypted backups + user-exportable seed phrases"
+    # Source: https://docs.blockradar.co/en/security/disaster-recovery

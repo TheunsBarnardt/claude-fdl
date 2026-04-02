@@ -1,0 +1,510 @@
+# ============================================================
+# BIOMETRIC-AUTH — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Palm vein biometric authentication as an alternative to
+# password-based login. Users enroll up to 2 palms (left/right)
+# and authenticate by scanning either one.
+# Depends on the palm-vein integration blueprint for SDK access.
+# ============================================================
+
+feature: biometric-auth
+version: "1.0.0"
+description: "Palm vein biometric authentication — alternative to password login with enrollment of up to 2 palms per user"
+category: auth
+tags: [biometric, palm-vein, authentication, passwordless, enrollment]
+
+actors:
+  - id: user
+    name: "User"
+    type: human
+    description: "Person enrolling their palm or authenticating via palm vein scan"
+    role: "end-user"
+
+  - id: palm_scanner
+    name: "Palm Vein Scanner"
+    type: external
+    description: "PVD300/PVM310 hardware device that captures palm vein patterns"
+    role: "biometric-capture"
+
+  - id: auth_system
+    name: "Authentication System"
+    type: system
+    description: "Backend that stores templates, performs matching, and issues sessions"
+    role: "authentication"
+
+fields:
+  - name: user_id
+    type: hidden
+    required: true
+    label: "User ID"
+    # The authenticated user enrolling a palm, or the user being identified during login
+    immutable: true
+
+  - name: palm_label
+    type: select
+    required: true
+    label: "Which Hand"
+    options:
+      - value: "left"
+        label: "Left Hand"
+      - value: "right"
+        label: "Right Hand"
+    validation:
+      - type: required
+        message: "Please select which hand you are enrolling"
+
+  - name: palm_template
+    type: json
+    required: false
+    label: "Palm Vein Template"
+    sensitive: true
+    # Binary template data from SDK registration — stored encrypted in DB
+    # Linked to user_id + palm_label
+
+  - name: palm_feature
+    type: json
+    required: false
+    label: "Palm Vein Feature"
+    sensitive: true
+    # Extracted feature data used for matching — not persisted, used in-flight only
+
+  - name: enrollment_status
+    type: select
+    required: true
+    label: "Enrollment Status"
+    default: "unenrolled"
+    options:
+      - value: "unenrolled"
+        label: "Not Enrolled"
+      - value: "enrolling"
+        label: "Enrollment In Progress"
+      - value: "enrolled"
+        label: "Enrolled"
+      - value: "failed"
+        label: "Enrollment Failed"
+
+  - name: auth_method
+    type: select
+    required: false
+    label: "Authentication Method"
+    # Tracks which method was used for the current login session
+    options:
+      - value: "password"
+        label: "Password"
+      - value: "palm_vein"
+        label: "Palm Vein"
+
+  - name: enrolled_palm_count
+    type: number
+    required: false
+    label: "Number of Enrolled Palms"
+    # Computed field — count of enrolled templates for a user (0, 1, or 2)
+    validation:
+      - type: min
+        value: 0
+        message: "Palm count cannot be negative"
+      - type: max
+        value: 2
+        message: "Maximum 2 palms can be enrolled per user"
+
+  - name: email
+    type: email
+    required: true
+    label: "Email Address"
+    # Used to identify the user when authenticating via palm vein
+    # System looks up user's templates by email, then matches scanned feature
+    validation:
+      - type: required
+        message: "Email is required to identify your account"
+      - type: email
+        message: "Please enter a valid email address"
+
+states:
+  field: enrollment_status
+  values:
+    - id: unenrolled
+      label: "Not Enrolled"
+      initial: true
+      # User has no palm templates registered
+    - id: enrolling
+      label: "Enrollment In Progress"
+      # Palm registration is actively capturing images
+    - id: enrolled
+      label: "Enrolled"
+      # At least one palm template is stored and active
+    - id: failed
+      label: "Enrollment Failed"
+      # Last enrollment attempt failed — can retry
+
+  transitions:
+    - from: unenrolled
+      to: enrolling
+      actor: user
+      description: "User initiates palm enrollment from account settings"
+
+    - from: enrolling
+      to: enrolled
+      actor: auth_system
+      condition: "SDK registration returns success and template is stored"
+      description: "Palm template captured and persisted to database"
+
+    - from: enrolling
+      to: failed
+      actor: palm_scanner
+      condition: "SDK registration fails (timeout, poor quality, positioning)"
+      description: "Palm capture failed — user can retry"
+
+    - from: failed
+      to: enrolling
+      actor: user
+      description: "User retries enrollment after a failed attempt"
+
+    - from: enrolled
+      to: enrolling
+      actor: user
+      condition: "User has fewer than 2 palms enrolled"
+      description: "User enrolls a second palm (other hand)"
+
+    - from: enrolled
+      to: unenrolled
+      actor: user
+      condition: "User removes all enrolled palms"
+      description: "User removes their last palm — biometric auth disabled"
+
+rules:
+  enrollment:
+    max_palms: 2
+    # Each user can enroll up to 2 palm templates — one left hand, one right hand
+    unique_per_hand: "Only one template per hand per user — re-enrolling the same hand replaces the old template"
+    must_be_authenticated: "User must be logged in (via password) to enroll a palm"
+    # Enrollment requires an existing authenticated session to link the template to a user account
+    capture_count: 4
+    # SDK requires 4 palm images fused into a single template (from palm-vein blueprint)
+
+  authentication:
+    alternative_to_password: "Palm vein scan can be used instead of password to log in"
+    # User provides email + palm scan instead of email + password
+    email_required: "User must provide their email to identify which templates to match against"
+    match_any_palm: "If user has 2 enrolled palms, feature is matched against both — either can authenticate"
+    template_auto_update: "On successful match, the updated template from the SDK replaces the old one to improve future accuracy"
+    # Source: palm-vein blueprint rules.matching.template_update
+
+  rate_limiting:
+    max_attempts_per_email: 5
+    lockout_duration: "15m"
+    # Matches login blueprint rate limiting — prevents brute-force biometric enumeration
+    max_attempts_per_ip: 10
+    ip_window: "1m"
+
+  fallback:
+    scanner_unavailable: "If palm scanner is not connected or busy, user falls back to password login"
+    # Graceful degradation — biometric is optional, password always works
+
+  security:
+    template_encryption: "Palm templates must be encrypted at rest in the database"
+    # Biometric data is PII — GDPR/CCPA compliance
+    feature_not_persisted: "Extracted features are used only for matching and never stored"
+    # Features are transient — only templates (registered via 4-image fusion) are persisted
+    constant_time_match: "Template matching is performed by the SDK algorithm — timing is hardware-controlled"
+    audit_logging: "All enrollment and authentication attempts must be logged for security audit"
+
+outcomes:
+  rate_limited:
+    priority: 1
+    error: BIOMETRIC_RATE_LIMITED
+    given:
+      - field: failed_biometric_attempts
+        source: computed
+        operator: gte
+        value: 5
+        description: "User has exceeded max biometric auth attempts"
+    then:
+      - action: emit_event
+        event: biometric.login.rate_limited
+        payload: [email, ip_address]
+    result: "Too many failed attempts — account locked for 15 minutes"
+
+  scanner_unavailable:
+    priority: 2
+    error: BIOMETRIC_SCANNER_UNAVAILABLE
+    given:
+      - "Palm vein scanner is not connected or device is busy"
+    then:
+      - action: emit_event
+        event: biometric.scanner.unavailable
+        payload: [error_code]
+    result: "Scanner not available — please use password login instead"
+
+  no_palms_enrolled:
+    priority: 3
+    error: BIOMETRIC_NOT_ENROLLED
+    given:
+      - field: enrolled_palm_count
+        source: db
+        operator: eq
+        value: 0
+        description: "User has no enrolled palm templates"
+    then:
+      - action: emit_event
+        event: biometric.login.no_enrollment
+        payload: [user_id]
+    result: "No palms enrolled — user must log in with password and enroll from account settings"
+
+  biometric_login_success:
+    priority: 4
+    given:
+      - field: email
+        source: input
+        operator: exists
+        description: "User provides their email"
+      - field: palm_feature
+        source: system
+        operator: exists
+        description: "Palm vein feature extracted from scanner"
+      - "Feature matches one of the user's enrolled templates"
+    then:
+      - action: set_field
+        target: failed_biometric_attempts
+        value: 0
+        description: "Reset attempt counter on success"
+      - action: set_field
+        target: palm_template
+        value: "updated template from SDK match"
+        description: "Auto-update template for improved future accuracy"
+      - action: emit_event
+        event: biometric.login.success
+        payload: [user_id, email, palm_label, ip_address, timestamp]
+    result: "Identity verified via palm vein — session created"
+    transaction: true
+
+  biometric_login_failed:
+    priority: 5
+    error: BIOMETRIC_AUTH_FAILED
+    given:
+      - field: email
+        source: input
+        operator: exists
+      - field: palm_feature
+        source: system
+        operator: exists
+      - "Feature does not match any of the user's enrolled templates"
+    then:
+      - action: set_field
+        target: failed_biometric_attempts
+        value: "increment by 1"
+      - action: emit_event
+        event: biometric.login.failed
+        payload: [user_id, email, ip_address, timestamp]
+    result: "Palm vein does not match — please try again or use password login"
+
+  enrollment_success:
+    priority: 6
+    given:
+      - "User is authenticated via password"
+      - field: enrolled_palm_count
+        source: db
+        operator: lt
+        value: 2
+        description: "User has fewer than 2 palms enrolled"
+      - field: palm_label
+        source: input
+        operator: exists
+        description: "User selected which hand to enroll"
+      - "SDK registration completes successfully (4 images captured and fused)"
+    then:
+      - action: create_record
+        target: palm_enrollments
+        description: "Store encrypted palm template linked to user_id and palm_label"
+      - action: transition_state
+        field: enrollment_status
+        from: enrolling
+        to: enrolled
+      - action: emit_event
+        event: biometric.enrolled
+        payload: [user_id, palm_label, timestamp]
+    result: "Palm enrolled successfully — you can now use it to log in"
+    transaction: true
+
+  enrollment_replaces_existing:
+    priority: 7
+    given:
+      - "User is authenticated via password"
+      - field: palm_label
+        source: input
+        operator: exists
+      - "A template already exists for this hand"
+      - "SDK registration completes successfully"
+    then:
+      - action: set_field
+        target: palm_template
+        value: "new template from SDK registration"
+        description: "Replace old template with newly registered one"
+      - action: emit_event
+        event: biometric.re_enrolled
+        payload: [user_id, palm_label, timestamp]
+    result: "Palm re-enrolled — old template replaced with new one"
+    transaction: true
+
+  enrollment_failed:
+    priority: 8
+    error: BIOMETRIC_ENROLLMENT_FAILED
+    given:
+      - "User is authenticated via password"
+      - "SDK registration fails (timeout, poor image quality, hand positioning)"
+    then:
+      - action: transition_state
+        field: enrollment_status
+        from: enrolling
+        to: failed
+      - action: emit_event
+        event: biometric.enrollment_failed
+        payload: [user_id, palm_label, error_code]
+    result: "Enrollment failed — please reposition your hand and try again"
+
+  max_palms_reached:
+    priority: 9
+    error: BIOMETRIC_MAX_PALMS
+    given:
+      - "User is authenticated"
+      - field: enrolled_palm_count
+        source: db
+        operator: gte
+        value: 2
+        description: "User already has 2 palms enrolled"
+      - "User attempts to enroll another palm without removing one first"
+    then:
+      - action: emit_event
+        event: biometric.enrollment.max_reached
+        payload: [user_id]
+    result: "Maximum of 2 palms already enrolled — remove one before adding another"
+
+  palm_removed:
+    priority: 10
+    given:
+      - "User is authenticated via password"
+      - field: palm_label
+        source: input
+        operator: exists
+        description: "User selects which palm to remove"
+      - "A template exists for the selected hand"
+    then:
+      - action: delete_record
+        target: palm_enrollments
+        description: "Remove palm template from database"
+      - action: emit_event
+        event: biometric.removed
+        payload: [user_id, palm_label, timestamp]
+    result: "Palm removed — if no palms remain, biometric login is disabled"
+    transaction: true
+
+  user_not_found:
+    priority: 11
+    error: BIOMETRIC_AUTH_FAILED
+    given:
+      - field: email
+        source: input
+        operator: exists
+      - field: user_id
+        source: db
+        operator: not_exists
+        description: "No user account found for email"
+    then:
+      - action: emit_event
+        event: biometric.login.failed
+        payload: [email, ip_address, timestamp]
+    result: "Authentication failed"
+    # Generic message — don't reveal whether user exists (enumeration prevention)
+
+errors:
+  - code: BIOMETRIC_AUTH_FAILED
+    status: 401
+    message: "Biometric authentication failed"
+    retry: true
+    # Generic message for both no-match and user-not-found (enumeration prevention)
+
+  - code: BIOMETRIC_RATE_LIMITED
+    status: 429
+    message: "Too many authentication attempts — please wait before trying again"
+    retry: true
+
+  - code: BIOMETRIC_SCANNER_UNAVAILABLE
+    status: 500
+    message: "Palm vein scanner is not available — please use password login"
+
+  - code: BIOMETRIC_NOT_ENROLLED
+    status: 404
+    message: "No palm enrolled for this account — please enroll from account settings"
+
+  - code: BIOMETRIC_ENROLLMENT_FAILED
+    status: 422
+    message: "Palm enrollment failed — please reposition your hand and try again"
+    retry: true
+
+  - code: BIOMETRIC_MAX_PALMS
+    status: 409
+    message: "Maximum of 2 palms already enrolled — remove one to add another"
+
+events:
+  - name: biometric.enrolled
+    payload: [user_id, palm_label, timestamp]
+    description: "Palm vein template registered and stored for a user"
+
+  - name: biometric.re_enrolled
+    payload: [user_id, palm_label, timestamp]
+    description: "Existing palm template replaced with a new registration"
+
+  - name: biometric.removed
+    payload: [user_id, palm_label, timestamp]
+    description: "Palm vein template removed from user's account"
+
+  - name: biometric.login.success
+    payload: [user_id, email, palm_label, ip_address, timestamp]
+    description: "User successfully authenticated via palm vein scan"
+
+  - name: biometric.login.failed
+    payload: [user_id, email, ip_address, timestamp]
+    description: "Palm vein authentication failed — no match or user not found"
+
+  - name: biometric.login.rate_limited
+    payload: [email, ip_address]
+    description: "Biometric auth blocked due to too many failed attempts"
+
+  - name: biometric.login.no_enrollment
+    payload: [user_id]
+    description: "User attempted biometric login but has no enrolled palms"
+
+  - name: biometric.enrollment_failed
+    payload: [user_id, palm_label, error_code]
+    description: "Palm enrollment failed due to SDK error"
+
+  - name: biometric.enrollment.max_reached
+    payload: [user_id]
+    description: "User attempted to enroll a third palm but max is 2"
+
+  - name: biometric.scanner.unavailable
+    payload: [error_code]
+    description: "Palm scanner is disconnected or busy when auth was attempted"
+
+related:
+  - feature: login
+    type: extends
+    reason: "Adds palm vein as an alternative authentication method to password"
+    ui_link: "Log in with palm vein"
+
+  - feature: palm-vein
+    type: required
+    reason: "Requires the PVD300/PVM310 SDK integration for scanner operations"
+
+  - feature: signup
+    type: recommended
+    reason: "Users may enroll palms during or after account creation"
+
+ui_hints:
+  login_form:
+    layout: "Add a 'Log in with palm vein' button below the password field"
+    scanner_feedback: "Show real-time scanner status (waiting, scanning, matched, failed)"
+  enrollment:
+    location: "Account settings page under 'Security' section"
+    show_enrolled: "Display which palms are enrolled with option to remove"
+    guidance: "Show hand positioning guide during enrollment (15-30cm from scanner)"

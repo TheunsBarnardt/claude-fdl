@@ -314,6 +314,11 @@ related:
     type: required
     reason: "Every login needs a logout"
 
+  - feature: biometric-auth
+    type: optional
+    reason: "Palm vein scan as an alternative to password login"
+    ui_link: "Log in with palm vein"
+
 # ─── UI HINTS ─────────────────────────────────────────────
 
 ui_hints:

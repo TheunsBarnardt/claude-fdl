@@ -1,0 +1,715 @@
+# ============================================================
+# PALM-VEIN — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: PVD300/PVM310 Palm Vein Scanner/Module SDK
+# Instructions for Use v13.0 (SD_HZ_R_20220609_DOC_01)
+# Covers SDK initialization, device management, palm vein
+# registration, feature extraction, and 1:N matching via
+# the SDPVD310API library.
+# ============================================================
+
+feature: palm-vein
+version: "1.0.0"
+description: "Palm vein biometric integration with PVD300/PVM310 scanner for registration, feature extraction, and 1:N template matching"
+category: integration
+tags: [biometric, palm-vein, hardware, sdk, authentication, pvd300, pvm310]
+
+actors:
+  - id: host_application
+    name: "Host Application"
+    type: system
+    description: "The application that calls the SDK API to perform palm vein operations"
+    role: "integration"
+
+  - id: palm_scanner
+    name: "Palm Vein Scanner Device"
+    type: external
+    description: "PVD300 scanner or PVM310 module hardware that captures palm vein images"
+    role: "biometric-capture"
+
+fields:
+  - name: license_path
+    type: text
+    required: true
+    label: "License File Path"
+    # Source: Section 2.2.1 — "licensePath: The path to the authorized license, including the filename"
+    validation:
+      - type: required
+        message: "License file path is required for SDK initialization"
+
+  - name: auto_update_template
+    type: boolean
+    required: true
+    label: "Auto-Update Template"
+    default: true
+    # Source: Section 2.2.1 — "enAutoUpdateTmpl: Automatic template update switch"
+    # When enabled, old templates are updated during SD_API_Match1VNEx comparison
+
+  - name: logging_enabled
+    type: boolean
+    required: true
+    label: "SDK Logging"
+    default: true
+    # Source: Section 2.2.1 — "enWriteLog: SDK logging switch"
+    # Writes error messages to logs/SDAPI.log
+
+  - name: firmware_version
+    type: text
+    required: false
+    label: "Firmware Version"
+    # Source: Section 2.4.1 — "fw: Obtained firmware version (16 Bytes)"
+    validation:
+      - type: maxLength
+        value: 16
+        message: "Firmware version is 16 bytes maximum"
+
+  - name: serial_number
+    type: text
+    required: false
+    label: "Device Serial Number"
+    # Source: Section 2.4.1 — "sn: Obtained serial number (16 Bytes)"
+    validation:
+      - type: maxLength
+        value: 16
+        message: "Serial number is 16 bytes maximum"
+
+  - name: palm_feature
+    type: json
+    required: false
+    label: "Palm Vein Feature Data"
+    sensitive: true
+    # Source: Section 2.8.1/2.9.1 — binary feature data extracted from palm vein image
+    # Size obtained from SD_API_GetBufferSize (piFeatureSize)
+
+  - name: palm_template
+    type: json
+    required: false
+    label: "Palm Vein Template"
+    sensitive: true
+    # Source: Section 2.10.1 — "pucTmpl: Palm vein template"
+    # 4 images fused into a single template during registration
+    # Templates stored in database linked to user accounts
+
+  - name: palm_image
+    type: json
+    required: false
+    label: "Palm Vein Image"
+    sensitive: true
+    # Source: Section 2.8.1/2.9.1 — raw proprietary binary format (~257,078 bytes)
+    # Size obtained from SD_API_GetBufferSize (piImageSize)
+
+  - name: timeout_seconds
+    type: number
+    required: true
+    label: "Operation Timeout"
+    default: 30
+    # Source: Section 2.9.1/2.10.1 — "timeOut: Timeout duration in seconds. Range (-1~1000)"
+    # -1 indicates no time limit; user confirmed 30s as recommended default
+    validation:
+      - type: min
+        value: -1
+        message: "Timeout must be -1 (unlimited) or greater"
+      - type: max
+        value: 1000
+        message: "Timeout cannot exceed 1000 seconds"
+
+  - name: image_masked
+    type: boolean
+    required: true
+    label: "Apply Blur to Callback Image"
+    default: false
+    # Source: Section 2.9.1/2.10.1 — "masked: Whether to apply a blur effect to the image in the callback"
+
+  - name: led_color
+    type: select
+    required: false
+    label: "LED Color"
+    # Source: Section 2.7.1 / Appendix 3.5 — LED color control
+    options:
+      - value: "0"
+        label: "Off"
+      - value: "1"
+        label: "Red"
+      - value: "2"
+        label: "Green"
+      - value: "3"
+        label: "Blue"
+
+  - name: led_duration_ms
+    type: number
+    required: false
+    label: "LED Duration (ms)"
+    default: 0
+    # Source: Section 2.7.1 — "Currently only 0 or 1000 are supported"
+    # 0 = stay on indefinitely, 1000 = 1 second flash
+    validation:
+      - type: oneOf
+        value: [0, 1000]
+        message: "LED duration must be 0 (permanent) or 1000 (1 second)"
+
+  - name: match_index
+    type: number
+    required: false
+    label: "Matched Template Index"
+    # Source: Section 2.12.1 — "piMatchIdx: The position (starting from 0) of the matched template"
+
+  - name: template_count
+    type: number
+    required: true
+    label: "Number of Templates to Compare"
+    # Source: Section 2.12.1 — "iTmplNums: Number of palm vein templates"
+    validation:
+      - type: min
+        value: 1
+        message: "Must compare against at least one template"
+
+  - name: updated_template
+    type: json
+    required: false
+    label: "Updated Template"
+    sensitive: true
+    # Source: Section 2.12.1 — "pucUpdTmpl: Updated template, as palm veins are constantly changing"
+    # The new template should replace the old one to improve comparison accuracy
+
+  - name: palm_hand
+    type: select
+    required: false
+    label: "Palm Hand"
+    # Source: Appendix 3.2 — Palm Information Table
+    options:
+      - value: "0"
+        label: "Left Hand"
+      - value: "1"
+        label: "Right Hand"
+
+states:
+  field: device_state
+  values:
+    - id: uninitialized
+      label: "Uninitialized"
+      initial: true
+      # Source: Section 2.2 — SDK must be initialized before any operations
+    - id: initialized
+      label: "SDK Initialized"
+      # Source: Section 2.2.1 — "All subsequent interfaces can only be called after successful initialization"
+    - id: device_open
+      label: "Device Open"
+      # Source: Section 2.4 — device opened, fw/sn obtained
+    - id: idle
+      label: "Ready / Idle"
+      # Source: Implied — device is open and ready for operations
+    - id: extracting
+      label: "Extracting Features"
+      # Source: Section 2.9 — feature extraction in progress
+    - id: registering
+      label: "Registering Template"
+      # Source: Section 2.10 — registration in progress (4 captures)
+    - id: device_closed
+      label: "Device Closed"
+      # Source: Section 2.5 — device closed but SDK still initialized
+      terminal: true
+
+  transitions:
+    - from: uninitialized
+      to: initialized
+      actor: host_application
+      description: "Call SD_API_Init with license, auto-update, and logging settings"
+      # Source: Section 2.2
+
+    - from: initialized
+      to: device_open
+      actor: host_application
+      description: "Call SD_API_OpenDev to connect to scanner and obtain firmware/serial"
+      # Source: Section 2.4
+
+    - from: device_open
+      to: idle
+      actor: palm_scanner
+      description: "Device is connected and ready for operations"
+
+    - from: idle
+      to: extracting
+      actor: host_application
+      description: "Call SD_API_ExtractFeature with timeout and callback"
+      # Source: Section 2.9
+
+    - from: idle
+      to: registering
+      actor: host_application
+      description: "Call SD_API_Register with timeout and callback"
+      # Source: Section 2.10
+
+    - from: extracting
+      to: idle
+      actor: palm_scanner
+      description: "Feature extraction completes (success or failure)"
+
+    - from: registering
+      to: idle
+      actor: palm_scanner
+      description: "Registration completes after capturing 4 images"
+
+    - from: extracting
+      to: idle
+      actor: host_application
+      condition: "Operation cancelled via SD_API_Cancel"
+      description: "Cancel current extraction"
+      # Source: Section 2.11
+
+    - from: registering
+      to: idle
+      actor: host_application
+      condition: "Operation cancelled via SD_API_Cancel"
+      description: "Cancel current registration"
+      # Source: Section 2.11
+
+    - from: idle
+      to: device_closed
+      actor: host_application
+      description: "Call SD_API_CloseDev"
+      # Source: Section 2.5
+
+    - from: device_closed
+      to: uninitialized
+      actor: host_application
+      description: "Call SD_API_Uninit to release all resources"
+      # Source: Section 2.3
+
+rules:
+  initialization:
+    single_init: "SD_API_GetBufferSize and SD_API_Init must each be called exactly once at program start"
+    # Source: Section 2.1/2.2 — "Do not call repeatedly!!!"
+    single_uninit: "SD_API_Uninit must be called exactly once at program end"
+    # Source: Section 2.3 — "Do not call repeatedly!!!"
+    init_before_all: "All other API calls require successful initialization first"
+    # Source: Section 2.2.1 — "All subsequent interfaces can only be called after successful initialization"
+
+  buffer_sizes:
+    precondition: "SD_API_GetBufferSize must be called before any feature/template/image operations to obtain correct buffer sizes"
+    # Source: Sections 2.8.1, 2.9.1, 2.10.1 — all require prior GetBufferSize call
+    outputs:
+      - feature_size: "Size of palm vein feature data buffer"
+      - template_size: "Size of palm vein template buffer"
+      - image_size: "Size of palm vein image buffer"
+      - registration_count: "Number of palm captures required for registration (4)"
+
+  device_management:
+    cancel_before_reopen: "If currently in registration or feature extraction, call SD_API_Cancel before opening or closing the device"
+    # Source: Section 2.4.1/2.5.1 — "please call SD_API_Cancel to cancel the task before opening/closing"
+    busy_check: "Device returns DEVBUSY error if a registration or extraction is already in progress"
+    # Source: Appendix 3.1 — SD_API_E_ERR_DEVBUSY
+
+  registration:
+    capture_count: 4
+    # Source: Section 2.10.1 — "Capture 4 normal palm images within the specified time"
+    timeout_range: "-1 to 1000 seconds (-1 = no limit)"
+    # Source: Section 2.10.1
+    template_storage: "Templates must be persisted in a database linked to user accounts"
+    # User-specified requirement
+
+  matching:
+    one_to_n: "SD_API_Match1VN compares one feature against N templates"
+    # Source: Section 2.12.1
+    template_update: "On successful match, the updated template (pucUpdTmpl) should replace the old template to improve future accuracy"
+    # Source: Section 2.12.1 — "palm veins are constantly changing"
+    auto_update: "When auto-update is enabled during init, SD_API_Match1VNEx automatically updates templates"
+    # Source: Section 2.2.1
+
+  led_control:
+    supported_durations: [0, 1000]
+    # Source: Section 2.7.1 — "Currently only 0 or 1000 are supported"
+    off_command: "Pass LED_NULL to turn off LED"
+    # Source: Section 2.7.1
+
+  palm_positioning:
+    distance: "Hand must be approximately 15-30cm from device center"
+    # Source: Appendix 3.1 — SD_API_E_ERR_PUTPALM error message
+    centered: "Hand must be centered on the device"
+    fingers_spread: "Fingers must be spread naturally"
+    # Source: Appendix 3.1 — SD_API_E_ERR_FINGERS_TOO_CLOSE
+
+  security:
+    biometric_data_sensitive: "Feature data, templates, and images are biometric PII and must be treated as sensitive"
+    license_required: "A valid license file is required for SDK operation"
+    # Source: Section 2.2.1 / Appendix 3.1 — SD_API_E_ERR_INVALID_LICENSE
+
+outcomes:
+  sdk_initialized:
+    priority: 1
+    given:
+      - "SDK has not been initialized yet"
+      - "Valid license file exists at specified path"
+    then:
+      - action: call_service
+        target: "SDPVD310API.SD_API_GetBufferSize"
+        description: "Obtain feature, template, image sizes and registration count"
+      - action: call_service
+        target: "SDPVD310API.SD_API_Init"
+        description: "Initialize SDK with license, auto-update, and logging settings"
+      - action: emit_event
+        event: palm.sdk.initialized
+        payload: [feature_size, template_size, image_size, registration_count]
+    result: "SDK is initialized and ready for device operations"
+    # Source: Sections 2.1, 2.2
+
+  sdk_init_failed:
+    priority: 2
+    error: PALM_INVALID_LICENSE
+    given:
+      - "License file is missing or invalid"
+    then:
+      - action: emit_event
+        event: palm.sdk.init_failed
+        payload: [error_code]
+    result: "SDK initialization fails with license error"
+    # Source: Appendix 3.1 — SD_API_E_ERR_INVALID_LICENSE
+
+  device_opened:
+    priority: 3
+    given:
+      - "SDK is initialized"
+      - "No active registration or extraction in progress"
+    then:
+      - action: call_service
+        target: "SDPVD310API.SD_API_OpenDev"
+        description: "Open device and retrieve firmware version and serial number"
+      - action: set_field
+        target: firmware_version
+        value: "returned by device"
+      - action: set_field
+        target: serial_number
+        value: "returned by device"
+      - action: emit_event
+        event: palm.device.opened
+        payload: [firmware_version, serial_number]
+    result: "Device is connected and firmware/serial info is available"
+    # Source: Section 2.4
+
+  device_not_connected:
+    priority: 4
+    error: PALM_DEVICE_NOT_CONNECTED
+    given:
+      - "SDK is initialized"
+      - field: device_state
+        source: system
+        operator: neq
+        value: "device_open"
+        description: "Device is not physically connected"
+    then:
+      - action: emit_event
+        event: palm.device.disconnected
+        payload: [error_code]
+    result: "Device is not connected — check USB connection and retry"
+    # Source: Appendix 3.1 — SD_API_E_ERR_DEV_NOT_CONNECT
+
+  feature_extracted:
+    priority: 5
+    given:
+      - "Device is open and idle"
+      - "Buffer sizes have been obtained"
+    then:
+      - action: call_service
+        target: "SDPVD310API.SD_API_ExtractFeature"
+        description: "Capture palm vein image and extract biometric features with 30s timeout"
+      - action: set_field
+        target: palm_feature
+        value: "extracted feature data"
+      - action: set_field
+        target: palm_image
+        value: "captured raw image data"
+      - action: emit_event
+        event: palm.feature.extracted
+        payload: [feature_size]
+    result: "Palm vein feature and image data are captured and available for matching or storage"
+    # Source: Section 2.9
+
+  feature_extraction_failed:
+    priority: 6
+    error: PALM_EXTRACTION_FAILED
+    given:
+      - "Device is open and performing extraction"
+      - any:
+          - "Palm positioning is incorrect"
+          - "Image quality is poor"
+          - "Operation times out"
+    then:
+      - action: emit_event
+        event: palm.feature.extraction_failed
+        payload: [error_code]
+    result: "Feature extraction failed — user should reposition hand and try again"
+    # Source: Appendix 3.1 — multiple positioning/quality errors
+
+  template_registered:
+    priority: 7
+    given:
+      - "Device is open and idle"
+      - "Buffer sizes have been obtained"
+    then:
+      - action: call_service
+        target: "SDPVD310API.SD_API_Register"
+        description: "Capture 4 palm images and fuse into a template with 30s timeout"
+      - action: set_field
+        target: palm_template
+        value: "fused template data"
+      - action: create_record
+        target: palm_templates
+        description: "Store template in database linked to user account"
+      - action: emit_event
+        event: palm.template.registered
+        payload: [user_id, template_size]
+    result: "Palm vein template is registered and stored for future matching"
+    transaction: true
+    # Source: Section 2.10
+
+  registration_failed:
+    priority: 8
+    error: PALM_REGISTRATION_FAILED
+    given:
+      - "Device is open and performing registration"
+      - any:
+          - "User moves hand during capture"
+          - "Image quality is poor"
+          - "Operation times out"
+          - "Feature fusion fails"
+    then:
+      - action: emit_event
+        event: palm.template.registration_failed
+        payload: [error_code, stage]
+    result: "Registration failed — user should keep hand steady and try again"
+    # Source: Appendix 3.1 — SD_API_E_ERR_GETTMPL_FAILED, SD_API_E_ERR_TIMEOUT
+
+  match_succeeded:
+    priority: 9
+    given:
+      - "Valid feature data is available (from extraction)"
+      - "One or more templates exist in the database"
+    then:
+      - action: call_service
+        target: "SDPVD310API.SD_API_Match1VN"
+        description: "Compare feature against N stored templates"
+      - action: set_field
+        target: match_index
+        value: "index of matched template"
+      - action: set_field
+        target: updated_template
+        value: "updated template data from match"
+        description: "Replace old template with updated version for improved accuracy"
+      - action: emit_event
+        event: palm.match.succeeded
+        payload: [user_id, match_index]
+    result: "Palm vein matched against stored template — identity verified"
+    transaction: true
+    # Source: Section 2.12
+
+  match_failed:
+    priority: 10
+    error: PALM_VERIFICATION_FAILED
+    given:
+      - "Valid feature data is available"
+      - "Feature does not match any stored template"
+    then:
+      - action: emit_event
+        event: palm.match.failed
+        payload: [error_code]
+    result: "Palm vein does not match any registered template — verification failed"
+    # Source: Appendix 3.1 — SD_API_E_ERR_VERIFY_FAILED
+
+  operation_cancelled:
+    priority: 11
+    given:
+      - any:
+          - "Feature extraction is in progress"
+          - "Registration is in progress"
+      - "Cancel is requested"
+    then:
+      - action: call_service
+        target: "SDPVD310API.SD_API_Cancel"
+        description: "Cancel the current extraction or registration operation"
+      - action: emit_event
+        event: palm.operation.cancelled
+        payload: []
+    result: "Current operation is cancelled and device returns to idle state"
+    # Source: Section 2.11
+
+  device_busy:
+    priority: 12
+    error: PALM_DEVICE_BUSY
+    given:
+      - any:
+          - "Feature extraction is in progress"
+          - "Registration is in progress"
+      - "A new operation is attempted"
+    then:
+      - action: emit_event
+        event: palm.device.busy
+        payload: [error_code]
+    result: "Device is busy — cancel the current operation before starting a new one"
+    # Source: Appendix 3.1 — SD_API_E_ERR_DEVBUSY
+
+  operation_timed_out:
+    priority: 13
+    error: PALM_TIMEOUT
+    given:
+      - any:
+          - "Feature extraction is in progress"
+          - "Registration is in progress"
+      - field: elapsed_time
+        source: system
+        operator: gt
+        value: timeout_seconds
+        description: "Operation exceeds configured timeout"
+    then:
+      - action: emit_event
+        event: palm.operation.timeout
+        payload: [operation_type, timeout_seconds]
+    result: "Operation timed out — user should try again"
+    # Source: Appendix 3.1 — SD_API_E_ERR_TIMEOUT
+
+errors:
+  - code: PALM_INVALID_LICENSE
+    status: 403
+    message: "Palm vein scanner license is invalid or missing"
+    # Source: SD_API_E_ERR_INVALID_LICENSE
+
+  - code: PALM_DEVICE_NOT_CONNECTED
+    status: 500
+    message: "Palm vein scanner is not connected"
+    retry: true
+    # Source: SD_API_E_ERR_DEV_NOT_CONNECT
+
+  - code: PALM_DEVICE_BUSY
+    status: 409
+    message: "Scanner is busy with another operation — please cancel or wait"
+    retry: true
+    # Source: SD_API_E_ERR_DEVBUSY
+
+  - code: PALM_EXTRACTION_FAILED
+    status: 422
+    message: "Could not capture palm vein features — please reposition your hand"
+    retry: true
+    # Source: SD_API_E_ERR_EXTRACT_FAILED
+
+  - code: PALM_REGISTRATION_FAILED
+    status: 422
+    message: "Palm vein registration failed — keep your hand steady and try again"
+    retry: true
+    # Source: SD_API_E_ERR_GETTMPL_FAILED
+
+  - code: PALM_VERIFICATION_FAILED
+    status: 401
+    message: "Palm vein does not match any registered pattern"
+    # Source: SD_API_E_ERR_VERIFY_FAILED
+
+  - code: PALM_TIMEOUT
+    status: 422
+    message: "Operation timed out — please try again"
+    retry: true
+    # Source: SD_API_E_ERR_TIMEOUT
+
+  - code: PALM_HAND_POSITION_ERROR
+    status: 422
+    message: "Please position your hand 15-30cm from the scanner center with fingers spread naturally"
+    retry: true
+    # Source: SD_API_E_ERR_PUTPALM, SD_API_E_ERR_PALM_POSITION_*
+
+  - code: PALM_IMAGE_QUALITY_POOR
+    status: 422
+    message: "Image quality is too low — please try again in better conditions"
+    retry: true
+    # Source: SD_API_E_ERR_IMAGE_QUALITY_POOR
+
+  - code: PALM_COMMUNICATION_FAILED
+    status: 500
+    message: "Communication with palm vein scanner failed"
+    retry: true
+    # Source: SD_API_E_ERR_COMMUNICATION_FAILED
+
+  - code: PALM_MISSING_LIBRARY
+    status: 500
+    message: "Required SDK library is missing"
+    # Source: SD_API_E_ERR_NO_COM_API, SD_API_E_ERR_NO_PROCESS_API, SD_API_E_ERR_NO_LIVE_API
+
+  - code: PALM_PARAMETER_ERROR
+    status: 400
+    message: "Invalid parameter passed to scanner operation"
+    # Source: SD_API_E_ERR_PARAMS_ERR
+
+  - code: PALM_INSUFFICIENT_MEMORY
+    status: 500
+    message: "Insufficient memory for scanner operation"
+    # Source: SD_API_E_ERR_MEMORY_INSUFFICIENT
+
+events:
+  - name: palm.sdk.initialized
+    payload: [feature_size, template_size, image_size, registration_count]
+    description: "SDK initialized successfully — buffer sizes available"
+
+  - name: palm.sdk.init_failed
+    payload: [error_code]
+    description: "SDK initialization failed"
+
+  - name: palm.device.opened
+    payload: [firmware_version, serial_number]
+    description: "Scanner device opened — firmware and serial number obtained"
+
+  - name: palm.device.disconnected
+    payload: [error_code]
+    description: "Scanner device is not connected or was disconnected"
+
+  - name: palm.feature.extracted
+    payload: [feature_size]
+    description: "Palm vein feature data extracted from a single scan"
+
+  - name: palm.feature.extraction_failed
+    payload: [error_code]
+    description: "Feature extraction failed due to positioning, quality, or timeout"
+
+  - name: palm.template.registered
+    payload: [user_id, template_size]
+    description: "Palm vein template registered (4 images fused) and stored"
+
+  - name: palm.template.registration_failed
+    payload: [error_code, stage]
+    description: "Template registration failed — includes the stage at which failure occurred"
+
+  - name: palm.match.succeeded
+    payload: [user_id, match_index]
+    description: "Feature matched against a stored template — identity verified"
+
+  - name: palm.match.failed
+    payload: [error_code]
+    description: "Feature did not match any stored template"
+
+  - name: palm.operation.cancelled
+    payload: []
+    description: "Active extraction or registration operation was cancelled"
+
+  - name: palm.operation.timeout
+    payload: [operation_type, timeout_seconds]
+    description: "Operation exceeded the configured timeout duration"
+
+  - name: palm.device.busy
+    payload: [error_code]
+    description: "Attempted operation while device was busy with another task"
+
+related:
+  - feature: biometric-auth
+    type: recommended
+    reason: "Biometric-auth uses the palm vein SDK to provide alternative authentication"
+
+extensions:
+  sdk:
+    library: "SDPVD310API"
+    platforms:
+      windows: "SDPVD310API.dll"
+      linux: "SDPVD310API.so"
+    languages: [c, cpp, java, jni, csharp]
+    # Source: Sections 1.1, 1.2, 1.3
+    supported_os:
+      windows: ["xp", "7", "8", "10", "server"]
+      linux: ["debian", "redhat"]
+    supported_arch:
+      windows: ["x86", "x86_64"]
+      linux: ["x86", "x86_64", "mips64el", "aarch64"]
+    # Source: Table 1
