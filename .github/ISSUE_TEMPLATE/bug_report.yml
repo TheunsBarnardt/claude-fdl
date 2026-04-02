@@ -1,0 +1,61 @@
+name: Bug Report
+description: Report a problem with FDL validation, skills, or blueprints
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of FDL is affected?
+      options:
+        - Validator (scripts/validate.js)
+        - Blueprint schema
+        - Skill (/fdl-create)
+        - Skill (/fdl-extract)
+        - Skill (/fdl-extract-web)
+        - Skill (/fdl-extract-code)
+        - Skill (/fdl-generate)
+        - Specific blueprint
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: "When I run /fdl-generate login nextjs, the generated code is missing..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this bug?
+      placeholder: |
+        1. Run `/fdl-create login auth`
+        2. Answer questions with defaults
+        3. Run `node scripts/validate.js`
+        4. See error...
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      placeholder: "v20.11.0"

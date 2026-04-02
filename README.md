@@ -1,10 +1,14 @@
 # Feature Definition Language (FDL)
 
-**Define what your software should do. Let AI build it.**
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Blueprints](https://img.shields.io/badge/Blueprints-16-blue.svg)](blueprints/)
+[![AI Tools](https://img.shields.io/badge/AI_Tools-Claude_|_ChatGPT_|_Copilot-purple.svg)](#faq)
 
-FDL is a system for writing "blueprints" — plain-language specifications that describe software features. You write the what (rules, data, expected outcomes). Any AI tool reads the blueprint and generates the complete implementation for your chosen language and framework.
+**Define features as YAML blueprints. Generate complete implementations for any framework. Extract architectural patterns from any codebase, API docs, or business document.**
 
-No code. No YAML knowledge. Just describe what you need.
+FDL is an open-source system for writing "blueprints" — YAML specifications that describe software features completely. You define the what (fields, rules, outcomes, errors, events). Any AI tool — Claude, ChatGPT, Copilot, Gemini — reads the blueprint and generates a correct, complete implementation for your chosen language and framework.
+
+No code. No YAML knowledge needed. Five CLI commands handle everything through plain-language conversation.
 
 ---
 
@@ -20,6 +24,8 @@ Different AI tools produce different results. One includes rate limiting, anothe
 The expense approval policy is in a PDF somewhere. The onboarding process is in a wiki. The checkout flow is in someone's memory. When it's time to build or update the software, critical rules get lost in translation.
 
 **FDL solves all three.** A blueprint is the single source of truth for a feature — what data it needs, what rules govern it, what should happen in every scenario (success and failure), and how it connects to other features.
+
+**But blueprints go further than templates.** When you extract a codebase like shadcn-ui into a blueprint, you don't just capture "how shadcn works." You capture the *architectural patterns* — registry-based distribution, recursive dependency resolution, MCP server integration — that let AI build you an entirely new CLI tool, plugin marketplace, or component CDN using those same patterns. Blueprints are transferable expertise, not just feature specs.
 
 ---
 
@@ -302,48 +308,84 @@ Plain text conditions still work alongside structured ones — use whichever is 
 
 ## Included Blueprints
 
-FDL comes with a starter set of blueprints you can use, modify, or learn from:
+FDL ships with 16 blueprints. But here's the thing — **blueprints are not just templates to copy.** Each one encodes production-tested architectural patterns that transfer to entirely different problems. The login blueprint doesn't just build you a login page. It teaches AI how to build rate limiting, token lifecycle management, and enumeration prevention for *anything*.
 
-### Auth Pack (ready to use)
+### How to Think About Blueprints
 
-| Blueprint | Description |
-|-----------|-------------|
-| `login` | Email + password authentication with rate limiting, account lockout, session management |
-| `signup` | User registration with email verification, password requirements, enumeration prevention |
-| `password-reset` | Two-step reset via email with secure tokens, session invalidation |
-| `logout` | End session (single device or all devices), CSRF-protected |
-| `email-verification` | Confirm email ownership via one-time token, with resend flow |
+A blueprint is **captured expertise**. When you extract the shadcn-ui codebase into a blueprint, you don't just get "a description of shadcn." You get the architectural patterns for building:
+- Your own CLI with a plugin/registry system
+- Your own component distribution CDN
+- Your own MCP server so AI tools can discover and install your packages
+- Your own dependency resolver with recursive tree-walking
 
-### Integration Pack
+When you extract a payment system, you don't just get "how Electrum works." You get the patterns for:
+- Asynchronous request-callback flows (any webhook system)
+- Idempotency key management (any distributed system)
+- Multi-party transaction orchestration (any escrow, marketplace, or clearing system)
+- State machines with SLA enforcement (any time-sensitive workflow)
 
-| Blueprint | Description |
-|-----------|-------------|
-| `palm-vein` | PVD300/PVM310 palm vein scanner SDK integration — initialization, device management, feature extraction, template registration, 1:N matching |
-| `biometric-auth` | Palm vein as alternative login method — enrollment of up to 2 palms per user, rate limiting, template auto-update, password fallback |
-| `chp-inbound-payments` | Electrum CHP inbound RTC/PayShap/EFT payments — credit transfer authorisation, proxy resolution, completion, direct debits |
-| `chp-outbound-payments` | Electrum CHP outbound payments — credit transfers, bulk transfers, direct debits, payment returns, cancellations across 6 schemes |
-| `chp-request-to-pay` | Electrum CHP PayShap Request-To-Pay — outbound/inbound RTP, cancellation, refunds, expiry handling |
-| `chp-eft` | Electrum CHP Electronic Funds Transfer — inbound/outbound credits and debits, returns, on-us debits, System Error Correction |
-| `chp-account-management` | Electrum CHP account and proxy management — account mirroring, PayShap proxy resolution, AVS-R verification, CDV validation |
+**The real power is combining blueprints.** Take the registry architecture from `shadcn-cli` + the state machine from `expense-approval` + the rate limiting from `login` — and you have the spec for a plugin marketplace with approval workflows and abuse prevention. No blueprint exists for that, but the patterns compose.
 
-### Workflow Example
+### Auth Pack — Security Patterns You Can Reuse Everywhere
 
-| Blueprint | Description |
-|-----------|-------------|
-| `expense-approval` | Full business process: submit, manager review, finance approval, payment. Includes actors, state machine, SLAs |
+| Blueprint | What it is | What else you gain |
+|-----------|-----------|-------------------|
+| `login` | Email + password auth with rate limiting, lockout, sessions | **Rate limiting per scope** (per-IP, per-email) — works for any brute-forceable endpoint. **Token lifecycle** (access + refresh with rotation) — works for API keys, OAuth, device tokens. **Enumeration prevention** — same pattern protects any lookup from leaking existence. |
+| `signup` | Registration with verification and bot prevention | **Layered validation** (format, uniqueness, business rules) — works for any multi-step form. **Bot detection** (honeypot + CAPTCHA + rate limit) — works for any public-facing endpoint. **Async side effects** (send email without blocking response) — works for any notification trigger. |
+| `password-reset` | Two-step recovery via secure email token | **Two-phase async verification** — the request-then-confirm pattern works for email changes, phone verification, account recovery, magic links. **Token hashing in storage** — prevents DB breach from exposing active tokens. **Session invalidation on credential change** — critical for any "account was compromised" response. |
+| `logout` | End session (single device or all devices) | **Scoped revocation** (this device vs. everywhere) — works for API key management, OAuth token revocation. **CSRF protection on state-changing actions** — applies to any POST that mutates state. |
+| `email-verification` | Confirm ownership via one-time token | **Token-based claim verification** — same pattern works for phone numbers, domains, webhook endpoints, device pairing. **Rate-limited resends** — prevents notification bombing in any system. |
 
-### Recreating the Blueprints
+### Integration Pack — Distributed System Patterns
 
-If you want to start fresh or create your own version of these blueprints:
+| Blueprint | What it is | What else you gain |
+|-----------|-----------|-------------------|
+| `palm-vein` | Hardware SDK integration (PVD300/PVM310) | **Hardware device state machine** (init, open, idle, operating, closed) — works for any peripheral: scanners, printers, card readers, IoT devices. **Buffer lifecycle management** — works for any resource-heavy SDK. **Operation cancellation with cleanup** — works for any long-running hardware operation. |
+| `biometric-auth` | Palm vein as login alternative | **Multi-enrollment with selection** (left/right palm, up to 2) — works for backup phones, security keys, recovery emails. **Graceful fallback** (scanner unavailable, fall back to password) — works for any optional hardware feature. **Template auto-update on match** — works for any "improve accuracy over time" system. |
+| `chp-inbound-payments` | Receive payments from clearing system | **1-second ACK + async processing** — the acknowledge-immediately-process-later pattern works for any webhook receiver. **Idempotency via unique reference** — prevents duplicate processing in any distributed system. **Request-response decoupling** (receive request, ACK, POST response back later) — works for any long-running external integration. |
+| `chp-outbound-payments` | Send payments through clearing system | **Bulk operations** (submit N items, track individually) — works for batch email, bulk imports, mass notifications. **Conflict detection** (HTTP 409 with original error) — the detect-and-return-original pattern works for any retry scenario. **Status polling** — works for any long-running job. |
+| `chp-request-to-pay` | PayShap request-to-pay and refunds | **Time-limited offers** (RTP expires if not responded to) — works for coupon expiry, invite links, temporary access. **Cancellation with state guards** (only cancel if still pending) — works for any "undo" that's only valid in certain states. **Refund with sensible defaults** — works for any reversal operation. |
+| `chp-eft` | Batch electronic funds transfer | **Settlement batching** (collect, submit batch, get results later) — works for any queue-then-batch-process pattern. **Reason code enums** — works for categorized rejection/error reporting in any domain. **Post-fact correction** (undo already-committed transactions) — works for any system that needs reversals. |
+| `chp-account-management` | Account mirroring and proxy resolution | **Proxy resolution** (phone/email/ID to account number) — the indirect-to-direct identifier pattern works for username resolution, device discovery, DNS-like lookups. **Pre-flight verification** (check if account can receive before sending) — works for any "validate before expensive operation" pattern. |
+| `blockradar-api` | Blockchain wallet and transaction management | **Multi-chain abstraction** — works for any system that unifies multiple backends behind one API. **Webhook event catalog** — works for any event-driven integration. |
+
+### UI Pack — Component Architecture and Tooling Patterns
+
+| Blueprint | What it is | What else you gain |
+|-----------|-----------|-------------------|
+| `shadcn-cli` | CLI for installing UI components from registries | **Registry/plugin architecture** (namespace, URL, auth headers, dependency resolution) — build your own package registry, plugin marketplace, or template distribution system. **MCP server** (7 tools for AI assistants to discover and install components) — build AI-native interfaces for any catalog. **Framework detection** (auto-detect Next.js, Vite, Django, Rails, etc.) — build any multi-framework CLI tool. **Safe file mutation** (backup before overwrite, validate paths) — build any CLI that modifies user projects. |
+| `shadcn-components` | 56 accessible React UI components with design system | **Variant system via CVA** (variant + size to className) — build any component library with configurable visual states. **Compound component pattern** (Dialog.Trigger, Dialog.Content) — build composable UI APIs. **Multi-theme architecture** (6 design styles, light/dark, CSS variables in OKLCH) — build a swappable design system. **Accessibility patterns** (focus trap, ARIA attributes, keyboard navigation) — build WCAG-compliant components in any framework. |
+
+### Workflow Pack — Business Process Patterns
+
+| Blueprint | What it is | What else you gain |
+|-----------|-----------|-------------------|
+| `expense-approval` | Submit, review, approve, pay with actors and SLAs | **Role-based approval routing** (managers approve small, finance approves large) — works for loan approval, hiring, procurement, content review. **State machine with escalation** — works for any process with deadlines and fallback paths. **Conditional field requirements** (receipt required only above $25) — works for any "rules change based on value" scenario. **Audit trail** (who approved what, when, from where) — works for any compliance requirement. |
+
+### Combining Blueprints — The Real Power
+
+Individual blueprints are useful. **Combining them is where it gets interesting:**
+
+| You want to build... | Combine these blueprints |
+|----------------------|--------------------------|
+| **Plugin marketplace with approval** | `shadcn-cli` (registry + CLI) + `expense-approval` (state machine + roles) + `login` (rate limiting) |
+| **Payment gateway** | `chp-outbound-payments` (orchestration) + `login` (API key auth) + `chp-account-management` (verification) |
+| **Hardware enrollment system** | `biometric-auth` (multi-enrollment + fallback) + `signup` (registration flow) + `email-verification` (claim verification) |
+| **SaaS onboarding wizard** | `signup` (account creation) + `email-verification` (confirm ownership) + `expense-approval` (step-by-step workflow pattern) |
+| **IoT device management platform** | `palm-vein` (hardware state machine) + `shadcn-cli` (registry for device drivers) + `chp-account-management` (proxy resolution for device IDs) |
+| **Loan origination system** | `expense-approval` (multi-step approval + SLAs) + `chp-outbound-payments` (disbursement) + `login` (secure access) |
+
+### Recreating or Customizing Blueprints
+
+Every blueprint can be recreated from scratch with different rules:
 
 ```
 /fdl-create login auth
 /fdl-create signup auth
-/fdl-create password-reset auth
 /fdl-create expense-approval workflow
 ```
 
-Claude will ask you questions and generate each one. Your answers shape the blueprint — so you can customize the rules (different lockout thresholds, different password requirements, different approval chains) without editing YAML.
+Your answers shape the blueprint — different lockout thresholds, different password rules, different approval chains. Same architectural patterns, your business rules.
 
 ---
 
@@ -439,6 +481,7 @@ claude-fdl/
     auth/                      # Authentication blueprints
     data/                      # Data and workflow blueprints
     integration/               # External service and hardware integration blueprints
+    ui/                        # UI component systems and developer tooling blueprints
   scripts/
     validate.js                # Validates blueprints are well-formed
   .claude/
@@ -501,6 +544,52 @@ Yes. `/fdl-extract-web` crawls documentation websites (even JS-rendered ones lik
 
 **How is this different from just asking AI to "build login"?**
 Without FDL, the AI guesses what "login" means. With FDL, there's a complete specification: 5 failed attempts = lockout, 15-minute duration, constant-time password comparison, generic error messages to prevent user enumeration, JWT with 15-minute access tokens. Nothing is left to chance. Every AI tool gets the same spec and produces consistent results.
+
+---
+
+## Why This Matters for Next-Generation AI Models
+
+FDL isn't just useful today — it becomes **dramatically more valuable** as AI models get more capable. Here's why.
+
+### The Problem with "Build Me X"
+
+When you tell any current AI model to "build me a login system," it generates code based on patterns from its training data. The result is inconsistent — different models produce different security rules, different error handling, different edge cases. Every time you prompt, you roll the dice.
+
+Blueprints eliminate the dice roll. They give the model a **complete, unambiguous specification** — every field, every rule, every outcome, every error, every event. The model doesn't guess. It implements.
+
+### Better Models Need Better Specifications
+
+The trajectory of AI models is clear: each generation gets better at coding, reasoning, and multi-step execution. Claude Opus 4.6 can already read a blueprint and generate a full-stack implementation. But the next generation of models — like [Claude Mythos](https://fortune.com/2026/03/26/anthropic-says-testing-mythos-powerful-new-ai-model-after-data-leak-reveals-its-existence-step-change-in-capabilities/), which Anthropic describes as "a step change" in AI performance — will be able to do things current models can't:
+
+- **Autonomous multi-step execution** — Mythos [plans and executes sequences of actions on its own](https://www.mindstudio.ai/blog/what-is-claude-mythos-anthropic-most-powerful-model), moving across systems and making decisions without waiting for human input at each stage. A blueprint gives this kind of agent the **complete specification** it needs to work autonomously without going off-track.
+
+- **Multi-file code generation with planning** — Next-gen models show [dramatically higher scores on complex software engineering tasks](https://www.mindstudio.ai/blog/claude-mythos-vs-opus-4-6-capability-comparison) where the model needs to plan before writing. Blueprints are exactly this — a pre-planned specification that the model can execute with full context.
+
+- **Security-aware implementation** — Models like Mythos are [particularly strong at identifying vulnerabilities](https://siliconangle.com/2026/03/27/anthropic-launch-new-claude-mythos-model-advanced-reasoning-features/) and reasoning through security scenarios. FDL blueprints encode security rules explicitly (rate limiting, enumeration prevention, token hashing, CSRF protection) — giving security-aware models the exact constraints to enforce.
+
+### What This Means in Practice
+
+As models become more agentic and autonomous, the value of structured specifications increases exponentially:
+
+| Model capability | Without blueprints | With blueprints |
+|-----------------|-------------------|-----------------|
+| **Basic code generation** | Generates plausible code, misses edge cases | Generates correct code covering all specified scenarios |
+| **Multi-file projects** | Inconsistent patterns across files, forgets constraints | Consistent rules enforced across every file |
+| **Autonomous agents** | Drifts from intent, makes assumptions, invents requirements | Stays on-spec, implements exactly what's defined, nothing more |
+| **Cross-framework migration** | Re-prompts from scratch for each framework, loses rules | Same blueprint, different target — all rules preserved |
+| **Multi-model workflows** | Each model interprets differently, results diverge | Every model reads the same spec, results converge |
+
+### Blueprints as AI Infrastructure
+
+Think of FDL blueprints as **infrastructure for AI-powered development**:
+
+- **Today:** You use blueprints with Claude Code's slash commands to generate implementations. Works well.
+- **Near-term:** Agentic models consume blueprints autonomously — reading the spec, generating code, running tests, fixing failures, and shipping features with minimal human input. The blueprint is the agent's contract.
+- **Long-term:** Blueprints become the interface between humans and AI. You describe what you want in business terms. AI extracts it into a blueprint. Another AI (or the same one) generates the implementation. A third verifies it matches the spec. The blueprint is the shared language.
+
+The better the model, the more it benefits from precise specifications. A model that can plan, reason about security, and execute autonomously doesn't need less structure — it needs **better** structure so it can use its capabilities fully instead of wasting them on guessing requirements.
+
+**FDL is that structure.** Every blueprint you create today is an investment that gets more valuable with every model generation.
 
 ---
 

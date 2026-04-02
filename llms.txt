@@ -1,0 +1,93 @@
+# Feature Definition Language (FDL)
+
+> Define what your software should do as YAML blueprints. Let any AI generate the complete implementation for any framework.
+
+## What is FDL?
+
+FDL is a framework-agnostic specification system for defining software features. Instead of asking AI to "build login" and getting inconsistent results, you write (or extract) a blueprint that specifies every field, rule, outcome, error, and event — then any AI tool generates a correct, complete implementation for your chosen language and framework.
+
+Blueprints are not templates. They are captured architectural expertise. A login blueprint teaches AI how to build rate limiting, token lifecycle management, and enumeration prevention for anything. A payment blueprint teaches asynchronous request-callback flows, idempotency, and state machines that apply to any distributed system.
+
+## Repository
+
+- URL: https://github.com/TheunsBarnardt/claude-fdl
+- License: MIT
+- Language: YAML blueprints + Node.js tooling
+- AI Integration: Claude Code skills (5 slash commands), works with any AI tool
+
+## Five Commands
+
+- `/fdl-create` — Create a blueprint from a plain-language conversation
+- `/fdl-extract` — Extract rules from a document (PDF, DOCX, images) into a blueprint
+- `/fdl-extract-web` — Crawl a documentation website and extract API operations into blueprints
+- `/fdl-extract-code` — Analyze an existing codebase (local folder or git repo) and reverse-engineer features into blueprints
+- `/fdl-generate` — Generate implementation code from a blueprint for any language or framework
+
+## 16 Included Blueprints
+
+### Auth Pack — Security Patterns
+- `login` — Email/password authentication. Patterns: scoped rate limiting, JWT token lifecycle (access + refresh rotation), account lockout, enumeration prevention, constant-time comparison.
+- `signup` — User registration. Patterns: layered validation (format then uniqueness then business rules), bot detection (honeypot + CAPTCHA + rate limit), async email side effects.
+- `password-reset` — Two-step recovery via email token. Patterns: two-phase async verification, token hashing in storage, session invalidation on credential change.
+- `logout` — Session termination. Patterns: scoped token revocation (single device vs all), CSRF protection on state-changing actions.
+- `email-verification` — Confirm email ownership. Patterns: token-based claim verification (reusable for phone, domain, webhook), rate-limited resends.
+
+### Integration Pack — Distributed System Patterns
+- `palm-vein` — Hardware SDK integration (PVD300/PVM310). Patterns: hardware device state machine (init/open/idle/operating/closed), buffer lifecycle, operation cancellation with cleanup.
+- `biometric-auth` — Palm vein as login alternative. Patterns: multi-enrollment with selection, graceful hardware fallback, template auto-update on match.
+- `chp-inbound-payments` — Receive payments from clearing system. Patterns: 1-second ACK + async processing, idempotency via UETR, request-response decoupling.
+- `chp-outbound-payments` — Send payments through clearing. Patterns: bulk operations (submit N, track individually), conflict detection (HTTP 409), status polling.
+- `chp-request-to-pay` — PayShap request-to-pay. Patterns: time-limited offers with expiry, cancellation with state guards, refund with sensible defaults.
+- `chp-eft` — Batch electronic funds transfer. Patterns: settlement batching, reason code enums, post-fact correction of committed transactions.
+- `chp-account-management` — Account and proxy management. Patterns: proxy resolution (indirect to direct identifier), pre-flight verification before expensive operations.
+- `blockradar-api` — Blockchain wallet and transaction management. Patterns: multi-chain abstraction, webhook event catalog.
+
+### UI Pack — Component Architecture and Tooling Patterns
+- `shadcn-cli` — CLI for component registry distribution. Patterns: registry/plugin architecture (namespace + URL + auth), recursive dependency resolution, MCP server for AI discovery, framework detection, safe file mutation with backup.
+- `shadcn-components` — 56 accessible React UI components. Patterns: CVA variant system, compound components, Radix Slot pattern (asChild), multi-theme architecture (6 styles, light/dark, OKLCH), focus management and ARIA compliance.
+
+### Workflow Pack — Business Process Patterns
+- `expense-approval` — Multi-step approval workflow. Patterns: role-based approval routing with thresholds, state machine with SLA enforcement and escalation, conditional field requirements, audit trail.
+
+## Transferable Patterns Across Blueprints
+
+These patterns appear across multiple blueprints and transfer to any domain:
+
+- **Rate limiting** — login, signup, password-reset, payments. Apply to any brute-forceable endpoint or resource.
+- **State machines** — auth flows, payment lifecycles, expense approval, sidebar UI. Apply to any entity with a lifecycle.
+- **Token-based verification** — login, password-reset, email-verification. Apply to any claim verification (phone, domain, device pairing).
+- **Idempotency** — all payment blueprints. Apply to any distributed system where duplicates can arrive.
+- **Async callback patterns** — all CHP payment blueprints. Apply to any webhook-based integration.
+- **Registry/plugin architecture** — shadcn-cli. Apply to building your own package registry, CDN, plugin marketplace.
+- **MCP server integration** — shadcn-cli. Apply to making any catalog AI-discoverable.
+
+## Combining Blueprints
+
+Blueprints compose. Examples of what you can build by combining:
+
+- Plugin marketplace with approval: shadcn-cli (registry) + expense-approval (state machine) + login (rate limiting)
+- Payment gateway: chp-outbound-payments (orchestration) + login (API key auth) + chp-account-management (verification)
+- SaaS onboarding wizard: signup (account creation) + email-verification (confirm ownership) + expense-approval (step workflow pattern)
+- IoT device management: palm-vein (hardware state machine) + shadcn-cli (registry for device drivers) + chp-account-management (proxy resolution)
+
+## Key Files
+
+- Schema: schema/blueprint.schema.yaml
+- Validator: scripts/validate.js
+- Blueprints: blueprints/{category}/{feature}.blueprint.yaml
+- Skills: .claude/skills/{skill-name}/SKILL.md
+
+## Blueprint Structure
+
+Required: feature, version, description, category, rules, and at least one of outcomes or flows.
+Optional: fields, tags, related, events, errors, actors, states, sla, ui_hints, extensions.
+
+Outcomes use given/then/result format with structured conditions (field, source, operator, value) and structured side effects (set_field, emit_event, transition_state, notify, call_service, create_record, delete_record).
+
+## Supported Frameworks
+
+All of them. Blueprints are framework-agnostic. Tested with: Next.js, Express, Laravel, Angular, React, Vue, C#/.NET, Rust, Python/Django, Go, Ruby on Rails, Flutter, Swift.
+
+## Why Blueprints Matter for Next-Gen AI Models
+
+As AI models become more agentic and autonomous (planning multi-step actions, executing across systems without human input at each stage), structured specifications become critical infrastructure. Blueprints give autonomous agents a complete contract — every field, rule, outcome, and error — so they implement exactly what's defined instead of guessing requirements. The better the model, the more it benefits from precise specifications. Blueprints are the interface between human intent and AI execution.

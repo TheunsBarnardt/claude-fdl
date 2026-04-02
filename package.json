@@ -14,5 +14,31 @@
     "ajv-formats": "^3.0.0",
     "glob": "^11.0.0"
   },
+  "keywords": [
+    "blueprints",
+    "feature-definition-language",
+    "fdl",
+    "ai-code-generation",
+    "code-generation",
+    "yaml",
+    "claude-code",
+    "claude",
+    "specification",
+    "feature-specification",
+    "developer-tools",
+    "component-library",
+    "design-system",
+    "mcp-server",
+    "authentication",
+    "payment-integration",
+    "state-machine",
+    "workflow",
+    "api-integration",
+    "radix-ui",
+    "tailwind-css",
+    "accessibility",
+    "rate-limiting",
+    "registry"
+  ],
   "license": "MIT"
 }

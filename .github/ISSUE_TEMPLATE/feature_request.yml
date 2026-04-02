@@ -1,0 +1,39 @@
+name: Feature Request
+description: Suggest an improvement to the FDL schema, validator, or skills
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make FDL better? We'd love to hear it.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of FDL would this improve?
+      options:
+        - Blueprint schema (new fields, types, or constructs)
+        - Validator (new checks or warnings)
+        - Skills (improve existing slash commands)
+        - New skill (new slash command)
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What would you like?
+      description: Describe the feature and why it would be useful.
+      placeholder: "It would be great if blueprints could define..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you tried any workarounds?

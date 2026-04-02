@@ -1,0 +1,67 @@
+name: Blueprint Request
+description: Request a new blueprint for a feature or integration
+title: "[Blueprint] "
+labels: [blueprint-request]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Want a blueprint for a feature that doesn't exist yet? Describe it here and the community can build it.
+
+  - type: input
+    id: feature-name
+    attributes:
+      label: Feature name
+      description: What should this blueprint be called? (kebab-case)
+      placeholder: "two-factor-auth"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - auth
+        - data
+        - access
+        - ui
+        - integration
+        - notification
+        - payment
+        - workflow
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What should this feature do?
+      description: Describe the feature in plain language. What data does it need? What should happen? What can go wrong?
+      placeholder: |
+        Two-factor authentication using TOTP (Google Authenticator, Authy).
+        - User scans QR code to set up
+        - Enters 6-digit code on login
+        - Backup codes for recovery
+        - Can disable 2FA from settings
+    validations:
+      required: true
+
+  - type: textarea
+    id: source
+    attributes:
+      label: Reference material (optional)
+      description: Links to docs, RFCs, existing implementations, or open-source code that could inform the blueprint.
+      placeholder: |
+        - RFC 6238 (TOTP)
+        - https://github.com/speakeasyjs/speakeasy
+        - Google Authenticator docs
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Estimated complexity
+      options:
+        - Simple (few fields, 2-3 outcomes)
+        - Medium (multiple actors, state machine, 5-10 outcomes)
+        - Complex (multi-step workflow, SLAs, many integrations)
