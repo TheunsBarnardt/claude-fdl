@@ -1,7 +1,7 @@
 # Feature Definition Language (FDL)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Blueprints](https://img.shields.io/badge/Blueprints-16-blue.svg)](blueprints/)
+[![Blueprints](https://img.shields.io/badge/Blueprints-25-blue.svg)](blueprints/)
 [![AI Tools](https://img.shields.io/badge/AI_Tools-Claude_|_ChatGPT_|_Copilot-purple.svg)](#faq)
 
 **Define features as YAML blueprints. Generate complete implementations for any framework. Extract architectural patterns from any codebase, API docs, or business document.**
@@ -308,7 +308,7 @@ Plain text conditions still work alongside structured ones — use whichever is 
 
 ## Included Blueprints
 
-FDL ships with 16 blueprints. But here's the thing — **blueprints are not just templates to copy.** Each one encodes production-tested architectural patterns that transfer to entirely different problems. The login blueprint doesn't just build you a login page. It teaches AI how to build rate limiting, token lifecycle management, and enumeration prevention for *anything*.
+FDL ships with 25 blueprints. But here's the thing — **blueprints are not just templates to copy.** Each one encodes production-tested architectural patterns that transfer to entirely different problems. The login blueprint doesn't just build you a login page. It teaches AI how to build rate limiting, token lifecycle management, and enumeration prevention for *anything*.
 
 ### How to Think About Blueprints
 
@@ -356,6 +356,22 @@ When you extract a payment system, you don't just get "how Electrum works." You 
 | `shadcn-cli` | CLI for installing UI components from registries | **Registry/plugin architecture** (namespace, URL, auth headers, dependency resolution) — build your own package registry, plugin marketplace, or template distribution system. **MCP server** (7 tools for AI assistants to discover and install components) — build AI-native interfaces for any catalog. **Framework detection** (auto-detect Next.js, Vite, Django, Rails, etc.) — build any multi-framework CLI tool. **Safe file mutation** (backup before overwrite, validate paths) — build any CLI that modifies user projects. |
 | `shadcn-components` | 56 accessible React UI components with design system | **Variant system via CVA** (variant + size to className) — build any component library with configurable visual states. **Compound component pattern** (Dialog.Trigger, Dialog.Content) — build composable UI APIs. **Multi-theme architecture** (6 design styles, light/dark, CSS variables in OKLCH) — build a swappable design system. **Accessibility patterns** (focus trap, ARIA attributes, keyboard navigation) — build WCAG-compliant components in any framework. |
 
+### CMS Pack — Headless CMS Architecture Patterns
+
+Extracted from [Payload CMS](https://github.com/payloadcms/payload) (200+ source files) — a production headless CMS used by thousands of projects. These blueprints capture the architectural patterns behind any content management system.
+
+| Blueprint | What it is | What else you gain |
+|-----------|-----------|-------------------|
+| `payload-auth` | JWT sessions + API keys + account locking + email verification + custom strategies | **Multi-strategy auth** (password, API key, custom) — works for any API that needs multiple auth methods. **Session management with UUID tracking** — works for any system that needs "log out everywhere." **Progressive account locking** (lock + revoke recent sessions) — works for any brute-forceable endpoint. |
+| `payload-collections` | Full CRUD with pagination, lifecycle hooks, bulk operations, and field selection | **Hook lifecycle architecture** (beforeValidate → beforeChange → afterChange for every operation) — build plugin systems, audit logging, or computed fields for any data layer. **Query-based access control** (WHERE clause merging) — build multi-tenant apps where users only see their own data. **Bulk operations with partial success** (some succeed, some fail, all reported) — works for any batch processing API. |
+| `payload-uploads` | File uploads with image resizing, focal-point cropping, and cloud storage adapters | **Multi-adapter storage pattern** (local, S3, GCS, Azure, R2, Vercel Blob) — build any system that needs swappable storage backends. **Image processing pipeline** (resize → crop → format convert → metadata preserve) — build a media service, thumbnail generator, or CDN origin. **Restricted file type validation** (buffer-level MIME detection, not just extension) — secure any upload endpoint. |
+| `payload-versions` | Draft/publish workflow, autosave, version history, restore, scheduled publishing | **Draft/publish state machine** — works for any content that needs review before going live (blog posts, product listings, legal documents). **Autosave without version explosion** (update-in-place for autosaves, new version for manual saves) — works for any editor with save-as-you-type. **Scheduled publishing via job queue** — works for any "go live at midnight" scenario. |
+| `payload-access-control` | Function-based permissions returning booleans or WHERE clauses | **Row-level security via query merging** — the access function returns a WHERE clause that gets AND-merged with every query. Build multi-tenant, team-scoped, or owner-only access for any database. **Field-level redaction** — hide salary fields from non-HR users, mask PII for support staff. **Permission introspection API** — let the frontend ask "what can I do?" before rendering UI. |
+| `payload-globals` | Singleton documents for site-wide settings, nav, headers, footers | **Singleton pattern** — simplified CRUD with no create/delete, just read/update. Works for app config, feature flags, site settings, or any "there's exactly one of these" data. |
+| `payload-job-queue` | Tasks, workflows, cron scheduling, retry with backoff, concurrency control | **Task orchestration with sub-tasks** — a workflow handler can spawn inline tasks with independent retry. Build CI/CD pipelines, ETL jobs, or multi-step data processing. **Exponential backoff retry** — works for any unreliable external service call. **Concurrency control** (exclusive: one-at-a-time; supersedes: latest cancels older) — prevent duplicate processing in any queue system. |
+| `payload-document-locking` | Pessimistic locking to prevent concurrent editing | **Pessimistic locking with auto-expiry** — lock a resource, auto-release after timeout. Works for any collaborative editing, checkout flows, or resource reservation system. **Lock override for admins** — break locks when users abandon sessions. |
+| `payload-preferences` | Per-user key-value storage for UI state and settings | **Per-user isolation via WHERE clause** — each user only sees their own data, enforced at the query level. Works for any user settings, saved filters, dashboard layouts, or personalization system. **Upsert key-value pattern** — simple create-or-update semantics for any preferences store. |
+
 ### Workflow Pack — Business Process Patterns
 
 | Blueprint | What it is | What else you gain |
@@ -374,6 +390,10 @@ Individual blueprints are useful. **Combining them is where it gets interesting:
 | **SaaS onboarding wizard** | `signup` (account creation) + `email-verification` (confirm ownership) + `expense-approval` (step-by-step workflow pattern) |
 | **IoT device management platform** | `palm-vein` (hardware state machine) + `shadcn-cli` (registry for device drivers) + `chp-account-management` (proxy resolution for device IDs) |
 | **Loan origination system** | `expense-approval` (multi-step approval + SLAs) + `chp-outbound-payments` (disbursement) + `login` (secure access) |
+| **Headless CMS** | `payload-collections` (CRUD + hooks) + `payload-auth` (multi-strategy auth) + `payload-access-control` (row-level security) + `payload-versions` (draft/publish) |
+| **Multi-tenant SaaS with content** | `payload-collections` (data layer) + `payload-access-control` (tenant isolation via WHERE) + `payload-auth` (API keys for integrations) + `expense-approval` (approval workflows) |
+| **Background job processing platform** | `payload-job-queue` (task orchestration + retry + concurrency) + `payload-auth` (API key auth for triggers) + `login` (rate limiting for endpoints) |
+| **Document collaboration platform** | `payload-collections` (CRUD) + `payload-document-locking` (prevent concurrent edits) + `payload-versions` (history + restore) + `payload-uploads` (file attachments) |
 
 ### Recreating or Customizing Blueprints
 
@@ -469,6 +489,31 @@ You have a working Express app with authentication already implemented. You want
 
 Six commands. Complete authentication system with login, registration, password reset, email verification hooks, rate limiting, account lockout, and secure session management.
 
+### Example 6: Extract an entire CMS from its codebase
+
+Payload CMS is a production headless CMS with auth, CRUD, uploads, versioning, access control, job queues, and more. Extract all of it into blueprints, then use those patterns to build your own:
+
+```
+/fdl-extract-code https://github.com/payloadcms/payload.git
+```
+> Claude clones the repo, analyzes 200+ source files across 9 feature areas.
+> It finds: JWT + API key auth, full CRUD with lifecycle hooks, image processing pipeline, draft/publish workflow, function-based access control, job queue with retry and concurrency, document locking, and user preferences.
+> You choose which features to extract — it generates 9 blueprints with cross-references.
+
+Now use those patterns to build something entirely different:
+
+```
+/fdl-generate payload-collections express
+```
+> Generates a full CRUD API with lifecycle hooks, pagination, query filtering, and bulk operations — using the same architectural patterns as Payload, but for your Express app.
+
+```
+/fdl-generate payload-job-queue nextjs
+```
+> Generates a job queue system with task definitions, retry with exponential backoff, concurrency control, and cron scheduling — the same patterns Payload uses internally.
+
+The blueprints capture the *architecture*, not the CMS. You get a CRUD system with hooks, a job queue with retry logic, a draft/publish workflow — all usable independently in any framework.
+
 ---
 
 ## Project Structure
@@ -479,9 +524,11 @@ claude-fdl/
     blueprint.schema.yaml      # The rules that all blueprints must follow
   blueprints/
     auth/                      # Authentication blueprints
-    data/                      # Data and workflow blueprints
+    access/                    # Permissions and access control blueprints
+    data/                      # CRUD, storage, versioning, and data management blueprints
     integration/               # External service and hardware integration blueprints
     ui/                        # UI component systems and developer tooling blueprints
+    workflow/                  # Business process, job queue, and pipeline blueprints
   scripts/
     validate.js                # Validates blueprints are well-formed
   .claude/
