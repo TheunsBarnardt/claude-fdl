@@ -1,0 +1,68 @@
+{
+  "description": "FDL Auto-Evolution Hooks — Automatic validation, docs generation, and commits",
+  "version": "0.1.0",
+
+  "hooks": {
+    "after-fdl-extract-code": {
+      "description": "After extracting blueprints from code, auto-validate and commit",
+      "trigger": "whenever /fdl-extract-code completes successfully",
+      "action": "run /fdl-auto-evolve",
+      "enabled": true
+    },
+
+    "after-fdl-create": {
+      "description": "After creating a new blueprint, auto-validate and commit",
+      "trigger": "whenever /fdl-create completes successfully",
+      "action": "run /fdl-auto-evolve",
+      "enabled": true
+    },
+
+    "before-git-push": {
+      "description": "Before pushing, ensure all blueprints are valid and docs are current",
+      "trigger": "before running 'git push'",
+      "action": "run /fdl-auto-evolve --verbose",
+      "enabled": false,
+      "note": "Enable this to enforce validation on every push"
+    },
+
+    "watch-blueprints": {
+      "description": "Watch blueprints directory and auto-evolve on changes",
+      "trigger": "whenever any *.blueprint.yaml file changes in blueprints/",
+      "action": "run /fdl-auto-evolve",
+      "enabled": false,
+      "note": "Enable this for real-time evolution as you edit blueprints"
+    }
+  },
+
+  "automation": {
+    "validate-on-change": {
+      "description": "Automatically run validation after any blueprint modification",
+      "command": "node scripts/validate.js",
+      "trigger": "blueprints/**/*.yaml",
+      "fail-action": "report",
+      "enabled": true
+    },
+
+    "generate-docs-on-change": {
+      "description": "Automatically regenerate docs when blueprints change",
+      "command": "npm run generate",
+      "trigger": "blueprints/**/*.yaml",
+      "fail-action": "warn",
+      "enabled": true
+    },
+
+    "commit-on-valid-blueprints": {
+      "description": "Create atomic commits when all blueprints are valid",
+      "command": "node .claude/skills/fdl-auto-evolve/auto-evolve.js",
+      "trigger": "after validation succeeds",
+      "fail-action": "ask",
+      "enabled": true
+    }
+  },
+
+  "what-this-means": {
+    "Without hooks": "Manual workflow: edit blueprint → run validate → run generate → git add → git commit",
+    "With hooks": "Automatic workflow: edit blueprint → (validation, docs, commit happen automatically)",
+    "Result": "FDL becomes an evolving system where improvements automatically propagate through the entire pipeline"
+  }
+}

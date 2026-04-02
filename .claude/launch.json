@@ -2,11 +2,11 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "nextjs-example",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--dir", "examples/nextjs", "run", "dev"],
-      "port": 3000,
-      "autoPort": true
+      "name": "validate-and-generate",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "validate:watch"],
+      "port": 0,
+      "cwd": "C:/Work/claude-fdl"
     }
   ]
 }

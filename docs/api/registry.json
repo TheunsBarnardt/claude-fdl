@@ -2,10 +2,59 @@
   "$schema": "https://theunsbarnardt.github.io/claude-fdl/api/registry.json",
   "name": "Feature Definition Language (FDL) Blueprint Registry",
   "version": "1.0.0",
-  "generated": "2026-04-02T16:35:45.431Z",
+  "generated": "2026-04-02T17:05:14.944Z",
   "total": 51,
   "base_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints",
   "categories": {
+    "payment": {
+      "count": 3,
+      "blueprints": [
+        {
+          "feature": "invoicing-payments",
+          "version": "1.0.0",
+          "description": "Invoicing and payment lifecycle: customer invoices, vendor bills, credit notes, receipts, payment registration, multi-currency, and follow-up.\n",
+          "tags": [
+            "invoicing",
+            "payments",
+            "billing",
+            "credit-notes",
+            "multi-currency",
+            "accounting"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/invoicing-payments.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/invoicing-payments.blueprint.yaml"
+        },
+        {
+          "feature": "loyalty-coupons",
+          "version": "1.0.0",
+          "description": "Loyalty and promotion engine supporting points, coupons, gift cards, discount codes, buy-X-get-Y offers, e-wallets, and next-order rewards.\n",
+          "tags": [
+            "loyalty",
+            "coupons",
+            "gift-cards",
+            "promotions",
+            "rewards",
+            "discounts"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/loyalty-coupons.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/loyalty-coupons.blueprint.yaml"
+        },
+        {
+          "feature": "pos-core",
+          "version": "1.0.0",
+          "description": "Point-of-sale system managing sales sessions, product orders, payment processing, cash register operations, receipt generation, and accounting integration.\n",
+          "tags": [
+            "point-of-sale",
+            "retail",
+            "cash-register",
+            "receipt",
+            "session-management"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/pos-core.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/pos-core.blueprint.yaml"
+        }
+      ]
+    },
     "ui": {
       "count": 7,
       "blueprints": [
@@ -109,55 +158,6 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/self-order-kiosk.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/self-order-kiosk.blueprint.yaml"
-        }
-      ]
-    },
-    "payment": {
-      "count": 3,
-      "blueprints": [
-        {
-          "feature": "invoicing-payments",
-          "version": "1.0.0",
-          "description": "Invoicing and payment lifecycle: customer invoices, vendor bills, credit notes, receipts, payment registration, multi-currency, and follow-up.\n",
-          "tags": [
-            "invoicing",
-            "payments",
-            "billing",
-            "credit-notes",
-            "multi-currency",
-            "accounting"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/invoicing-payments.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/invoicing-payments.blueprint.yaml"
-        },
-        {
-          "feature": "loyalty-coupons",
-          "version": "1.0.0",
-          "description": "Loyalty and promotion engine supporting points, coupons, gift cards, discount codes, buy-X-get-Y offers, e-wallets, and next-order rewards.\n",
-          "tags": [
-            "loyalty",
-            "coupons",
-            "gift-cards",
-            "promotions",
-            "rewards",
-            "discounts"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/loyalty-coupons.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/loyalty-coupons.blueprint.yaml"
-        },
-        {
-          "feature": "pos-core",
-          "version": "1.0.0",
-          "description": "Point-of-sale system managing sales sessions, product orders, payment processing, cash register operations, receipt generation, and accounting integration.\n",
-          "tags": [
-            "point-of-sale",
-            "retail",
-            "cash-register",
-            "receipt",
-            "session-management"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/pos-core.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/pos-core.blueprint.yaml"
         }
       ]
     },
@@ -513,28 +513,6 @@
         }
       ]
     },
-    "access": {
-      "count": 1,
-      "blueprints": [
-        {
-          "feature": "payload-access-control",
-          "version": "1.0.0",
-          "description": "Function-based access control with collection-level, field-level, and document-level permissions supporting boolean and WHERE clause results",
-          "tags": [
-            "cms",
-            "access-control",
-            "permissions",
-            "rbac",
-            "field-level",
-            "document-level",
-            "where-clause",
-            "payload"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/access/payload-access-control.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/access/payload-access-control.blueprint.yaml"
-        }
-      ]
-    },
     "data": {
       "count": 17,
       "blueprints": [
@@ -793,6 +771,28 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/undo-redo.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/undo-redo.blueprint.yaml"
+        }
+      ]
+    },
+    "access": {
+      "count": 1,
+      "blueprints": [
+        {
+          "feature": "payload-access-control",
+          "version": "1.0.0",
+          "description": "Function-based access control with collection-level, field-level, and document-level permissions supporting boolean and WHERE clause results",
+          "tags": [
+            "cms",
+            "access-control",
+            "permissions",
+            "rbac",
+            "field-level",
+            "document-level",
+            "where-clause",
+            "payload"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/access/payload-access-control.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/access/payload-access-control.blueprint.yaml"
         }
       ]
     }

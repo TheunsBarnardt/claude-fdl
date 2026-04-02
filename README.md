@@ -1,7 +1,7 @@
 # Feature Definition Language (FDL)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Blueprints](https://img.shields.io/badge/Blueprints-51-blue.svg)](blueprints/)
+[![Blueprints](https://img.shields.io/badge/blueprints-51-blue)](blueprints/)
 [![AI Tools](https://img.shields.io/badge/AI_Tools-Claude_|_ChatGPT_|_Copilot-purple.svg)](https://theunsbarnardt.github.io/claude-fdl/using-with-other-ai/)
 [![Docs](https://img.shields.io/badge/Docs-GitHub_Pages-green.svg)](https://theunsbarnardt.github.io/claude-fdl/)
 

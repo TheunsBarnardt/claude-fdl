@@ -217,35 +217,83 @@ Run `npm run generate` after any change to blueprint YAML files. This updates bo
 ### Manual docs pages
 All other files in `docs/` (index.md, commands.md, faq.md, etc.) are manually authored and should be updated when relevant content changes.
 
-## Automated Workflows
+## Automated Workflows (Auto-Evolution System)
 
-**After every blueprint extraction or modification:**
+FDL now has an **auto-evolution system** that makes blueprints evolve automatically.
 
-1. **Validate** — Run `node scripts/validate.js` to ensure all blueprints pass schema validation
-2. **Generate** — Run `npm run generate` to rebuild documentation and JSON API
-3. **Commit** — Create a git commit with:
-   - Updated blueprints (YAML files)
-   - Updated README.md (if blueprint count changed)
-   - Updated llms.txt (if features added/removed)
-   - Generated docs/ and docs/api/ (auto-generated, never manually edited)
+### How It Works
 
-**Commit message format:**
+**Before (Manual):**
 ```
-Add/Update [feature-names]: [brief description]
-
-- [Extracted/Updated] [feature-name] ([category])
-- [Extracted/Updated] [feature-name] ([category])
-
-[One-line summary of why this change matters]
+Edit blueprint → validate → generate docs → git add → git commit
 ```
 
-**This must happen automatically after extraction — no manual steps required.**
+**After (Automatic via `/fdl-auto-evolve`):**
+```
+Edit blueprint → (all steps automated)
+```
 
-If running extraction skills:
-- Validate first
-- Generate docs second
-- Commit last
-- Never leave uncommitted blueprint changes
+### Automatic Triggers
+
+The `/fdl-auto-evolve` skill runs automatically after:
+- `/fdl-extract-code` completes (extracts from codebase)
+- `/fdl-create` completes (creates new blueprint)
+- Manual invocation: `/fdl-auto-evolve`
+
+### Steps (Fully Automated)
+
+1. **Validate** — All blueprints pass schema validation
+   - If validation fails: stops, no commit created (safety first)
+   - If validation passes: proceeds to step 2
+
+2. **Generate** — Documentation and JSON API rebuilt
+   - Regenerates `docs/blueprints/**/*.md`
+   - Regenerates `docs/api/**/*.json`
+   - Updates `registry.json` with all features
+
+3. **Detect Changes** — Identifies which blueprints changed
+   - Uses `git diff` to find affected files
+   - Categorizes changes by blueprint
+
+4. **Update Metadata** — Updates README.md and llms.txt
+   - Blueprint count badge in README
+   - Feature count in llms.txt
+
+5. **Create Commit** — Single atomic commit with all changes
+   - Stages all validated changes
+   - Creates commit with detailed message
+   - Format includes all modified blueprints
+
+### Usage
+
+```bash
+# Automatic (via skill completion hooks)
+/fdl-extract-code <repo>            # auto-evolves after success
+/fdl-create <feature>               # auto-evolves after success
+
+# Manual trigger
+/fdl-auto-evolve                    # Normal mode
+/fdl-auto-evolve --dry-run          # Preview without committing
+/fdl-auto-evolve --verbose          # Detailed output
+```
+
+### Configuration
+
+All auto-evolution hooks are configured in `.claude/hooks.json`:
+- `after-fdl-extract-code`: enabled (auto-run after extraction)
+- `after-fdl-create`: enabled (auto-run after creation)
+- `before-git-push`: disabled (enable to validate before push)
+- `watch-blueprints`: disabled (enable for real-time evolution)
+
+### What Makes This "Auto-Evolution"
+
+1. ✅ **Every change is validated** — Bad blueprints never commit
+2. ✅ **Docs always stay in sync** — No stale documentation
+3. ✅ **Atomic commits** — All-or-nothing (no partial states)
+4. ✅ **Change tracking** — Knows exactly what improved
+5. ✅ **Zero friction** — Extraction → valid commit in one step
+
+**Result:** FDL transforms from a static template repository into a living system that improves and adapts automatically.
 
 ## Rules
 
