@@ -1,0 +1,633 @@
+# ============================================================
+# CHP-OUTBOUND-PAYMENTS — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://docs.electrumsoftware.com/chp/public/outbound-intro
+# Covers: RTC, PayShap, CBPR+, EFT outbound credit transfers,
+# bulk payments, direct debits, payment returns, cancellations,
+# and status queries via Electrum's Clearing House Payments API.
+# ============================================================
+
+feature: chp-outbound-payments
+version: "1.0.0"
+description: "Electrum Clearing House Payments — outbound payment operations including RTC, PayShap, CBPR+, EFT credit transfers, bulk payments, direct debits, returns, and cancellations"
+category: integration
+tags: [payments, clearing-house, rtc, payshap, cbpr-plus, eft, outbound, south-africa, bankservafrica, electrum]
+
+actors:
+  - id: partner_system
+    name: "Partner System"
+    type: system
+    description: "Financial institution sending payments via Electrum's API"
+    role: "payment-originator"
+
+  - id: electrum
+    name: "Electrum Platform"
+    type: external
+    description: "Electrum platform orchestrating payment processing through the national payment system"
+    role: "payment-orchestrator"
+
+  - id: bankservafrica
+    name: "BankservAfrica"
+    type: external
+    description: "BankservAfrica scheme operator for South African payment clearing"
+    role: "scheme-operator"
+
+  - id: creditor_bank
+    name: "Creditor Bank"
+    type: external
+    description: "Receiving/creditor financial institution"
+    role: "payment-receiver"
+
+fields:
+  # ─── Transaction Identification ─────────────────────────
+  - name: uetr
+    type: token
+    required: true
+    label: "UETR"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-intro
+    # Universally unique end-to-end transaction reference (UUID)
+
+  - name: end_to_end_identification
+    type: text
+    required: true
+    label: "End-to-End Identification"
+    validation:
+      - type: maxLength
+        value: 35
+        message: "End-to-end identification must not exceed 35 characters"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  - name: transaction_reference
+    type: text
+    required: true
+    label: "Transaction Reference"
+    # Partner's internal reference for reconciliation
+
+  # ─── Creditor Fields ────────────────────────────────────
+  - name: creditor_account_number
+    type: text
+    required: true
+    label: "Creditor Account Number"
+
+  - name: creditor_account_type
+    type: select
+    required: false
+    label: "Creditor Account Type"
+    options:
+      - value: "CHECKING"
+        label: "Checking"
+      - value: "SAVINGS"
+        label: "Savings"
+
+  - name: creditor_bank_code
+    type: text
+    required: false
+    label: "Creditor Bank Code"
+
+  # ─── Debtor Fields ─────────────────────────────────────
+  - name: debtor_account_number
+    type: text
+    required: true
+    label: "Debtor Account Number"
+
+  - name: debtor_account_type
+    type: select
+    required: false
+    label: "Debtor Account Type"
+    options:
+      - value: "CHECKING"
+        label: "Checking"
+      - value: "SAVINGS"
+        label: "Savings"
+
+  # ─── Amount Fields ─────────────────────────────────────
+  - name: amount_value
+    type: number
+    required: true
+    label: "Amount"
+    validation:
+      - type: min
+        value: 0
+        message: "Amount must be zero or greater"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  - name: amount_currency
+    type: text
+    required: true
+    label: "Currency"
+    # ISO 4217 currency code (e.g., ZAR, USD)
+
+  # ─── Payment Control Fields ────────────────────────────
+  - name: payment_scheme
+    type: select
+    required: true
+    label: "Payment Scheme"
+    options:
+      - value: "ZA_EFT"
+        label: "South Africa EFT"
+      - value: "ZA_RPP"
+        label: "South Africa RPP (PayShap)"
+      - value: "ZA_RTC"
+        label: "South Africa RTC"
+      - value: "CBPR+"
+        label: "Cross-Border Payments and Reporting Plus"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-intro
+
+  - name: payment_information
+    type: text
+    required: false
+    label: "Payment Information"
+
+  - name: remittance_information
+    type: text
+    required: false
+    label: "Remittance Information"
+
+  - name: instruction_priority
+    type: text
+    required: false
+    label: "Instruction Priority"
+
+  # ─── Direct Debit Fields ───────────────────────────────
+  - name: mandate_reference
+    type: text
+    required: false
+    label: "Mandate Reference"
+    # Required for direct debit operations
+
+  # ─── Return / Cancellation Fields ──────────────────────
+  - name: return_reason
+    type: text
+    required: false
+    label: "Return Reason"
+    # Required for payment return operations
+
+  - name: cancellation_type
+    type: text
+    required: false
+    label: "Cancellation Type"
+    # Required for payment cancellation operations
+
+states:
+  field: transaction_status
+  values:
+    - id: initiated
+      label: "Initiated"
+      initial: true
+      # Partner has submitted the request, HTTP 202 returned
+    - id: submitted
+      label: "Submitted"
+      # Electrum has forwarded to the scheme
+    - id: processing
+      label: "Processing"
+      # Scheme is processing the transaction
+    - id: completed
+      label: "Completed"
+      terminal: true
+      # Positive response received from creditor bank
+    - id: rejected
+      label: "Rejected"
+      terminal: true
+      # Negative response received from scheme or creditor bank
+    - id: returned
+      label: "Returned"
+      terminal: true
+      # Payment was returned after completion
+    - id: cancelled
+      label: "Cancelled"
+      terminal: true
+      # Payment was cancelled before completion
+    - id: failed
+      label: "Failed"
+      terminal: true
+      # Technical failure in processing
+
+  transitions:
+    - from: initiated
+      to: submitted
+      actor: electrum
+      description: "Electrum forwards payment instruction to scheme"
+
+    - from: submitted
+      to: processing
+      actor: bankservafrica
+      description: "Scheme accepts and begins processing"
+
+    - from: processing
+      to: completed
+      actor: creditor_bank
+      description: "Creditor bank accepts the payment"
+
+    - from: processing
+      to: rejected
+      actor: bankservafrica
+      description: "Scheme or creditor bank rejects the payment"
+
+    - from: submitted
+      to: rejected
+      actor: bankservafrica
+      description: "Scheme rejects the payment at submission"
+
+    - from: completed
+      to: returned
+      actor: partner_system
+      description: "Partner initiates return of a completed payment"
+
+    - from: processing
+      to: cancelled
+      actor: partner_system
+      description: "Partner cancels the payment before completion"
+
+    - from: initiated
+      to: failed
+      actor: electrum
+      description: "Technical failure during processing"
+
+    - from: submitted
+      to: failed
+      actor: electrum
+      description: "Technical failure after submission to scheme"
+
+rules:
+  async_processing:
+    http_202_acknowledgement: "All outbound operations return HTTP 202 — responses are delivered asynchronously via partner API callbacks"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-intro
+
+  authentication:
+    oauth2_required: "OAuth 2.0 authentication required for all API operations"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-intro
+
+  idempotency:
+    duplicate_handling: "Idempotent processing for retries — duplicate requests return HTTP 409 Conflict with original error echoed"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  sla_constraints:
+    payshap_end_to_end: "PayShap: 10 second end-to-end for proxy resolution and payment"
+    rtc_end_to_end: "RTC: 60 second end-to-end"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-intro
+
+  uetr:
+    universally_unique: "UETR must be universally unique for end-to-end tracking across all participants"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  error_response:
+    schema: "ErrorDetail"
+    required_fields: "message (required), detail (optional)"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-intro
+
+  identifier_determination:
+    payshap_only: "PayShap requires identifier determination before credit transfer — Electrum delivers report to partner's /identifiers/outbound/identifier-determination-report endpoint"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-payshap
+
+events:
+  - name: outbound.credit_transfer.initiated
+    payload: [uetr, end_to_end_identification, transaction_reference, payment_scheme, amount_value, amount_currency]
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  - name: outbound.credit_transfer.response_received
+    payload: [uetr, end_to_end_identification, transaction_status]
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  - name: outbound.bulk_credit_transfer.initiated
+    payload: [uetr, transaction_reference, payment_scheme, amount_value]
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-bulk
+
+  - name: outbound.bulk_credit_transfer.response_received
+    payload: [uetr, transaction_status]
+
+  - name: outbound.direct_debit.initiated
+    payload: [uetr, end_to_end_identification, mandate_reference, amount_value]
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-direct-debit
+
+  - name: outbound.direct_debit.response_received
+    payload: [uetr, transaction_status]
+
+  - name: outbound.payment_return.initiated
+    payload: [uetr, end_to_end_identification, return_reason, amount_value]
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-payment-return
+
+  - name: outbound.payment_cancellation.initiated
+    payload: [uetr, end_to_end_identification, cancellation_type]
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-payment-cancellation
+
+  - name: outbound.status_request.sent
+    payload: [uetr, end_to_end_identification]
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-status
+
+  - name: outbound.identifier.report_received
+    payload: [uetr, end_to_end_identification]
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-payshap
+
+errors:
+  - code: OUTBOUND_BAD_REQUEST
+    status: 400
+    message: "Invalid request payload or missing required fields"
+
+  - code: OUTBOUND_UNAUTHORIZED
+    status: 401
+    message: "OAuth 2.0 authentication failed or token expired"
+
+  - code: OUTBOUND_FORBIDDEN
+    status: 403
+    message: "Insufficient permissions for the requested operation"
+
+  - code: OUTBOUND_NOT_FOUND
+    status: 404
+    message: "Requested resource or transaction not found"
+
+  - code: OUTBOUND_METHOD_NOT_ALLOWED
+    status: 400
+    message: "HTTP method not allowed for this endpoint"
+
+  - code: OUTBOUND_CONFLICT
+    status: 409
+    message: "Duplicate request detected — original error echoed in response"
+
+  - code: OUTBOUND_UNPROCESSABLE
+    status: 422
+    message: "Request is syntactically valid but cannot be processed"
+
+  - code: OUTBOUND_RATE_LIMITED
+    status: 429
+    message: "Rate limit exceeded — retry after backoff"
+
+  - code: OUTBOUND_SERVER_ERROR
+    status: 500
+    message: "Internal server error on Electrum platform"
+
+  - code: OUTBOUND_SERVICE_UNAVAILABLE
+    status: 500
+    message: "Electrum service temporarily unavailable"
+
+outcomes:
+  # ─── Credit Transfer ────────────────────────────────────
+  credit_transfer_initiated:
+    priority: 1
+    given:
+      - "Partner is authenticated via OAuth 2.0"
+      - field: payment_scheme
+        source: input
+        operator: in
+        value: ["ZA_RTC", "ZA_RPP"]
+        description: "Payment scheme is RTC or PayShap"
+      - field: amount_value
+        source: input
+        operator: gte
+        value: 0
+        description: "Amount is zero or greater"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_credit_transfer"
+        description: "POST /transactions/outbound/credit-transfer"
+      - action: emit_event
+        event: outbound.credit_transfer.initiated
+        payload: [uetr, end_to_end_identification, transaction_reference, payment_scheme, amount_value, amount_currency]
+      - action: transition_state
+        field: transaction_status
+        from: null
+        to: initiated
+    result: "HTTP 202 returned — credit transfer accepted for async processing"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  credit_transfer_success:
+    priority: 2
+    given:
+      - "Outbound credit transfer was initiated"
+      - "Positive response received from scheme via creditor bank"
+    then:
+      - action: call_service
+        target: "electrum_api.deliver_credit_transfer_response"
+        description: "Electrum delivers response to partner's /transactions/outbound/credit-transfer-response"
+      - action: emit_event
+        event: outbound.credit_transfer.response_received
+        payload: [uetr, end_to_end_identification, transaction_status]
+      - action: transition_state
+        field: transaction_status
+        from: processing
+        to: completed
+    result: "Credit transfer completed — partner receives positive response at callback endpoint"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  credit_transfer_rejected:
+    priority: 3
+    given:
+      - "Outbound credit transfer was initiated"
+      - "Negative response received from scheme or creditor bank"
+    then:
+      - action: call_service
+        target: "electrum_api.deliver_credit_transfer_response"
+        description: "Electrum delivers rejection to partner's /transactions/outbound/credit-transfer-response"
+      - action: emit_event
+        event: outbound.credit_transfer.response_received
+        payload: [uetr, end_to_end_identification, transaction_status]
+      - action: transition_state
+        field: transaction_status
+        from: processing
+        to: rejected
+    result: "Credit transfer rejected — partner receives negative response with reason at callback endpoint"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-credit-transfers
+
+  # ─── Bulk Credit Transfer ───────────────────────────────
+  bulk_credit_transfer_initiated:
+    priority: 4
+    given:
+      - "Partner is authenticated via OAuth 2.0"
+      - field: amount_value
+        source: input
+        operator: gte
+        value: 0
+        description: "Amount is zero or greater"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_bulk_credit_transfer"
+        description: "POST /transactions/outbound/bulk/credit-transfer"
+      - action: emit_event
+        event: outbound.bulk_credit_transfer.initiated
+        payload: [uetr, transaction_reference, payment_scheme, amount_value]
+      - action: transition_state
+        field: transaction_status
+        from: null
+        to: initiated
+    result: "HTTP 202 returned — bulk credit transfer accepted for async processing"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-bulk
+
+  # ─── Direct Debit ───────────────────────────────────────
+  direct_debit_initiated:
+    priority: 5
+    given:
+      - "Partner is authenticated via OAuth 2.0"
+      - field: mandate_reference
+        source: input
+        operator: exists
+        description: "Mandate reference is provided for the direct debit"
+      - field: amount_value
+        source: input
+        operator: gte
+        value: 0
+        description: "Amount is zero or greater"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_direct_debit"
+        description: "POST /transactions/outbound/direct-debit"
+      - action: emit_event
+        event: outbound.direct_debit.initiated
+        payload: [uetr, end_to_end_identification, mandate_reference, amount_value]
+      - action: transition_state
+        field: transaction_status
+        from: null
+        to: initiated
+    result: "HTTP 202 returned — direct debit accepted for async processing"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-direct-debit
+
+  # ─── Payment Return ────────────────────────────────────
+  payment_return_initiated:
+    priority: 6
+    given:
+      - "Partner is authenticated via OAuth 2.0"
+      - field: return_reason
+        source: input
+        operator: exists
+        description: "Return reason is provided"
+      - "Original inbound payment exists and is eligible for return"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_payment_return"
+        description: "POST /transactions/outbound/payment-return"
+      - action: emit_event
+        event: outbound.payment_return.initiated
+        payload: [uetr, end_to_end_identification, return_reason, amount_value]
+      - action: transition_state
+        field: transaction_status
+        from: null
+        to: initiated
+    result: "HTTP 202 returned — payment return accepted for async processing"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-payment-return
+
+  # ─── Payment Cancellation ──────────────────────────────
+  payment_cancellation_initiated:
+    priority: 7
+    given:
+      - "Partner is authenticated via OAuth 2.0"
+      - field: cancellation_type
+        source: input
+        operator: exists
+        description: "Cancellation type is specified"
+      - "Prior payment instruction exists and is eligible for cancellation"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_payment_cancellation"
+        description: "POST /transactions/outbound/payment-cancellation"
+      - action: emit_event
+        event: outbound.payment_cancellation.initiated
+        payload: [uetr, end_to_end_identification, cancellation_type]
+      - action: transition_state
+        field: transaction_status
+        from: null
+        to: initiated
+    result: "HTTP 202 returned — cancellation request accepted; resolution delivered to partner's inbound cancellation resolution endpoint"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-payment-cancellation
+
+  # ─── Status Query ───────────────────────────────────────
+  status_query_sent:
+    priority: 8
+    given:
+      - "Partner is authenticated via OAuth 2.0"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "UETR of the target transaction is provided"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_status_request"
+        description: "POST /transactions/outbound/credit-transfer/status-request or /transactions/outbound/bulk/credit-transfer/status-request"
+      - action: emit_event
+        event: outbound.status_request.sent
+        payload: [uetr, end_to_end_identification]
+    result: "Status request sent — current transaction state returned"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-status
+
+  # ─── Error Scenarios ────────────────────────────────────
+  outbound_technical_error:
+    priority: 9
+    error: OUTBOUND_SERVER_ERROR
+    given:
+      - "Outbound request was initiated"
+      - "Technical error occurs during Electrum processing"
+    then:
+      - action: emit_event
+        event: outbound.credit_transfer.response_received
+        payload: [uetr, end_to_end_identification, transaction_status]
+      - action: transition_state
+        field: transaction_status
+        from: initiated
+        to: failed
+    result: "Technical error — partner receives error response via callback with ErrorDetail schema"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-intro
+
+  outbound_duplicate_request:
+    priority: 10
+    error: OUTBOUND_CONFLICT
+    given:
+      - "Partner sends an outbound request"
+      - "Request is a duplicate of a previously processed request"
+    then:
+      - action: set_field
+        target: http_status
+        value: 409
+    result: "HTTP 409 Conflict returned — original error echoed in response body"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-intro
+
+sla:
+  acknowledgement:
+    max_duration: "immediate"
+    description: "HTTP 202 acknowledgement returned immediately upon receiving outbound request"
+
+  payshap_end_to_end:
+    max_duration: "10s"
+    description: "PayShap end-to-end completion including proxy resolution and payment"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-payshap
+
+  rtc_end_to_end:
+    max_duration: "60s"
+    description: "RTC end-to-end completion"
+    # Source: https://docs.electrumsoftware.com/chp/public/outbound-rtc
+
+extensions:
+  api:
+    base_url: "https://example.com/path/payments/api/v1"
+    auth: "OAuth 2.0"
+    content_type: "application/json"
+    openapi_spec: "https://docs.electrumsoftware.com/_spec/openapi/elpapi/elpapi.json"
+    endpoints:
+      credit_transfer: "POST /transactions/outbound/credit-transfer"
+      credit_transfer_response_callback: "POST /transactions/outbound/credit-transfer-response"
+      fi_to_fi_credit_transfer: "POST /transactions/outbound/fi-to-fi-credit-transfer"
+      fi_to_fi_credit_transfer_response_callback: "POST /transactions/outbound/fi-to-fi-credit-transfer-response"
+      bulk_credit_transfer: "POST /transactions/outbound/bulk/credit-transfer"
+      bulk_credit_transfer_response_callback: "POST /transactions/outbound/bulk/credit-transfer-response"
+      direct_debit: "POST /transactions/outbound/direct-debit"
+      direct_debit_response_callback: "POST /transactions/outbound/direct-debit-response"
+      payment_return: "POST /transactions/outbound/payment-return"
+      payment_return_response_callback: "POST /transactions/outbound/payment-return-response"
+      payment_cancellation: "POST /transactions/outbound/payment-cancellation"
+      credit_transfer_status: "POST /transactions/outbound/credit-transfer/status-request"
+      bulk_credit_transfer_status: "POST /transactions/outbound/bulk/credit-transfer/status-request"
+      identifier_determination_callback: "POST /identifiers/outbound/identifier-determination-report"
+
+related:
+  - feature: chp-inbound-payments
+    type: recommended
+    reason: "Inbound payment processing — receiving payments from the national payment system"
+
+  - feature: chp-request-to-pay
+    type: optional
+    reason: "Request-to-pay operations via PayShap"
+
+  - feature: chp-eft
+    type: recommended
+    reason: "EFT-specific payment operations"
+
+  - feature: chp-account-management
+    type: recommended
+    reason: "Account verification and management for CHP participants"

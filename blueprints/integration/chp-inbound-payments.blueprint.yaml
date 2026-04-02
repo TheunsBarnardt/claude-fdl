@@ -1,0 +1,666 @@
+# ============================================================
+# CHP-INBOUND-PAYMENTS — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://docs.electrumsoftware.com/chp/public/inbound-intro
+# Electrum Clearing House Payments (CHP) — inbound payment
+# processing for RTC, PayShap, and EFT credit transfers and
+# direct debits on South Africa's National Payments System.
+# ============================================================
+
+feature: chp-inbound-payments
+version: "1.0.0"
+description: "Electrum CHP inbound payment processing — receiving RTC, PayShap, and EFT credit transfers and direct debits from the national payment system"
+category: integration
+tags: [payments, south-africa, rtc, payshap, eft, clearing-house, inbound, credit-transfer, direct-debit, real-time, api]
+
+actors:
+  - id: partner_system
+    name: "Partner System"
+    type: system
+    description: "The financial institution integrating with Electrum — receives and processes inbound payment requests"
+    role: "api-consumer"
+
+  - id: electrum
+    name: "Electrum Platform"
+    type: external
+    description: "Electrum CHP platform that orchestrates inter-bank payment processing"
+    role: "orchestrator"
+
+  - id: bankservafrica
+    name: "BankservAfrica"
+    type: external
+    description: "Scheme operator for RTC and PayShap (Rapid Payments Programme) in South Africa"
+    role: "scheme-operator"
+
+  - id: debtor_bank
+    name: "Debtor Bank"
+    type: external
+    description: "The sending/debtor financial institution initiating the payment"
+    role: "originator"
+
+fields:
+  # ─── Transaction Identification ────────────────────────────
+  # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer-authorisation
+  - name: uetr
+    type: token
+    required: true
+    label: "Universal End-to-End Transaction Reference"
+    # UUID v4 — uniquely identifies the payment across all systems
+
+  - name: end_to_end_identification
+    type: text
+    required: true
+    label: "End-to-End Identification"
+    validation:
+      - type: maxLength
+        value: 35
+        message: "End-to-end identification must not exceed 35 characters"
+    # Assigned by the originating party to identify the transaction
+
+  - name: transaction_identification
+    type: text
+    required: false
+    label: "Transaction Identification"
+    validation:
+      - type: maxLength
+        value: 35
+        message: "Transaction identification must not exceed 35 characters"
+
+  - name: instruction_identification
+    type: text
+    required: false
+    label: "Instruction Identification"
+    validation:
+      - type: maxLength
+        value: 35
+        message: "Instruction identification must not exceed 35 characters"
+
+  - name: message_identification
+    type: text
+    required: true
+    label: "Message Identification"
+    validation:
+      - type: maxLength
+        value: 35
+        message: "Message identification must not exceed 35 characters"
+    # Point-to-point reference assigned by the instructing party
+
+  - name: creation_date_time
+    type: datetime
+    required: true
+    label: "Creation Date/Time"
+    # RFC 3339 format — when the message was created
+
+  # ─── Settlement ─────────────────────────────────────────────
+  - name: bank_settlement_amount_value
+    type: number
+    required: true
+    label: "Settlement Amount"
+    validation:
+      - type: min
+        value: 0
+        message: "Settlement amount must be zero or greater"
+
+  - name: bank_settlement_amount_currency
+    type: text
+    required: true
+    label: "Settlement Currency"
+    validation:
+      - type: pattern
+        value: "^[A-Z]{3}$"
+        message: "Currency must be a 3-letter ISO 4217 code"
+    # Typically ZAR for South African domestic payments
+
+  - name: settlement_date
+    type: date
+    required: false
+    label: "Settlement Date"
+
+  # ─── Creditor (Receiving Party) ─────────────────────────────
+  - name: creditor_account_number
+    type: text
+    required: true
+    label: "Creditor Account Number"
+
+  - name: creditor_account_proxy
+    type: text
+    required: false
+    label: "Creditor Account Proxy"
+    # PayShap proxy identifier (e.g. mobile number, email) resolved to account
+
+  - name: creditor_legal_name
+    type: text
+    required: false
+    label: "Creditor Legal Name"
+    validation:
+      - type: maxLength
+        value: 140
+        message: "Creditor legal name must not exceed 140 characters"
+
+  # ─── Debtor (Sending Party) ─────────────────────────────────
+  - name: debtor_account_number
+    type: text
+    required: false
+    label: "Debtor Account Number"
+
+  - name: debtor_legal_name
+    type: text
+    required: false
+    label: "Debtor Legal Name"
+    validation:
+      - type: maxLength
+        value: 140
+        message: "Debtor legal name must not exceed 140 characters"
+
+  # ─── Payment Context ────────────────────────────────────────
+  - name: payment_scheme
+    type: select
+    required: true
+    label: "Payment Scheme"
+    options:
+      - value: "ZA_RTC"
+        label: "Real-Time Clearing"
+      - value: "ZA_RPP"
+        label: "PayShap (Rapid Payments Programme)"
+      - value: "ZA_EFT"
+        label: "Electronic Funds Transfer"
+      - value: "CBPR+"
+        label: "Cross-Border Payments and Reporting Plus"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-intro
+
+  - name: remittance_information
+    type: text
+    required: false
+    label: "Remittance Information"
+    # Unstructured payment reference provided by the debtor
+
+  # ─── Status ─────────────────────────────────────────────────
+  - name: transaction_status
+    type: select
+    required: false
+    label: "Transaction Status"
+    options:
+      - value: "APPROVED"
+        label: "Approved"
+      - value: "REJECTED"
+        label: "Rejected"
+      - value: "PENDING"
+        label: "Pending"
+
+  - name: status_reason
+    type: text
+    required: false
+    label: "Status Reason"
+    # Reason code or description when transaction is rejected
+
+states:
+  field: transaction_status
+  values:
+    - id: received
+      label: "Received"
+      initial: true
+      # Inbound payment request received from Electrum
+
+    - id: processing
+      label: "Processing"
+      # Partner is validating and processing the payment
+
+    - id: approved
+      label: "Approved"
+      # Partner has approved the credit transfer authorisation
+
+    - id: rejected
+      label: "Rejected"
+      terminal: true
+      # Partner has rejected the credit transfer authorisation
+
+    - id: completed
+      label: "Completed"
+      terminal: true
+      # Credit transfer completion received — payment is final
+
+    - id: timed_out
+      label: "Timed Out"
+      terminal: true
+      # Partner failed to acknowledge within the required timeframe
+
+    - id: failed
+      label: "Failed"
+      terminal: true
+      # Technical error during processing
+
+  transitions:
+    - from: received
+      to: processing
+      actor: partner_system
+      description: "Partner acknowledges request and begins processing"
+
+    - from: processing
+      to: approved
+      actor: partner_system
+      description: "Partner approves the credit transfer authorisation"
+      # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer-authorisation
+
+    - from: processing
+      to: rejected
+      actor: partner_system
+      description: "Partner rejects the credit transfer authorisation"
+
+    - from: approved
+      to: completed
+      actor: electrum
+      description: "Electrum sends credit transfer completion after scheme settlement"
+      # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer-completion
+
+    - from: processing
+      to: timed_out
+      actor: electrum
+      description: "Partner failed to acknowledge within the SLA deadline"
+
+    - from: processing
+      to: failed
+      actor: partner_system
+      description: "Technical error occurred during payment processing"
+
+rules:
+  # ─── Acknowledgement ────────────────────────────────────────
+  # Source: https://docs.electrumsoftware.com/chp/public/inbound-intro
+  acknowledgement:
+    max_response_time: "1s"
+    requirement: "All HTTP requests from Electrum must be acknowledged within 1 second"
+    async_model: "Acknowledge with HTTP 202, process asynchronously, then POST result back to Electrum"
+
+  # ─── SLA Timings ────────────────────────────────────────────
+  # Source: https://docs.electrumsoftware.com/chp/public/inbound-intro
+  timing:
+    payshap_proxy_resolution: "10s end-to-end"
+    payshap_payment_completion: "10s end-to-end"
+    rtc_payment_completion: "60s end-to-end"
+
+  # ─── Idempotency ────────────────────────────────────────────
+  idempotency:
+    requirement: "Processing must be idempotent — duplicate requests identified by uetr must not affect the outcome"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-intro
+
+  # ─── Authentication ─────────────────────────────────────────
+  authentication:
+    method: "OAuth 2.0"
+    requirement: "OAuth credentials required for all API interactions between partner and Electrum"
+
+  # ─── Error Handling ─────────────────────────────────────────
+  # Source: https://docs.electrumsoftware.com/chp/public/inbound-intro
+  error_handling:
+    technical_errors: "Respond with 4xx/5xx HTTP status and ErrorDetail payload (message required, detail optional)"
+    negative_outcomes: "Negative business outcomes (e.g. rejected authorisation) are distinct from technical errors"
+    error_detail_format: "ErrorDetail object with required 'message' field and optional 'detail' field"
+
+  # ─── Account and Proxy Management ───────────────────────────
+  # Source: https://docs.electrumsoftware.com/chp/public/inbound-intro
+  account_validation:
+    account_mirroring: "If partner uses Electrum account mirroring, Electrum validates accounts before forwarding"
+    proxy_management: "If partner uses Electrum proxy management, Electrum resolves PayShap proxies before forwarding"
+
+  # ─── Inbound RTC/PayShap Flow ───────────────────────────────
+  # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer-authorisation
+  inbound_rtc_payshap:
+    step_1_proxy: "PayShap only — Electrum sends POST /identifiers/inbound/identifier-determination to partner"
+    step_2_authorisation: "Electrum sends credit transfer authorisation to partner (async or sync endpoint)"
+    step_2_async_endpoint: "POST /transactions/inbound/credit-transfer-authorisation"
+    step_2_sync_endpoint: "POST /transactions/inbound/credit-transfer-authorisation-sync"
+    step_3_response: "Partner responds with POST to Electrum /transactions/inbound/credit-transfer-authorisation-response"
+    step_4_completion: "Electrum sends POST /transactions/inbound/credit-transfer-completion to partner"
+
+  # ─── Inbound EFT Flow ──────────────────────────────────────
+  # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer
+  inbound_eft:
+    credit_transfer: "Electrum sends POST /transactions/inbound/credit-transfer — immediate financial impact"
+    credit_transfer_response: "Partner responds with POST to Electrum /transactions/inbound/credit-transfer-response"
+
+  # ─── Inbound Direct Debit Flow ──────────────────────────────
+  # Source: https://docs.electrumsoftware.com/chp/public/inbound-direct-debit
+  inbound_direct_debit:
+    direct_debit: "Electrum sends POST /transactions/inbound/direct-debit"
+    direct_debit_response: "Partner responds with POST to Electrum /transactions/inbound/direct-debit-response"
+
+errors:
+  - code: INBOUND_BAD_REQUEST
+    status: 400
+    message: "Malformed request payload"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-intro
+
+  - code: INBOUND_UNAUTHORIZED
+    status: 401
+    message: "Invalid OAuth credentials"
+
+  - code: INBOUND_FORBIDDEN
+    status: 403
+    message: "Insufficient permissions for the requested operation"
+
+  - code: INBOUND_NOT_FOUND
+    status: 404
+    message: "Transaction or resource not found"
+
+  - code: INBOUND_UNPROCESSABLE
+    status: 422
+    message: "Validation error in request data"
+
+  - code: INBOUND_RATE_LIMITED
+    status: 429
+    message: "Too many requests — rate limit exceeded"
+
+  - code: INBOUND_SERVER_ERROR
+    status: 500
+    message: "Internal processing error"
+
+  - code: INBOUND_SERVICE_UNAVAILABLE
+    status: 500
+    message: "Service temporarily unavailable"
+
+  - code: INBOUND_TIMEOUT
+    status: 429
+    message: "Acknowledgement not received within 1 second"
+
+events:
+  - name: inbound.credit_transfer.authorisation_received
+    description: "PayShap/RTC credit transfer authorisation request received from Electrum"
+    payload: [uetr, end_to_end_identification, message_identification, payment_scheme, bank_settlement_amount_value, bank_settlement_amount_currency]
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer-authorisation
+
+  - name: inbound.credit_transfer.authorisation_responded
+    description: "Partner sent credit transfer authorisation response back to Electrum"
+    payload: [uetr, transaction_status, status_reason]
+
+  - name: inbound.credit_transfer.completed
+    description: "Credit transfer completion notification received from Electrum — payment is final"
+    payload: [uetr, end_to_end_identification, settlement_date]
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer-completion
+
+  - name: inbound.credit_transfer.received
+    description: "EFT credit transfer received from Electrum — immediate financial impact"
+    payload: [uetr, end_to_end_identification, bank_settlement_amount_value, bank_settlement_amount_currency]
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer
+
+  - name: inbound.direct_debit.received
+    description: "EFT direct debit request received from Electrum"
+    payload: [uetr, end_to_end_identification, bank_settlement_amount_value, debtor_account_number]
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-direct-debit
+
+  - name: inbound.identifier.determination_received
+    description: "PayShap proxy resolution request received — resolve proxy to account number"
+    payload: [creditor_account_proxy, payment_scheme]
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-identifier-determination
+
+outcomes:
+  # ─── PayShap Proxy Resolution ──────────────────────────────
+  identifier_determination_received:
+    priority: 1
+    given:
+      - field: payment_scheme
+        source: input
+        operator: eq
+        value: "ZA_RPP"
+        description: "Payment scheme is PayShap"
+      - field: creditor_account_proxy
+        source: input
+        operator: exists
+        description: "Proxy identifier is present in the request"
+    then:
+      - action: call_service
+        target: "partner_api.resolve_proxy"
+        description: "Resolve PayShap proxy to creditor account number"
+      - action: set_field
+        target: creditor_account_number
+        value: "resolved_account"
+      - action: emit_event
+        event: inbound.identifier.determination_received
+        payload: [creditor_account_proxy, payment_scheme]
+    result: "Proxy resolved to creditor account — Electrum proceeds with authorisation"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-identifier-determination
+
+  # ─── RTC/PayShap Authorisation ──────────────────────────────
+  credit_transfer_authorisation_received:
+    priority: 2
+    given:
+      - field: payment_scheme
+        source: input
+        operator: in
+        value: ["ZA_RTC", "ZA_RPP"]
+        description: "Payment scheme is RTC or PayShap"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "Universal end-to-end transaction reference is present"
+      - field: bank_settlement_amount_value
+        source: input
+        operator: gte
+        value: 0
+        description: "Settlement amount is non-negative"
+    then:
+      - action: transition_state
+        field: transaction_status
+        from: received
+        to: processing
+      - action: emit_event
+        event: inbound.credit_transfer.authorisation_received
+        payload: [uetr, end_to_end_identification, message_identification, payment_scheme, bank_settlement_amount_value, bank_settlement_amount_currency]
+    result: "Authorisation request acknowledged with HTTP 202 — partner begins processing"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer-authorisation
+
+  credit_transfer_authorisation_approved:
+    priority: 3
+    given:
+      - field: transaction_status
+        source: db
+        operator: eq
+        value: "processing"
+        description: "Transaction is currently being processed"
+      - "Partner validates creditor account and approves the transfer"
+    then:
+      - action: transition_state
+        field: transaction_status
+        from: processing
+        to: approved
+      - action: call_service
+        target: "electrum_api.authorisation_response"
+        description: "POST authorisation response with APPROVED status to Electrum"
+      - action: emit_event
+        event: inbound.credit_transfer.authorisation_responded
+        payload: [uetr, transaction_status]
+    result: "Credit transfer authorisation approved — awaiting completion from Electrum"
+
+  credit_transfer_authorisation_rejected:
+    priority: 4
+    given:
+      - field: transaction_status
+        source: db
+        operator: eq
+        value: "processing"
+        description: "Transaction is currently being processed"
+      - "Partner determines the transfer cannot be approved (invalid account, compliance, etc.)"
+    then:
+      - action: transition_state
+        field: transaction_status
+        from: processing
+        to: rejected
+      - action: call_service
+        target: "electrum_api.authorisation_response"
+        description: "POST authorisation response with REJECTED status and reason to Electrum"
+      - action: emit_event
+        event: inbound.credit_transfer.authorisation_responded
+        payload: [uetr, transaction_status, status_reason]
+    result: "Credit transfer authorisation rejected — reason provided in response"
+
+  # ─── Completion ─────────────────────────────────────────────
+  credit_transfer_completion_received:
+    priority: 5
+    given:
+      - field: transaction_status
+        source: db
+        operator: eq
+        value: "approved"
+        description: "Transaction was previously approved"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "Completion references a known transaction"
+    then:
+      - action: transition_state
+        field: transaction_status
+        from: approved
+        to: completed
+      - action: emit_event
+        event: inbound.credit_transfer.completed
+        payload: [uetr, end_to_end_identification, settlement_date]
+    result: "Credit transfer completed — funds are settled and payment is final"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer-completion
+
+  # ─── EFT Credit Transfer ────────────────────────────────────
+  eft_credit_transfer_received:
+    priority: 6
+    given:
+      - field: payment_scheme
+        source: input
+        operator: eq
+        value: "ZA_EFT"
+        description: "Payment scheme is EFT"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "Universal end-to-end transaction reference is present"
+      - field: bank_settlement_amount_value
+        source: input
+        operator: gte
+        value: 0
+        description: "Settlement amount is non-negative"
+    then:
+      - action: transition_state
+        field: transaction_status
+        from: received
+        to: completed
+      - action: emit_event
+        event: inbound.credit_transfer.received
+        payload: [uetr, end_to_end_identification, bank_settlement_amount_value, bank_settlement_amount_currency]
+    result: "EFT credit transfer received and applied — immediate financial impact"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-credit-transfer
+
+  # ─── EFT Direct Debit ──────────────────────────────────────
+  eft_direct_debit_received:
+    priority: 7
+    given:
+      - field: payment_scheme
+        source: input
+        operator: eq
+        value: "ZA_EFT"
+        description: "Payment scheme is EFT"
+      - field: debtor_account_number
+        source: input
+        operator: exists
+        description: "Debtor account to be debited is specified"
+      - field: bank_settlement_amount_value
+        source: input
+        operator: gt
+        value: 0
+        description: "Debit amount is positive"
+    then:
+      - action: transition_state
+        field: transaction_status
+        from: received
+        to: processing
+      - action: emit_event
+        event: inbound.direct_debit.received
+        payload: [uetr, end_to_end_identification, bank_settlement_amount_value, debtor_account_number]
+    result: "EFT direct debit request received — partner processes debit against debtor account"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-direct-debit
+
+  # ─── Error Scenarios ────────────────────────────────────────
+  inbound_timeout:
+    priority: 8
+    error: INBOUND_TIMEOUT
+    given:
+      - field: transaction_status
+        source: db
+        operator: eq
+        value: "processing"
+        description: "Transaction is in processing state"
+      - "Partner fails to acknowledge the request within 1 second"
+    then:
+      - action: transition_state
+        field: transaction_status
+        from: processing
+        to: timed_out
+    result: "Acknowledgement timeout — Electrum may treat as negative response"
+
+  inbound_technical_error:
+    priority: 9
+    error: INBOUND_SERVER_ERROR
+    given:
+      - field: transaction_status
+        source: db
+        operator: eq
+        value: "processing"
+        description: "Transaction is in processing state"
+      - "Technical error occurs during payment processing"
+    then:
+      - action: transition_state
+        field: transaction_status
+        from: processing
+        to: failed
+    result: "Technical error — respond with appropriate HTTP status and ErrorDetail payload"
+
+sla:
+  acknowledgement:
+    max_duration: "1s"
+    description: "All inbound HTTP requests must be acknowledged within 1 second"
+    escalation: "Electrum treats timeout as negative outcome"
+    # Source: https://docs.electrumsoftware.com/chp/public/inbound-intro
+
+  payshap_proxy_resolution:
+    max_duration: "10s"
+    description: "PayShap proxy resolution must complete end-to-end within 10 seconds"
+    escalation: "Transaction times out at scheme level"
+
+  payshap_payment:
+    max_duration: "10s"
+    description: "PayShap payment processing must complete end-to-end within 10 seconds"
+    escalation: "Transaction times out at scheme level"
+
+  rtc_payment:
+    max_duration: "60s"
+    description: "RTC payment processing must complete end-to-end within 60 seconds"
+    escalation: "Transaction times out at scheme level"
+
+related:
+  - feature: chp-outbound-payments
+    type: recommended
+    reason: "Outbound payment responses are delivered via partner API callbacks"
+
+  - feature: chp-request-to-pay
+    type: optional
+    reason: "Inbound RTP requests use similar patterns"
+
+  - feature: chp-eft
+    type: recommended
+    reason: "EFT credit transfers and direct debits share this inbound flow"
+
+  - feature: chp-account-management
+    type: recommended
+    reason: "Account mirror and proxy management affect inbound routing"
+
+extensions:
+  api:
+    base_url: "https://example.com/path/payments/partner-api/v1"
+    auth: "OAuth 2.0"
+    content_type: "application/json"
+    openapi_spec: "https://docs.electrumsoftware.com/_spec/openapi/elpapi/elpapi-partner.json"
+    partner_endpoints:
+      identifier_determination: "POST /identifiers/inbound/identifier-determination"
+      credit_transfer_authorisation_async: "POST /transactions/inbound/credit-transfer-authorisation"
+      credit_transfer_authorisation_sync: "POST /transactions/inbound/credit-transfer-authorisation-sync"
+      credit_transfer_completion: "POST /transactions/inbound/credit-transfer-completion"
+      credit_transfer: "POST /transactions/inbound/credit-transfer"
+      direct_debit: "POST /transactions/inbound/direct-debit"
+    electrum_endpoints:
+      credit_transfer_authorisation_response: "POST /transactions/inbound/credit-transfer-authorisation-response"
+      credit_transfer_response: "POST /transactions/inbound/credit-transfer-response"
+      direct_debit_response: "POST /transactions/inbound/direct-debit-response"

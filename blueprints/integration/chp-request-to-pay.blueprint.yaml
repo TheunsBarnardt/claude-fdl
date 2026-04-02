@@ -1,0 +1,570 @@
+# ============================================================
+# CHP-REQUEST-TO-PAY — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Electrum Clearing House Payments — PayShap Request-To-Pay
+# Covers outbound/inbound RTP initiation, cancellation,
+# status requests, and refunds via the ZA_RPP scheme.
+# ============================================================
+
+feature: chp-request-to-pay
+version: "1.0.0"
+description: "PayShap Request-To-Pay (RTP) and refunds for Electrum Clearing House Payments — outbound/inbound RTP initiation, cancellation, and refund processing via the ZA_RPP scheme"
+category: integration
+tags: [payshap, rtp, request-to-pay, refund, payments, clearing-house, electrum, za-rpp, south-africa]
+
+actors:
+  - id: partner_system
+    name: "Partner System"
+    type: system
+    description: "Financial institution integrating with Electrum for PayShap RTP"
+    role: "api-consumer"
+
+  - id: electrum
+    name: "Electrum Platform"
+    type: external
+    description: "Electrum Clearing House Payments platform that orchestrates RTP messaging"
+    role: "platform"
+
+  - id: bankservafrica
+    name: "BankservAfrica"
+    type: external
+    description: "PayShap scheme operator managing the ZA_RPP real-time payments network"
+    role: "scheme-operator"
+
+  - id: debtor_bank
+    name: "Debtor Bank"
+    type: external
+    description: "Financial institution holding the debtor's account"
+    role: "counterparty"
+
+fields:
+  # ─── RTP Identification ────────────────────────────────
+  - name: uetr
+    type: token
+    required: true
+    label: "UETR"
+    # Unique End-to-End Transaction Reference (UUID)
+
+  - name: end_to_end_identification
+    type: text
+    required: true
+    label: "End-to-End Identification"
+    validation:
+      - type: maxLength
+        value: 35
+        message: "End-to-end identification must not exceed 35 characters"
+
+  # ─── Party Fields ──────────────────────────────────────
+  - name: creditor_account_number
+    type: text
+    required: true
+    label: "Creditor Account Number"
+
+  - name: debtor_party_name
+    type: text
+    required: true
+    label: "Debtor Party Name"
+    validation:
+      - type: maxLength
+        value: 140
+        message: "Debtor party name must not exceed 140 characters"
+
+  - name: debtor_party_identification
+    type: text
+    required: false
+    label: "Debtor Party Identification"
+
+  # ─── Amount Fields ─────────────────────────────────────
+  - name: amount_value
+    type: number
+    required: false
+    label: "Amount Value"
+    # For exact amount RTP requests
+
+  - name: amount_currency
+    type: text
+    required: true
+    label: "Amount Currency"
+    # ISO 4217 currency code (e.g. ZAR)
+
+  - name: amount_range_min
+    type: number
+    required: false
+    label: "Amount Range Minimum"
+    # For flexible amount RTP requests
+
+  - name: amount_range_max
+    type: number
+    required: false
+    label: "Amount Range Maximum"
+    # For flexible amount RTP requests
+
+  # ─── RTP Metadata ──────────────────────────────────────
+  - name: expiry_date_time
+    type: datetime
+    required: false
+    label: "Expiry Date/Time"
+    # ISO 8601 — configurable expiry for the RTP
+
+  - name: remittance_information
+    type: text
+    required: false
+    label: "Remittance Information"
+
+  - name: rtp_status
+    type: select
+    required: false
+    label: "RTP Status"
+    options:
+      - value: "PRESENTED"
+        label: "Presented"
+      - value: "PAID"
+        label: "Paid"
+      - value: "REJECTED"
+        label: "Rejected"
+      - value: "CANCELLED"
+        label: "Cancelled"
+      - value: "EXPIRED"
+        label: "Expired"
+
+  # ─── Cancellation Fields ───────────────────────────────
+  - name: cancellation_reason
+    type: text
+    required: false
+    label: "Cancellation Reason"
+
+  # ─── Refund Fields ─────────────────────────────────────
+  - name: refund_amount
+    type: number
+    required: false
+    label: "Refund Amount"
+    # Uses original transaction amount if omitted
+
+states:
+  field: rtp_status
+  values:
+    - id: initiated
+      label: "Initiated"
+      initial: true
+    - id: presented
+      label: "Presented"
+    - id: paid
+      label: "Paid"
+      terminal: true
+    - id: rejected
+      label: "Rejected"
+      terminal: true
+    - id: cancelled
+      label: "Cancelled"
+      terminal: true
+    - id: expired
+      label: "Expired"
+      terminal: true
+
+  transitions:
+    - from: initiated
+      to: presented
+      actor: electrum
+      description: "RTP delivered to debtor bank via PayShap scheme"
+
+    - from: presented
+      to: paid
+      actor: debtor_bank
+      description: "Debtor authorises and completes payment"
+
+    - from: presented
+      to: rejected
+      actor: debtor_bank
+      description: "Debtor rejects the request to pay"
+
+    - from: presented
+      to: cancelled
+      actor: partner_system
+      description: "Creditor cancels the RTP before payment"
+
+    - from: presented
+      to: expired
+      actor: electrum
+      description: "RTP expires without response from debtor"
+
+rules:
+  scheme:
+    payshap_only: "Only the ZA_RPP (PayShap) scheme is supported for RTP"
+    async_model: "All RTP processing is asynchronous — requests and responses travel on separate HTTP calls"
+    end_to_end_time_limit: "PayShap mandates a 10-second end-to-end time limit for message processing"
+
+  amount:
+    exact_or_range: "An RTP can specify either an exact amount (amount_value) or an amount range (amount_range_min / amount_range_max), not both"
+    currency_required: "amount_currency is always required (ISO 4217)"
+
+  cancellation:
+    already_paid: "Cancellation may fail if the debtor has already paid — status ALREADY_PAID returned"
+    before_expiry: "Cancellations are only meaningful before the RTP expires"
+
+  refund:
+    original_amount_default: "If refund_amount is omitted, the original transaction amount is used"
+    original_debtor_default: "If debtor details are omitted, the creditor of the original transaction becomes the debtor of the refund"
+    prior_transaction_required: "A refund must reference a prior successful financial transaction"
+
+  expiry:
+    configurable: "RTP expiry is configurable via the expiryDateTime field (ISO 8601)"
+
+errors:
+  - code: RTP_BAD_REQUEST
+    status: 400
+    message: "The request body is malformed or missing required fields"
+
+  - code: RTP_UNAUTHORIZED
+    status: 401
+    message: "Authentication credentials are missing or invalid"
+
+  - code: RTP_FORBIDDEN
+    status: 403
+    message: "The caller does not have permission to perform this operation"
+
+  - code: RTP_NOT_FOUND
+    status: 404
+    message: "The requested RTP transaction was not found"
+
+  - code: RTP_UNPROCESSABLE
+    status: 422
+    message: "The request is well-formed but contains semantic errors"
+
+  - code: RTP_RATE_LIMITED
+    status: 429
+    message: "Too many requests — rate limit exceeded"
+
+  - code: RTP_SERVER_ERROR
+    status: 500
+    message: "An unexpected error occurred on the server"
+
+  - code: RTP_SERVICE_UNAVAILABLE
+    status: 500
+    message: "The service is temporarily unavailable"
+
+events:
+  - name: rtp.outbound.initiated
+    payload: [uetr, end_to_end_identification, creditor_account_number, amount_value, amount_currency]
+    description: "Partner initiated an outbound request-to-pay"
+  - name: rtp.outbound.response_received
+    payload: [uetr, rtp_status, amount_value, amount_currency]
+    description: "Response received for an outbound RTP (paid, rejected, expired)"
+  - name: rtp.inbound.received
+    payload: [uetr, end_to_end_identification, debtor_party_name, amount_value, amount_currency]
+    description: "Inbound RTP received from another institution via Electrum"
+  - name: rtp.inbound.responded
+    payload: [uetr, rtp_status]
+    description: "Partner responded to an inbound RTP"
+  - name: rtp.cancellation.requested
+    payload: [uetr, cancellation_reason]
+    description: "Cancellation requested for an RTP"
+  - name: rtp.cancellation.response_received
+    payload: [uetr, rtp_status]
+    description: "Cancellation response received"
+  - name: rtp.refund.initiated
+    payload: [uetr, refund_amount, amount_currency]
+    description: "Refund initiated for a prior successful transaction"
+  - name: rtp.refund.response_received
+    payload: [uetr, refund_amount, amount_currency]
+    description: "Refund response received"
+
+outcomes:
+  # ─── Outbound RTP ──────────────────────────────────────
+  outbound_rtp_initiated:
+    priority: 1
+    given:
+      - "Partner system is authenticated"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "UETR is provided"
+      - field: creditor_account_number
+        source: input
+        operator: exists
+        description: "Creditor account number is provided"
+      - field: amount_currency
+        source: input
+        operator: exists
+        description: "Currency code is provided"
+    then:
+      - action: call_service
+        target: "electrum_chp.outbound_rtp"
+        description: "POST /transactions/outbound/request-to-pay"
+      - action: transition_state
+        field: rtp_status
+        from: initiated
+        to: presented
+      - action: emit_event
+        event: rtp.outbound.initiated
+        payload: [uetr, end_to_end_identification, creditor_account_number, amount_value, amount_currency]
+    result: "Outbound RTP submitted to Electrum and forwarded to debtor bank via PayShap"
+
+  outbound_rtp_paid:
+    priority: 2
+    given:
+      - field: rtp_status
+        source: db
+        operator: eq
+        value: "presented"
+        description: "RTP is currently in presented state"
+      - "Debtor authorises and completes payment"
+    then:
+      - action: transition_state
+        field: rtp_status
+        from: presented
+        to: paid
+      - action: emit_event
+        event: rtp.outbound.response_received
+        payload: [uetr, rtp_status, amount_value, amount_currency]
+    result: "Debtor paid the RTP — response delivered to partner via callback"
+
+  outbound_rtp_rejected:
+    priority: 3
+    given:
+      - field: rtp_status
+        source: db
+        operator: eq
+        value: "presented"
+        description: "RTP is currently in presented state"
+      - "Debtor rejects the request to pay"
+    then:
+      - action: transition_state
+        field: rtp_status
+        from: presented
+        to: rejected
+      - action: emit_event
+        event: rtp.outbound.response_received
+        payload: [uetr, rtp_status]
+    result: "Debtor rejected the RTP — response delivered to partner via callback"
+
+  outbound_rtp_expired:
+    priority: 4
+    given:
+      - field: rtp_status
+        source: db
+        operator: eq
+        value: "presented"
+        description: "RTP is currently in presented state"
+      - field: expiry_date_time
+        source: db
+        operator: lt
+        value: "now"
+        description: "RTP expiry time has passed"
+    then:
+      - action: transition_state
+        field: rtp_status
+        from: presented
+        to: expired
+      - action: emit_event
+        event: rtp.outbound.response_received
+        payload: [uetr, rtp_status]
+    result: "RTP expired without a response from the debtor"
+
+  # ─── Inbound RTP ───────────────────────────────────────
+  inbound_rtp_received:
+    priority: 5
+    given:
+      - "Electrum delivers inbound RTP from another institution"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "UETR is provided in the inbound message"
+      - field: debtor_party_name
+        source: input
+        operator: exists
+        description: "Debtor party name is provided"
+    then:
+      - action: emit_event
+        event: rtp.inbound.received
+        payload: [uetr, end_to_end_identification, debtor_party_name, amount_value, amount_currency]
+      - action: call_service
+        target: "partner_system.process_inbound_rtp"
+        description: "POST to partner's /transactions/inbound/request-to-pay"
+    result: "Inbound RTP delivered to partner for processing — partner responds via callback"
+
+  # ─── Cancellation ──────────────────────────────────────
+  rtp_cancellation_success:
+    priority: 6
+    given:
+      - field: rtp_status
+        source: db
+        operator: eq
+        value: "presented"
+        description: "RTP is in presented state and eligible for cancellation"
+      - "Cancellation request submitted before payment"
+    then:
+      - action: transition_state
+        field: rtp_status
+        from: presented
+        to: cancelled
+      - action: emit_event
+        event: rtp.cancellation.requested
+        payload: [uetr, cancellation_reason]
+      - action: emit_event
+        event: rtp.cancellation.response_received
+        payload: [uetr, rtp_status]
+    result: "RTP cancellation succeeded — transaction marked as cancelled"
+
+  rtp_cancellation_already_paid:
+    priority: 7
+    given:
+      - field: rtp_status
+        source: db
+        operator: eq
+        value: "paid"
+        description: "RTP has already been paid"
+      - "Cancellation request submitted after payment"
+    then:
+      - action: emit_event
+        event: rtp.cancellation.response_received
+        payload: [uetr, rtp_status]
+    result: "Cancellation failed — debtor has already paid the RTP (status ALREADY_PAID)"
+
+  # ─── Refunds ───────────────────────────────────────────
+  refund_initiated:
+    priority: 8
+    given:
+      - "Partner system is authenticated"
+      - "A prior successful financial transaction exists for the given reference"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "UETR referencing the original transaction is provided"
+    then:
+      - action: call_service
+        target: "electrum_chp.refund_initiation"
+        description: "POST /transactions/outbound/refund-initiation"
+      - action: emit_event
+        event: rtp.refund.initiated
+        payload: [uetr, refund_amount, amount_currency]
+    result: "Refund initiated against a prior successful transaction — uses original amount and creditor as debtor if not specified"
+
+  refund_completed:
+    priority: 9
+    given:
+      - "Refund initiation was submitted"
+      - "Refund successfully processed by the scheme"
+    then:
+      - action: emit_event
+        event: rtp.refund.response_received
+        payload: [uetr, refund_amount, amount_currency]
+    result: "Refund completed — response delivered to partner via callback"
+
+flows:
+  # ─── Outbound RTP Flow ─────────────────────────────────
+  outbound_rtp:
+    description: "Partner initiates a request-to-pay to a debtor via PayShap"
+    steps:
+      - step: 1
+        actor: partner_system
+        action: "POST to Electrum /transactions/outbound/request-to-pay with RTP details"
+      - step: 2
+        actor: electrum
+        action: "Validate and forward RTP through PayShap (ZA_RPP) scheme"
+      - step: 3
+        actor: bankservafrica
+        action: "Route RTP to debtor bank"
+      - step: 4
+        actor: debtor_bank
+        action: "Present RTP to debtor for authorisation"
+      - step: 5
+        actor: electrum
+        action: "POST response to partner's /transactions/outbound/request-to-pay-response"
+
+  # ─── Inbound RTP Flow ──────────────────────────────────
+  inbound_rtp:
+    description: "Electrum delivers an inbound RTP from another institution to the partner"
+    steps:
+      - step: 1
+        actor: electrum
+        action: "POST to partner's /transactions/inbound/request-to-pay"
+      - step: 2
+        actor: partner_system
+        action: "Process inbound RTP and determine response"
+      - step: 3
+        actor: partner_system
+        action: "POST response to Electrum /transactions/inbound/request-to-pay-response"
+
+  # ─── Cancellation Flow ─────────────────────────────────
+  outbound_cancellation:
+    description: "Partner cancels a previously initiated outbound RTP"
+    steps:
+      - step: 1
+        actor: partner_system
+        action: "POST to Electrum /transactions/outbound/request-to-pay/cancellation-request"
+      - step: 2
+        actor: electrum
+        action: "Forward cancellation through PayShap scheme"
+      - step: 3
+        actor: electrum
+        action: "POST cancellation response to partner's callback endpoint"
+
+  inbound_cancellation:
+    description: "Electrum delivers a cancellation request for an inbound RTP"
+    steps:
+      - step: 1
+        actor: electrum
+        action: "POST to partner's /transactions/inbound/request-to-pay/cancellation-request"
+      - step: 2
+        actor: partner_system
+        action: "Process cancellation and respond"
+
+  # ─── Status Request Flow ───────────────────────────────
+  inbound_status_request:
+    description: "Electrum requests the status of an inbound RTP from the partner"
+    steps:
+      - step: 1
+        actor: electrum
+        action: "POST to partner's /transactions/inbound/request-to-pay/status-request"
+      - step: 2
+        actor: partner_system
+        action: "Return current RTP status"
+
+  # ─── Refund Flow ───────────────────────────────────────
+  refund:
+    description: "Partner initiates a refund for a prior successful transaction"
+    steps:
+      - step: 1
+        actor: partner_system
+        action: "POST to Electrum /transactions/outbound/refund-initiation"
+      - step: 2
+        actor: electrum
+        action: "Process refund through PayShap scheme"
+      - step: 3
+        actor: electrum
+        action: "POST refund response to partner's /transactions/outbound/refund-initiation-response"
+
+sla:
+  payshap_end_to_end:
+    max_duration: "10s"
+    description: "PayShap mandates a 10-second end-to-end time limit for transaction processing"
+
+extensions:
+  api:
+    base_url: "https://example.com/path/payments/api/v1"
+    auth: "OAuth 2.0"
+    content_type: "application/json"
+    openapi_spec: "https://docs.electrumsoftware.com/_spec/openapi/elpapi/elpapi.json"
+    endpoints:
+      outbound_rtp: "POST /transactions/outbound/request-to-pay"
+      outbound_rtp_response: "POST /transactions/outbound/request-to-pay-response (callback)"
+      inbound_rtp: "POST /transactions/inbound/request-to-pay (callback)"
+      inbound_rtp_response: "POST /transactions/inbound/request-to-pay-response"
+      outbound_cancellation: "POST /transactions/outbound/request-to-pay/cancellation-request"
+      outbound_cancellation_response: "POST /transactions/outbound/request-to-pay/cancellation-response (callback)"
+      inbound_cancellation: "POST /transactions/inbound/request-to-pay/cancellation-request (callback)"
+      inbound_status_request: "POST /transactions/inbound/request-to-pay/status-request (callback)"
+      refund_initiation: "POST /transactions/outbound/refund-initiation"
+      refund_initiation_response: "POST /transactions/outbound/refund-initiation-response (callback)"
+
+related:
+  - feature: chp-inbound-payments
+    type: required
+    reason: "RTP payments result in inbound credit transfers"
+  - feature: chp-outbound-payments
+    type: required
+    reason: "RTP responses delivered via outbound callbacks"
+  - feature: chp-account-management
+    type: recommended
+    reason: "Proxy resolution for PayShap addressing"

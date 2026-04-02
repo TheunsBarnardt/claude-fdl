@@ -1,0 +1,669 @@
+# ============================================================
+# CHP-EFT — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Electrum Clearing House Payments — Electronic Funds Transfer
+# Covers EFT credits, debits, returns, on-us debits, payment
+# cancellation, and System Error Correction (SEC) through
+# BankservAfrica's EFT Settlement Module.
+# ============================================================
+
+feature: chp-eft
+version: "1.0.0"
+description: "Electronic Funds Transfer operations via Electrum's Clearing House Payments platform — inbound/outbound credits, debits, returns, on-us debits, payment cancellation, and system error correction (SEC)"
+category: integration
+tags: [eft, payments, clearing-house, bankservafrica, south-africa, credits, debits, returns, sec, electrum]
+
+actors:
+  - id: partner_system
+    name: "Partner System"
+    type: system
+    description: "Financial institution integrating with Electrum for EFT processing"
+    role: "api-consumer"
+
+  - id: electrum
+    name: "Electrum Platform"
+    type: external
+    description: "Electrum payment orchestration platform that mediates between partner and BankservAfrica"
+    role: "platform"
+
+  - id: bankservafrica
+    name: "BankservAfrica"
+    type: external
+    description: "South African automated clearing house operator for EFT batch settlement"
+    role: "settlement"
+
+  - id: counterparty_bank
+    name: "Counterparty Bank"
+    type: external
+    description: "The other financial institution in the EFT transaction"
+    role: "counterparty"
+
+fields:
+  # ─── Transaction Identification ─────────────────────────
+  - name: uetr
+    type: token
+    required: true
+    label: "UETR"
+    # Unique End-to-End Transaction Reference (UUID)
+
+  - name: end_to_end_identification
+    type: text
+    required: true
+    label: "End-to-End Identification"
+    validation:
+      - type: maxLength
+        value: 35
+        message: "End-to-end identification must not exceed 35 characters"
+
+  # ─── Account Fields ─────────────────────────────────────
+  - name: creditor_account_number
+    type: text
+    required: true
+    label: "Creditor Account Number"
+
+  - name: debtor_account_number
+    type: text
+    required: true
+    label: "Debtor Account Number"
+
+  - name: user_branch
+    type: text
+    required: true
+    label: "User Branch"
+    # Originating institution's branch code
+
+  - name: user_account
+    type: text
+    required: true
+    label: "User Account"
+    # Originating institution's account number
+
+  - name: homing_branch
+    type: text
+    required: true
+    label: "Homing Branch"
+    # Destination institution's branch code
+
+  - name: homing_account
+    type: text
+    required: true
+    label: "Homing Account"
+    # Destination institution's account number
+
+  # ─── Amount Fields ──────────────────────────────────────
+  - name: amount_value
+    type: number
+    required: true
+    label: "Amount"
+    validation:
+      - type: required
+        message: "Amount is required"
+
+  - name: amount_currency
+    type: text
+    required: true
+    label: "Currency"
+    # ISO 4217 currency code (typically ZAR)
+
+  # ─── Payment Classification ────────────────────────────
+  - name: payment_scheme
+    type: select
+    required: true
+    label: "Payment Scheme"
+    options:
+      - value: "ZA_EFT"
+        label: "EFT"
+      - value: "ZA_AC"
+        label: "Authenticated Collections"
+      - value: "ZA_RMS"
+        label: "RMS"
+
+  - name: entry_class
+    type: select
+    required: false
+    label: "Entry Class"
+    # Determines the type of debit/credit transaction
+    # 40+ values including DEBIT_INSURANCE_PREMIUM, CREDIT_SALARY, etc.
+
+  - name: record_identifier
+    type: select
+    required: false
+    label: "Record Identifier"
+    options:
+      - value: "CREDIT"
+        label: "Credit"
+      - value: "DEBIT"
+        label: "Debit"
+      - value: "UNPAID_CREDIT"
+        label: "Unpaid Credit"
+      - value: "UNPAID_DEBIT"
+        label: "Unpaid Debit"
+      - value: "CREDIT_RECALL"
+        label: "Credit Recall"
+
+  # ─── Direct Debit Fields ───────────────────────────────
+  - name: mandate_reference
+    type: text
+    required: false
+    label: "Mandate Reference"
+    # Required for direct debit transactions
+
+  # ─── Return Fields ─────────────────────────────────────
+  - name: return_reason
+    type: text
+    required: false
+    label: "Return Reason"
+    # ReasonCode enum with 24 values including:
+    # NOT_PROVIDED_FOR, ACCOUNT_FROZEN, NO_SUCH_ACCOUNT,
+    # ACCOUNT_CLOSED, DUPLICATE_PAYMENT, etc.
+
+  # ─── Settlement Fields ─────────────────────────────────
+  - name: action_date
+    type: date
+    required: false
+    label: "Action Date"
+    # Settlement date for the EFT transaction
+
+  # ─── Reference Fields ──────────────────────────────────
+  - name: user_reference
+    type: text
+    required: true
+    label: "User Reference"
+    # Partner's own reference for the transaction
+
+states:
+  field: eft_transaction_status
+  values:
+    - id: initiated
+      label: "Initiated"
+      initial: true
+      # Partner has submitted the transaction request
+    - id: submitted
+      label: "Submitted"
+      # Transaction submitted to BankservAfrica for batch processing
+    - id: processing
+      label: "Processing"
+      # Transaction is being processed in the EFT settlement cycle
+    - id: settled
+      label: "Settled"
+      terminal: true
+      # Transaction successfully settled
+    - id: returned
+      label: "Returned"
+      terminal: true
+      # Transaction was returned by the counterparty bank
+    - id: cancelled
+      label: "Cancelled"
+      terminal: true
+      # Transaction was cancelled before settlement
+    - id: unpaid
+      label: "Unpaid"
+      terminal: true
+      # Transaction could not be applied (insufficient funds, closed account, etc.)
+    - id: failed
+      label: "Failed"
+      terminal: true
+      # Technical failure during processing
+
+  transitions:
+    - from: initiated
+      to: submitted
+      actor: electrum
+      description: "Transaction accepted and queued for batch submission"
+
+    - from: submitted
+      to: processing
+      actor: bankservafrica
+      description: "Transaction picked up in EFT settlement cycle"
+
+    - from: processing
+      to: settled
+      actor: bankservafrica
+      description: "Transaction successfully settled"
+
+    - from: processing
+      to: unpaid
+      actor: counterparty_bank
+      description: "Transaction rejected by counterparty (insufficient funds, closed account, etc.)"
+
+    - from: settled
+      to: returned
+      actor: counterparty_bank
+      description: "Previously settled transaction returned"
+
+    - from: initiated
+      to: cancelled
+      actor: partner_system
+      description: "Transaction cancelled before submission"
+
+    - from: submitted
+      to: cancelled
+      actor: partner_system
+      description: "Transaction cancelled before settlement"
+
+    - from: initiated
+      to: failed
+      actor: electrum
+      description: "Technical failure processing the transaction"
+
+    - from: submitted
+      to: failed
+      actor: electrum
+      description: "Technical failure during batch submission"
+
+rules:
+  asynchronous_processing:
+    http_202: "All EFT operations return HTTP 202 Accepted — results delivered asynchronously via callbacks"
+    acknowledgement_time: "Partner must acknowledge inbound requests within 1 second"
+    # Failure to acknowledge in time may result in retries or timeouts
+
+  idempotency:
+    required: "All operations must be processed idempotently"
+    key: "uetr serves as the idempotency key for all EFT operations"
+    # Duplicate requests with the same uetr must not create duplicate transactions
+
+  settlement:
+    batch_processing: "EFT transactions are batch-processed through BankservAfrica — not real-time"
+    action_date: "Settlement occurs on the specified action_date"
+
+  inbound_credits:
+    endpoint: "POST /transactions/inbound/credit-transfer"
+    immediate_impact: "Inbound credits have immediate financial impact on the partner's customer"
+    # Electrum sends to partner — partner must credit the beneficiary
+
+  inbound_debits:
+    endpoint: "POST /transactions/inbound/direct-debit"
+    immediate_impact: "Inbound debits have immediate financial impact on the partner's customer"
+    # Electrum sends to partner — partner must debit the account holder
+
+  outbound_credits:
+    endpoint: "POST /transactions/outbound/credit-transfer"
+    scheme: "ZA_EFT"
+    # Partner initiates — Electrum submits to BankservAfrica
+
+  outbound_debits:
+    endpoint: "POST /transactions/outbound/direct-debit"
+    schemes: ["ZA_EFT", "ZA_AC", "ZA_RMS"]
+    mandate_required: "Direct debits require a valid mandate reference"
+
+  on_us_debits:
+    description: "Special case where debtor and creditor are at the same institution"
+    endpoint: "Uses same direct debit endpoints with on-us processing"
+    # No interbank settlement needed — processed internally
+
+  returns:
+    inbound_endpoint: "POST /transactions/inbound/payment-return"
+    outbound_endpoint: "POST /transactions/outbound/payment-return"
+    original_reference: "Returns must reference the original transaction"
+    reason_required: "A valid ReasonCode from the 24-value enum must be provided"
+
+  cancellation:
+    endpoint: "POST /transactions/outbound/payment-cancellation"
+    schemes: ["ZA_EFT", "ZA_AC"]
+    resolution: "Electrum delivers cancellation resolution via callback"
+
+  sec:
+    description: "System Error Correction — used to correct errors in previously submitted EFT transactions"
+    tracking: "SEC request and response records tracked via Events API"
+    sub_services: ["SYSTEM_ERROR_CORRECTION", "SYSTEM_ERROR_CORRECTION_RESPONSE"]
+    original_reference: "SEC corrections require matching the original transaction"
+
+  reason_codes:
+    description: "24-value ReasonCode enum for returns and rejections"
+    # Includes: NOT_PROVIDED_FOR, ACCOUNT_FROZEN, NO_SUCH_ACCOUNT,
+    # ACCOUNT_CLOSED, DUPLICATE_PAYMENT, AGENT_SUSPENDED, etc.
+
+outcomes:
+  # ─── Outbound Operations ─────────────────────────────────
+  eft_outbound_credit_initiated:
+    priority: 1
+    given:
+      - "Partner system is authenticated"
+      - field: amount_value
+        source: input
+        operator: gt
+        value: 0
+        description: "Credit amount is positive"
+      - field: creditor_account_number
+        source: input
+        operator: exists
+        description: "Creditor account is specified"
+      - field: payment_scheme
+        source: input
+        operator: eq
+        value: "ZA_EFT"
+        description: "Payment scheme is ZA_EFT for outbound credits"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_credit_transfer"
+        description: "POST /transactions/outbound/credit-transfer with scheme ZA_EFT"
+      - action: transition_state
+        field: eft_transaction_status
+        from: null
+        to: initiated
+      - action: emit_event
+        event: eft.credit.outbound_initiated
+        payload: [uetr, end_to_end_identification, amount_value, creditor_account_number]
+    result: "Outbound EFT credit accepted (HTTP 202) — settlement result delivered via callback"
+
+  eft_outbound_debit_initiated:
+    priority: 2
+    given:
+      - "Partner system is authenticated"
+      - field: amount_value
+        source: input
+        operator: gt
+        value: 0
+        description: "Debit amount is positive"
+      - field: debtor_account_number
+        source: input
+        operator: exists
+        description: "Debtor account is specified"
+      - field: mandate_reference
+        source: input
+        operator: exists
+        description: "Mandate reference is provided for direct debit"
+      - field: payment_scheme
+        source: input
+        operator: in
+        value: ["ZA_EFT", "ZA_AC", "ZA_RMS"]
+        description: "Payment scheme is valid for outbound debits"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_direct_debit"
+        description: "POST /transactions/outbound/direct-debit"
+      - action: transition_state
+        field: eft_transaction_status
+        from: null
+        to: initiated
+      - action: emit_event
+        event: eft.debit.outbound_initiated
+        payload: [uetr, end_to_end_identification, amount_value, debtor_account_number, payment_scheme]
+    result: "Outbound EFT debit accepted (HTTP 202) — settlement result delivered via callback"
+
+  # ─── Inbound Operations ──────────────────────────────────
+  eft_inbound_credit_received:
+    priority: 3
+    given:
+      - "Electrum sends inbound credit notification"
+      - field: creditor_account_number
+        source: input
+        operator: exists
+        description: "Creditor account at partner institution is specified"
+      - field: amount_value
+        source: input
+        operator: gt
+        value: 0
+        description: "Credit amount is positive"
+    then:
+      - action: call_service
+        target: "partner_api.process_inbound_credit"
+        description: "POST /transactions/inbound/credit-transfer — immediate financial impact"
+      - action: emit_event
+        event: eft.credit.inbound_received
+        payload: [uetr, end_to_end_identification, amount_value, creditor_account_number]
+    result: "Inbound EFT credit processed — beneficiary account credited"
+
+  eft_inbound_debit_received:
+    priority: 4
+    given:
+      - "Electrum sends inbound debit notification"
+      - field: debtor_account_number
+        source: input
+        operator: exists
+        description: "Debtor account at partner institution is specified"
+      - field: amount_value
+        source: input
+        operator: gt
+        value: 0
+        description: "Debit amount is positive"
+    then:
+      - action: call_service
+        target: "partner_api.process_inbound_debit"
+        description: "POST /transactions/inbound/direct-debit — immediate financial impact"
+      - action: emit_event
+        event: eft.debit.inbound_received
+        payload: [uetr, end_to_end_identification, amount_value, debtor_account_number]
+    result: "Inbound EFT debit processed — account holder debited"
+
+  # ─── Return Operations ───────────────────────────────────
+  eft_outbound_return_initiated:
+    priority: 5
+    given:
+      - "Partner system is authenticated"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "Original transaction reference is provided"
+      - field: return_reason
+        source: input
+        operator: exists
+        description: "Return reason code is specified"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_payment_return"
+        description: "POST /transactions/outbound/payment-return referencing the original transaction"
+      - action: transition_state
+        field: eft_transaction_status
+        from: settled
+        to: returned
+      - action: emit_event
+        event: eft.return.outbound_initiated
+        payload: [uetr, return_reason, amount_value]
+    result: "Outbound return accepted (HTTP 202) — returning a prior inbound transaction"
+
+  eft_inbound_return_received:
+    priority: 6
+    given:
+      - "Electrum sends inbound return notification"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "Original transaction reference is provided"
+      - field: return_reason
+        source: input
+        operator: exists
+        description: "Return reason code is specified"
+    then:
+      - action: call_service
+        target: "partner_api.process_inbound_return"
+        description: "POST /transactions/inbound/payment-return for a prior outbound transaction"
+      - action: transition_state
+        field: eft_transaction_status
+        from: settled
+        to: returned
+      - action: emit_event
+        event: eft.return.inbound_received
+        payload: [uetr, return_reason, amount_value]
+    result: "Inbound return processed — prior outbound transaction reversed"
+
+  # ─── Cancellation ────────────────────────────────────────
+  eft_cancellation_initiated:
+    priority: 7
+    given:
+      - "Partner system is authenticated"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "Original transaction reference is provided"
+      - field: payment_scheme
+        source: input
+        operator: in
+        value: ["ZA_EFT", "ZA_AC"]
+        description: "Cancellation supported for EFT and AC schemes"
+    then:
+      - action: call_service
+        target: "electrum_api.outbound_payment_cancellation"
+        description: "POST /transactions/outbound/payment-cancellation"
+      - action: emit_event
+        event: eft.cancellation.initiated
+        payload: [uetr, payment_scheme]
+    result: "Payment cancellation request accepted (HTTP 202) — resolution delivered via callback"
+
+  eft_cancellation_resolved:
+    priority: 8
+    given:
+      - "Electrum delivers cancellation resolution via callback"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "Original transaction reference is provided"
+    then:
+      - action: transition_state
+        field: eft_transaction_status
+        from: initiated
+        to: cancelled
+      - action: emit_event
+        event: eft.cancellation.resolved
+        payload: [uetr]
+    result: "Cancellation resolution received — transaction status updated"
+
+  # ─── System Error Correction ─────────────────────────────
+  eft_sec_initiated:
+    priority: 9
+    given:
+      - "An error is identified in a previously submitted EFT transaction"
+      - field: uetr
+        source: input
+        operator: exists
+        description: "Original transaction reference is provided for correction"
+    then:
+      - action: call_service
+        target: "electrum_api.sec_request"
+        description: "Submit System Error Correction request — tracked via Events API"
+      - action: emit_event
+        event: eft.sec.request_sent
+        payload: [uetr]
+    result: "SEC request submitted — correction tracked via Events API with SubService SYSTEM_ERROR_CORRECTION"
+
+  # ─── Error Handling ──────────────────────────────────────
+  eft_technical_error:
+    priority: 10
+    error: EFT_UNPROCESSABLE
+    given:
+      - any:
+          - "Request payload fails validation"
+          - "Referenced transaction does not exist"
+          - "Operation not permitted for the current transaction state"
+    then:
+      - action: transition_state
+        field: eft_transaction_status
+        from: initiated
+        to: failed
+      - action: emit_event
+        event: eft.sec.response_received
+        payload: [uetr, error]
+    result: "EFT operation failed due to technical error — see error code for details"
+
+errors:
+  - code: EFT_BAD_REQUEST
+    status: 400
+    message: "Request payload is invalid or missing required fields"
+
+  - code: EFT_UNAUTHORIZED
+    status: 401
+    message: "Authentication failed — invalid or missing credentials"
+
+  - code: EFT_FORBIDDEN
+    status: 403
+    message: "Insufficient permissions for the requested EFT operation"
+
+  - code: EFT_NOT_FOUND
+    status: 404
+    message: "Referenced transaction or resource does not exist"
+
+  - code: EFT_CONFLICT
+    status: 409
+    message: "Duplicate request — transaction with this uetr already exists"
+
+  - code: EFT_UNPROCESSABLE
+    status: 422
+    message: "Request is well-formed but cannot be processed (invalid state, business rule violation)"
+
+  - code: EFT_RATE_LIMITED
+    status: 429
+    message: "Too many requests — rate limit exceeded"
+    retry: true
+
+  - code: EFT_SERVER_ERROR
+    status: 500
+    message: "Internal server error during EFT processing"
+    retry: true
+
+  - code: EFT_SERVICE_UNAVAILABLE
+    status: 500
+    message: "EFT service temporarily unavailable"
+    retry: true
+
+events:
+  # ─── Credit Events ─────────────────────────────────────
+  - name: eft.credit.inbound_received
+    payload: [uetr, end_to_end_identification, amount_value, creditor_account_number]
+    description: "Inbound EFT credit received from counterparty bank"
+
+  - name: eft.credit.outbound_initiated
+    payload: [uetr, end_to_end_identification, amount_value, creditor_account_number]
+    description: "Outbound EFT credit initiated by partner"
+
+  # ─── Debit Events ──────────────────────────────────────
+  - name: eft.debit.inbound_received
+    payload: [uetr, end_to_end_identification, amount_value, debtor_account_number]
+    description: "Inbound EFT debit received from counterparty bank"
+
+  - name: eft.debit.outbound_initiated
+    payload: [uetr, end_to_end_identification, amount_value, debtor_account_number, payment_scheme]
+    description: "Outbound EFT debit initiated by partner"
+
+  # ─── Return Events ─────────────────────────────────────
+  - name: eft.return.inbound_received
+    payload: [uetr, return_reason, amount_value]
+    description: "Inbound return received for a prior outbound transaction"
+
+  - name: eft.return.outbound_initiated
+    payload: [uetr, return_reason, amount_value]
+    description: "Outbound return initiated for a prior inbound transaction"
+
+  # ─── Cancellation Events ───────────────────────────────
+  - name: eft.cancellation.initiated
+    payload: [uetr, payment_scheme]
+    description: "Payment cancellation request submitted"
+
+  - name: eft.cancellation.resolved
+    payload: [uetr]
+    description: "Payment cancellation resolution received"
+
+  # ─── SEC Events ────────────────────────────────────────
+  - name: eft.sec.request_sent
+    payload: [uetr]
+    description: "System Error Correction request submitted"
+
+  - name: eft.sec.response_received
+    payload: [uetr]
+    description: "System Error Correction response received"
+
+sla:
+  acknowledgement:
+    max_duration: "1s"
+    description: "Partner must acknowledge inbound requests within 1 second"
+
+related:
+  - feature: chp-inbound-payments
+    type: required
+  - feature: chp-outbound-payments
+    type: required
+  - feature: chp-account-management
+    type: recommended
+
+extensions:
+  api:
+    base_url: "https://example.com/path/payments/api/v1"
+    auth: "OAuth 2.0"
+    content_type: "application/json"
+    openapi_spec: "https://docs.electrumsoftware.com/_spec/openapi/elpapi/elpapi.json"
+  esm:
+    description: "EFT Settlement Module — BankservAfrica's batch settlement system"
+    record_types: [PAYMENT, UNPAID_INPUT, UNPAID_OUTPUT, RECALL_OUTPUT, SEC_REQUEST, SEC_RESPONSE, HOMED_BACK]
+    payment_types: [CREDIT, DEBIT]
+    directions: [INBOUND, OUTBOUND, ON_US]
+    sub_services: [SAME_DAY, ONE_DAY, TWO_DAY, RECALLS, SYSTEM_ERROR_CORRECTION]

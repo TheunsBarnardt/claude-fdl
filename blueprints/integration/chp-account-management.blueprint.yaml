@@ -1,0 +1,643 @@
+# ============================================================
+# CHP-ACCOUNT-MANAGEMENT — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Account and Proxy Management for Electrum Clearing House Payments.
+# Covers account mirroring, PayShap proxy resolution, RTC account
+# validation, AVS-R (Account Verification Service), and CDV
+# (Check Digit Verification).
+# ============================================================
+
+feature: chp-account-management
+version: "1.0.0"
+description: "Account management services for CHP — account mirroring, PayShap proxy management, real-time account verification (AVS-R), and check digit verification (CDV)"
+category: integration
+tags: [chp, electrum, bankservafrica, payshap, proxy, avsr, cdv, account-mirror, payments, south-africa]
+
+actors:
+  - id: partner_system
+    name: "Partner System"
+    type: system
+    description: "Financial institution integrating with Electrum for CHP services"
+    role: "api-consumer"
+
+  - id: electrum
+    name: "Electrum Platform"
+    type: external
+    description: "Electrum payment orchestration platform — manages CHP integration layer"
+    role: "platform"
+
+  - id: bankservafrica
+    name: "BankservAfrica"
+    type: external
+    description: "South African automated clearing house — operates PayShap, RTC, and EFT schemes"
+    role: "scheme-operator"
+
+fields:
+  # ─── Account Fields ────────────────────────────────────
+  - name: account_number
+    type: text
+    required: true
+    label: "Account Number"
+    validation:
+      - type: required
+        message: "Account number is required"
+    # Must pass CDV validation before payment initiation
+
+  - name: account_name
+    type: text
+    required: false
+    label: "Account Name"
+    validation:
+      - type: maxLength
+        value: 70
+        message: "Account name must not exceed 70 characters"
+
+  - name: account_currency
+    type: text
+    required: false
+    label: "Account Currency"
+    # ISO 4217 currency code (e.g. ZAR)
+
+  - name: account_type
+    type: select
+    required: false
+    label: "Account Type"
+    options:
+      - value: "CURRENT"
+        label: "Current"
+      - value: "SAVINGS"
+        label: "Savings"
+      - value: "TRANSMISSION"
+        label: "Transmission"
+      - value: "BOND"
+        label: "Bond"
+      - value: "SUBSCRIPTION_SHARE"
+        label: "Subscription Share"
+      - value: "OTHER"
+        label: "Other"
+    # BankservAfrica standard account types
+
+  - name: account_status
+    type: select
+    required: false
+    label: "Account Status"
+    options:
+      - value: "ENABLED"
+        label: "Enabled"
+      - value: "DISABLED"
+        label: "Disabled"
+      - value: "DELETED"
+        label: "Deleted"
+
+  # ─── Proxy Fields ──────────────────────────────────────
+  - name: proxy_type
+    type: select
+    required: false
+    label: "Proxy Type"
+    options:
+      - value: "mobile_number"
+        label: "Mobile Number"
+      - value: "email"
+        label: "Email Address"
+      - value: "id_number"
+        label: "ID Number"
+      - value: "custom"
+        label: "Custom Identifier"
+
+  - name: proxy_value
+    type: text
+    required: true
+    label: "Proxy Value"
+    validation:
+      - type: required
+        message: "Proxy value is required"
+    # The actual identifier (phone number, email, etc.)
+
+  - name: proxy_namespace
+    type: text
+    required: false
+    label: "Proxy Namespace"
+    validation:
+      - type: maxLength
+        value: 40
+        message: "Proxy namespace must not exceed 40 characters"
+    # Used for custom proxy types to scope uniqueness
+
+  # ─── Owner Fields ──────────────────────────────────────
+  - name: owner_legal_name
+    type: text
+    required: false
+    label: "Owner Legal Name"
+    validation:
+      - type: maxLength
+        value: 140
+        message: "Owner legal name must not exceed 140 characters"
+
+  - name: owner_known_as_name
+    type: text
+    required: false
+    label: "Owner Known-As Name"
+    validation:
+      - type: maxLength
+        value: 140
+        message: "Owner known-as name must not exceed 140 characters"
+
+  - name: owner_type
+    type: select
+    required: false
+    label: "Owner Type"
+    options:
+      - value: "INDIVIDUAL"
+        label: "Individual"
+      - value: "ORGANISATION"
+        label: "Organisation"
+
+  - name: owner_identification
+    type: text
+    required: false
+    label: "Owner Identification Number"
+    validation:
+      - type: maxLength
+        value: 35
+        message: "Owner identification must not exceed 35 characters"
+
+  - name: owner_identification_scheme
+    type: select
+    required: false
+    label: "Owner Identification Scheme"
+    options:
+      - value: "NIDN"
+        label: "National Identity Number"
+      - value: "CCPT"
+        label: "Passport Number"
+      - value: "DRLC"
+        label: "Driver's License"
+      - value: "EMPL"
+        label: "Employer ID"
+      - value: "SOSE"
+        label: "Social Security Number"
+      - value: "TXID"
+        label: "Tax Identification Number"
+      - value: "ARNU"
+        label: "Alien Registration Number"
+      - value: "CUST"
+        label: "Customer ID"
+      - value: "TELE"
+        label: "Telephone Number"
+      - value: "POID"
+        label: "Point of Interaction Data"
+    # PersonIdentificationCode enum per BankservAfrica spec
+
+  # ─── Bank Routing Fields ───────────────────────────────
+  - name: bank_code
+    type: text
+    required: false
+    label: "Bank Code"
+    # Clearing system member identifier
+
+  - name: branch_code
+    type: text
+    required: false
+    label: "Branch Code"
+
+  - name: record_identifier
+    type: text
+    required: false
+    label: "Record Identifier"
+    validation:
+      - type: maxLength
+        value: 50
+        message: "Record identifier must not exceed 50 characters"
+    # Unique system identifier for the account record
+
+  - name: iban
+    type: text
+    required: false
+    label: "IBAN"
+    validation:
+      - type: pattern
+        value: "^[A-Z]{2}[0-9]{2}[a-zA-Z0-9]{1,30}$"
+        message: "IBAN must follow ISO 13616 format"
+
+  - name: bicfi
+    type: text
+    required: false
+    label: "BIC/SWIFT Code"
+    # Business Identifier Code for the financial institution
+
+states:
+  field: account_status
+  values:
+    - id: enabled
+      label: "Enabled"
+      initial: true
+      # Account is active and can participate in transactions
+    - id: disabled
+      label: "Disabled"
+      # Account is temporarily suspended — no transactions processed
+    - id: deleted
+      label: "Deleted"
+      terminal: true
+      # Account permanently removed from mirror
+
+  transitions:
+    - from: enabled
+      to: disabled
+      actor: partner_system
+      description: "Partner disables account — suspends transaction processing"
+
+    - from: disabled
+      to: enabled
+      actor: partner_system
+      description: "Partner re-enables a previously disabled account"
+
+    - from: enabled
+      to: deleted
+      actor: partner_system
+      description: "Partner permanently removes an active account"
+
+    - from: disabled
+      to: deleted
+      actor: partner_system
+      description: "Partner permanently removes a disabled account"
+
+rules:
+  account_mirror:
+    use_case_a: "Electrum as Secondary Store — partner manages proxies, Electrum mirrors for faster routing"
+    use_case_b: "Electrum as Primary Store — Electrum manages proxies, partner mirrors for local resolution"
+    use_case_c: "No Electrum Mirror — partner handles all proxy and account resolution directly"
+    use_case_d: "Electrum as RTC Account Mirror — for RTC-only institutions"
+    sync_required: "Account mirror must be kept synchronized with partner's master data"
+    update_schemas: "Updates sent via AccountUpdateRequest and AccountAdditionalIdUpdateRequest schemas"
+
+  payshap_proxy:
+    uniqueness: "One proxy maps to exactly one account — duplicate registrations are rejected"
+    resolution_mandatory: "Proxy resolution is mandatory for PayShap inbound payments"
+    identifier_determination_inbound: "POST /identifiers/inbound/identifier-determination"
+    identifier_determination_outbound: "POST /identifiers/outbound/identifier-determination-report"
+    # Electrum resolves identifiers during payment flow
+
+  avsr:
+    description: "Real-Time Account Verification Service — confirms account can receive funds"
+    outbound: "Partner sends verification request to Electrum"
+    inbound: "Electrum sends verification request to partner"
+    time_limit: "AVS-R responses must be returned within scheme time limits"
+
+  cdv:
+    description: "BankservAfrica Check Digit Verification for SA bank accounts"
+    validation_required: "Account numbers must pass CDV validation before payment initiation"
+
+  account_types:
+    standard: "Account types follow BankservAfrica standards: OTHER, CURRENT, SAVINGS, TRANSMISSION, BOND, SUBSCRIPTION_SHARE"
+
+  identification:
+    person_codes: "PersonIdentificationCode enum: ARNU, CCPT, CUST, DRLC, EMPL, NIDN, SOSE, TELE, TXID, POID"
+    organisation_codes: "OrganisationIdentificationCode enum: BANK, CBID, CHID, CINC, COID, and others per ISO 20022"
+    address_types: "Supported address types: ADDR, PBOX, HOME, BIZZ, MLTO, DLVY"
+
+errors:
+  - code: ACCOUNT_BAD_REQUEST
+    status: 400
+    message: "Invalid account request — check required fields and formats"
+
+  - code: ACCOUNT_UNAUTHORIZED
+    status: 401
+    message: "Authentication failed — invalid or missing credentials"
+
+  - code: ACCOUNT_NOT_FOUND
+    status: 404
+    message: "Account not found in the system"
+
+  - code: ACCOUNT_CONFLICT
+    status: 409
+    message: "Account conflict — duplicate proxy registration or record collision"
+
+  - code: ACCOUNT_UNPROCESSABLE
+    status: 422
+    message: "Account request could not be processed — validation errors"
+
+  - code: CDV_VALIDATION_FAILED
+    status: 422
+    message: "Account number failed check digit verification"
+
+  - code: PROXY_NOT_FOUND
+    status: 404
+    message: "No account found for the given proxy"
+
+  - code: PROXY_ALREADY_REGISTERED
+    status: 409
+    message: "Proxy is already registered to another account"
+
+  - code: AVS_VERIFICATION_FAILED
+    status: 422
+    message: "Account verification failed"
+
+events:
+  - name: account.mirror.updated
+    description: "Account data synchronized to Electrum mirror"
+    payload: [account_number, account_status, record_identifier]
+
+  - name: account.mirror.deleted
+    description: "Account removed from Electrum mirror"
+    payload: [account_number, record_identifier]
+
+  - name: proxy.registered
+    description: "New proxy registered for an account"
+    payload: [proxy_type, proxy_value, account_number]
+
+  - name: proxy.deregistered
+    description: "Proxy mapping removed from an account"
+    payload: [proxy_type, proxy_value, account_number]
+
+  - name: proxy.resolved
+    description: "Proxy successfully resolved to a bank account"
+    payload: [proxy_type, proxy_value, account_number, bank_code]
+
+  - name: avsr.verification.requested
+    description: "AVS-R verification request initiated"
+    payload: [account_number, bank_code]
+
+  - name: avsr.verification.completed
+    description: "AVS-R verification completed with result"
+    payload: [account_number, bank_code, account_status]
+
+  - name: cdv.validation.requested
+    description: "CDV validation request initiated for an account number"
+    payload: [account_number, bank_code, branch_code]
+
+  - name: cdv.validation.completed
+    description: "CDV validation completed with result"
+    payload: [account_number, bank_code]
+
+outcomes:
+  # ─── PayShap Proxy Operations ──────────────────────────
+  proxy_resolved:
+    priority: 1
+    given:
+      - field: proxy_value
+        source: input
+        operator: exists
+        description: "A proxy identifier is provided in the request"
+      - field: proxy_type
+        source: input
+        operator: in
+        value: [mobile_number, email, id_number, custom]
+        description: "Proxy type is a valid identifier type"
+    then:
+      - action: call_service
+        target: "electrum_api.resolve_proxy"
+        description: "Resolve proxy to its corresponding bank account via Electrum"
+      - action: emit_event
+        event: proxy.resolved
+        payload: [proxy_type, proxy_value, account_number, bank_code]
+    result: "Proxy resolved to bank account — routing information returned for payment processing"
+
+  proxy_not_found:
+    priority: 2
+    error: PROXY_NOT_FOUND
+    given:
+      - field: proxy_value
+        source: input
+        operator: exists
+        description: "A proxy identifier is provided"
+      - field: proxy_value
+        source: db
+        operator: not_exists
+        description: "No account mapping exists for the given proxy"
+    then:
+      - action: notify
+        target: partner_system
+        channel: system
+        description: "Inform partner that proxy could not be resolved"
+    result: "Proxy resolution failed — no account found for the given identifier"
+
+  proxy_registered:
+    priority: 3
+    given:
+      - field: proxy_value
+        source: input
+        operator: exists
+        description: "Proxy identifier provided for registration"
+      - field: account_number
+        source: input
+        operator: exists
+        description: "Target account number provided"
+      - field: proxy_value
+        source: db
+        operator: not_exists
+        description: "Proxy is not already registered to another account"
+    then:
+      - action: create_record
+        target: proxy_mapping
+        description: "Create proxy-to-account mapping in the proxy registry"
+      - action: emit_event
+        event: proxy.registered
+        payload: [proxy_type, proxy_value, account_number]
+    result: "New proxy registered — identifier now maps to the specified bank account"
+
+  proxy_already_registered:
+    priority: 3
+    error: PROXY_ALREADY_REGISTERED
+    given:
+      - field: proxy_value
+        source: input
+        operator: exists
+        description: "Proxy identifier provided for registration"
+      - field: proxy_value
+        source: db
+        operator: exists
+        description: "Proxy is already registered to another account"
+    then:
+      - action: notify
+        target: partner_system
+        channel: system
+        description: "Inform partner that proxy is already in use"
+    result: "Proxy registration rejected — identifier is already mapped to another account"
+
+  proxy_deregistered:
+    priority: 4
+    given:
+      - field: proxy_value
+        source: input
+        operator: exists
+        description: "Proxy identifier provided for deregistration"
+      - field: proxy_value
+        source: db
+        operator: exists
+        description: "Proxy mapping exists in the registry"
+    then:
+      - action: delete_record
+        target: proxy_mapping
+        description: "Remove proxy-to-account mapping from the proxy registry"
+      - action: emit_event
+        event: proxy.deregistered
+        payload: [proxy_type, proxy_value, account_number]
+    result: "Proxy deregistered — identifier no longer maps to any account"
+
+  # ─── Account Mirror Operations ─────────────────────────
+  account_mirror_updated:
+    priority: 5
+    given:
+      - field: account_number
+        source: input
+        operator: exists
+        description: "Account number provided in update request"
+      - field: account_status
+        source: input
+        operator: in
+        value: [ENABLED, DISABLED]
+        description: "Account is in an updatable state"
+    then:
+      - action: call_service
+        target: "electrum_api.update_account_mirror"
+        description: "Synchronize account data to Electrum mirror via AccountUpdateRequest"
+      - action: emit_event
+        event: account.mirror.updated
+        payload: [account_number, account_status, record_identifier]
+    result: "Account data synchronized to Electrum mirror — routing information up to date"
+
+  account_mirror_deleted:
+    priority: 6
+    given:
+      - field: account_number
+        source: input
+        operator: exists
+        description: "Account number provided for deletion"
+      - field: account_status
+        source: db
+        operator: in
+        value: [ENABLED, DISABLED]
+        description: "Account currently exists in the mirror"
+    then:
+      - action: call_service
+        target: "electrum_api.delete_account_mirror"
+        description: "Remove account from Electrum mirror"
+      - action: transition_state
+        field: account_status
+        from: enabled
+        to: deleted
+      - action: emit_event
+        event: account.mirror.deleted
+        payload: [account_number, record_identifier]
+    result: "Account removed from Electrum mirror — no longer available for routing"
+
+  # ─── AVS-R Operations ──────────────────────────────────
+  avsr_verification_success:
+    priority: 7
+    given:
+      - field: account_number
+        source: input
+        operator: exists
+        description: "Account number provided for verification"
+      - field: bank_code
+        source: input
+        operator: exists
+        description: "Target bank identified by clearing system member ID"
+    then:
+      - action: call_service
+        target: "electrum_api.verify_account_avsr"
+        description: "Submit AVS-R verification request to BankservAfrica via Electrum"
+      - action: emit_event
+        event: avsr.verification.requested
+        payload: [account_number, bank_code]
+      - action: emit_event
+        event: avsr.verification.completed
+        payload: [account_number, bank_code, account_status]
+    result: "Account verified — confirmed to exist and able to receive funds"
+
+  avsr_verification_failed:
+    priority: 8
+    error: AVS_VERIFICATION_FAILED
+    given:
+      - field: account_number
+        source: input
+        operator: exists
+        description: "Account number provided for verification"
+      - "AVS-R response indicates account cannot receive funds"
+    then:
+      - action: emit_event
+        event: avsr.verification.completed
+        payload: [account_number, bank_code, account_status]
+      - action: notify
+        target: partner_system
+        channel: system
+        description: "Inform partner that account verification failed"
+    result: "Account verification failed — account does not exist or cannot receive funds"
+
+  # ─── CDV Operations ────────────────────────────────────
+  cdv_validation_passed:
+    priority: 9
+    given:
+      - field: account_number
+        source: input
+        operator: exists
+        description: "Account number provided for CDV check"
+      - field: branch_code
+        source: input
+        operator: exists
+        description: "Branch code provided for check digit algorithm selection"
+    then:
+      - action: call_service
+        target: "electrum_api.validate_cdv"
+        description: "Submit account number for BankservAfrica check digit verification"
+      - action: emit_event
+        event: cdv.validation.requested
+        payload: [account_number, bank_code, branch_code]
+      - action: emit_event
+        event: cdv.validation.completed
+        payload: [account_number, bank_code]
+    result: "Account number passes CDV — format and check digits are valid"
+
+  cdv_validation_failed:
+    priority: 10
+    error: CDV_VALIDATION_FAILED
+    given:
+      - field: account_number
+        source: input
+        operator: exists
+        description: "Account number provided for CDV check"
+      - "Account number fails check digit algorithm validation"
+    then:
+      - action: emit_event
+        event: cdv.validation.completed
+        payload: [account_number, bank_code]
+      - action: notify
+        target: partner_system
+        channel: system
+        description: "Inform partner that account number failed CDV"
+    result: "Account number fails CDV — invalid format or check digits"
+
+related:
+  - feature: chp-inbound-payments
+    type: required
+    reason: "Account validation and proxy resolution required for inbound routing"
+
+  - feature: chp-outbound-payments
+    type: required
+    reason: "CDV validation before outbound payments"
+
+  - feature: chp-request-to-pay
+    type: recommended
+    reason: "Proxy resolution for PayShap RTP addressing"
+
+  - feature: chp-eft
+    type: recommended
+    reason: "Account validation for EFT transactions"
+
+extensions:
+  api:
+    base_url: "https://example.com/path/payments/api/v1"
+    auth: "OAuth 2.0"
+    content_type: "application/json"
+  proxy_types:
+    - mobile_number: "Pattern: ^\\+[0-9]{1,3}-[0-9()+\\-]{1,30}$"
+    - generic_account: "1-40 characters with optional scheme and issuer"
+    - iban: "Pattern: [A-Z]{2}[0-9]{2}[a-zA-Z0-9]{1,30}"
+    - custom: "1-2048 characters with namespace"
+  cdv:
+    description: "BankservAfrica Check Digit Verification for SA bank accounts"
+    documentation: "https://docs.electrumsoftware.com/chp/public/cdv-overview"
+  avsr:
+    description: "Real-Time Account Verification Service"
+    documentation: "https://docs.electrumsoftware.com/chp/public/avsr-overview"
