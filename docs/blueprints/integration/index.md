@@ -21,4 +21,5 @@ External service and hardware integration blueprints.
 | [Market Data Feeds]({{ site.baseurl }}/blueprints/integration/market-data-feeds/) | Consume and distribute real-time and delayed market data including pricing, indices, commodities, forex, and trade feeds from multiple providers | 1.0.0 |
 | [Palm Vein]({{ site.baseurl }}/blueprints/integration/palm-vein/) | Biometric scanning hardware integration for palm vein pattern registration, feature extraction, and 1:N template matching | 1.0.0 |
 | [Plugin Overrides]({{ site.baseurl }}/blueprints/integration/plugin-overrides/) | Extensible plugin architecture with 12 UI override points, wrapping composition, field type customization, and sidebar panels | 1.0.0 |
+| [Prisma Cli]({{ site.baseurl }}/blueprints/integration/prisma-cli/) | CLI tools for schema validation, formatting, generation, and database introspection | 1.0.0 |
 | [Stablecoin Wallet Api]({{ site.baseurl }}/blueprints/integration/stablecoin-wallet-api/) | Stablecoin wallet infrastructure API — multi-chain wallets, addresses, deposits, withdrawals, swaps, gateway, checkout, and fiat offramp | 1.0.0 |

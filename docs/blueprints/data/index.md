@@ -26,6 +26,9 @@ CRUD, storage, versioning, and data management blueprints.
 | [Payload Uploads]({{ site.baseurl }}/blueprints/data/payload-uploads/) | File upload system with image resizing, focal-point cropping, MIME validation, cloud storage adapters, and range request support | 1.0.0 |
 | [Payload Versions]({{ site.baseurl }}/blueprints/data/payload-versions/) | Document versioning with draft/publish workflow, autosave, version history, restore, scheduled publishing, and locale-specific status | 1.0.0 |
 | [Portfolio Management]({{ site.baseurl }}/blueprints/data/portfolio-management/) | Retrieve, manage, and report on investment portfolio holdings, positions, valuations, and transaction history | 1.0.0 |
+| [Prisma Crud]({{ site.baseurl }}/blueprints/data/prisma-crud/) | Execute type-safe database CRUD operations with Prisma Client query builder | 1.0.0 |
+| [Prisma Migrations]({{ site.baseurl }}/blueprints/data/prisma-migrations/) | Manage database schema versioning and evolution with safe migrations | 1.0.0 |
+| [Prisma Schema]({{ site.baseurl }}/blueprints/data/prisma-schema/) | Define application data models with fields, types, relationships, and validation rules in Prisma schema | 1.0.0 |
 | [Product Configurator]({{ site.baseurl }}/blueprints/data/product-configurator/) | Product configuration with attributes, variant generation, exclusion rules, dynamic pricing, visual pickers, custom inputs, and matrix bulk ordering.  | 1.0.0 |
 | [Proposals Quotations]({{ site.baseurl }}/blueprints/data/proposals-quotations/) | Creation, management, and approval workflow for investment proposals and quotations delivered to clients | 1.0.0 |
 | [Tax Engine]({{ site.baseurl }}/blueprints/data/tax-engine/) | Tax engine with percentage, fixed, division, group, and formula-based tax types, repartition, cash-basis accounting, and fiscal position mapping.  | 1.0.0 |

@@ -1,0 +1,249 @@
+# ============================================================
+# Prisma CLI & Schema Tools — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/prisma/prisma
+# Source: @prisma/cli package
+
+feature: prisma-cli
+version: "1.0.0"
+description: "CLI tools for schema validation, formatting, generation, and database introspection"
+category: integration
+tags: [cli, schema-tools, developer-tools, prisma, introspection]
+
+actors:
+  - id: developer
+    name: "Developer"
+    type: human
+    role: "Uses CLI commands"
+
+  - id: cli
+    name: "Prisma CLI"
+    type: system
+    role: "Command-line interface"
+
+  - id: schema_engine
+    name: "Schema Engine"
+    type: system
+    role: "Parses and validates schemas"
+
+  - id: database
+    name: "Database"
+    type: external
+    role: "Target database for introspection"
+
+fields:
+  - name: command
+    type: select
+    label: "CLI Command"
+    required: true
+    options:
+      - value: "format"
+        label: "Format"
+      - value: "validate"
+        label: "Validate"
+      - value: "generate"
+        label: "Generate"
+      - value: "init"
+        label: "Init"
+      - value: "studio"
+        label: "Studio"
+
+  - name: schema_path
+    type: text
+    label: "Schema File Path"
+    required: false
+
+  - name: database_url
+    type: password
+    label: "Database Connection String"
+    required: false
+    sensitive: true
+
+  - name: output_path
+    type: text
+    label: "Output Directory"
+    required: false
+
+rules:
+  format:
+    - "prisma format: auto-formats schema file"
+    - "Non-destructive, idempotent operation"
+    - "Enforces Prisma style conventions"
+    - "Can integrate with pre-commit hooks"
+
+  validate:
+    - "prisma validate: checks schema syntax and semantics"
+    - "Validates model definitions and field types"
+    - "Validates datasource and generator configurations"
+    - "Reports all errors at once"
+
+  generate:
+    - "prisma generate: generates Prisma Client"
+    - "Produces type-safe query builder"
+    - "Can output to custom directories"
+    - "Integrates with build tools"
+
+  init:
+    - "prisma init: bootstraps new Prisma project"
+    - "Creates schema file with datasource and generator"
+    - "Optionally introspects existing database"
+    - "Creates .env file for credentials"
+
+  studio:
+    - "prisma studio: visual database GUI"
+    - "Browse and edit data in browser"
+    - "Available at http://localhost:5555"
+    - "Requires active database connection"
+
+outcomes:
+  schema_formatted:
+    priority: 1
+    given:
+      - "command is format"
+      - "Schema file exists"
+    then:
+      - "Schema file reformatted for consistency"
+      - "schema.formatted event emitted"
+    result: "Schema file auto-formatted consistently"
+
+  schema_validated:
+    priority: 1
+    given:
+      - "command is validate"
+      - "All models and fields valid"
+    then:
+      - "schema.validated event emitted"
+    result: "Validation passed; schema is ready"
+
+  client_generated:
+    priority: 2
+    given:
+      - "command is generate"
+      - "Schema is valid"
+    then:
+      - "Prisma Client generated to output directory"
+      - "client.generated event emitted"
+    result: "Prisma Client generated with full types"
+
+  project_initialized:
+    priority: 1
+    given:
+      - "command is init"
+      - "No existing schema"
+    then:
+      - "Project scaffold created with schema file"
+      - "project.initialized event emitted"
+    result: "Prisma project scaffold created"
+
+  schema_introspected:
+    priority: 2
+    given:
+      - "command is init"
+      - "Database is reachable"
+      - "Database contains tables"
+    then:
+      - "Schema auto-generated from database tables"
+      - "schema.introspected event emitted"
+    result: "Schema auto-generated from existing database"
+
+  studio_launched:
+    priority: 1
+    given:
+      - "command is studio"
+      - "Database is reachable"
+      - "Schema is valid"
+    then:
+      - "studio.launched event emitted"
+    result: "Prisma Studio running at http://localhost:5555"
+
+  schema_syntax_error:
+    priority: 10
+    error: SCHEMA_SYNTAX_ERROR
+    given:
+      - "Schema has syntax errors"
+    then:
+      - action: emit_event
+        event: validation.failed
+        payload: [error_count]
+    result: "Errors reported with line numbers"
+
+  database_unreachable:
+    priority: 11
+    error: DATABASE_UNREACHABLE
+    given:
+      - "Cannot connect to database"
+    then:
+      - action: emit_event
+        event: connection.failed
+        payload: [error_code]
+    result: "Connection error with helpful message"
+
+errors:
+  - code: SCHEMA_SYNTAX_ERROR
+    message: "Syntax error at line {line}: {error}"
+    status: 400
+
+  - code: SCHEMA_SEMANTIC_ERROR
+    message: "Error in schema definition: {error}"
+    status: 400
+
+  - code: DATABASE_UNREACHABLE
+    message: "Could not connect to database: {error}"
+    status: 503
+
+  - code: GENERATION_FAILED
+    message: "Code generation failed: {error}"
+    status: 500
+
+events:
+  - name: schema.formatted
+    description: "Schema file has been formatted"
+    payload: [lines_modified, formatting_time_ms]
+
+  - name: schema.validated
+    description: "Schema has been validated"
+    payload: [model_count, validation_time_ms]
+
+  - name: client.generated
+    description: "Prisma Client has been generated"
+    payload: [generation_time_ms, output_path, type_count]
+
+  - name: project.initialized
+    description: "Prisma project has been initialized"
+    payload: [database_provider, initialization_time_ms]
+
+  - name: schema.introspected
+    description: "Database has been introspected"
+    payload: [model_count, table_count, relation_count]
+
+  - name: studio.launched
+    description: "Prisma Studio has been launched"
+    payload: [port, startup_time_ms]
+
+  - name: validation.failed
+    description: "Schema validation failed"
+    payload: [error_count, errors]
+
+  - name: connection.failed
+    description: "Database connection failed"
+    payload: [error_code, error_message]
+
+related:
+  - feature: prisma-schema
+    type: required
+    reason: "Schema must exist before CLI operations"
+
+  - feature: prisma-migrations
+    type: recommended
+    reason: "CLI tools support migration workflow"
+
+  - feature: prisma-crud
+    type: recommended
+    reason: "CLI generates types for CRUD operations"
+
+extensions:
+  tech_stack:
+    language: "TypeScript / CLI"
+    framework: "Prisma CLI"
+    database: "PostgreSQL, MySQL, SQLite, MongoDB, SQL Server, MariaDB"

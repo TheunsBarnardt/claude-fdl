@@ -2,165 +2,10 @@
   "$schema": "https://theunsbarnardt.github.io/claude-fdl/api/registry.json",
   "name": "Feature Definition Language (FDL) Blueprint Registry",
   "version": "1.0.0",
-  "generated": "2026-04-02T17:05:14.944Z",
-  "total": 51,
+  "generated": "2026-04-02T17:18:40.397Z",
+  "total": 55,
   "base_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints",
   "categories": {
-    "payment": {
-      "count": 3,
-      "blueprints": [
-        {
-          "feature": "invoicing-payments",
-          "version": "1.0.0",
-          "description": "Invoicing and payment lifecycle: customer invoices, vendor bills, credit notes, receipts, payment registration, multi-currency, and follow-up.\n",
-          "tags": [
-            "invoicing",
-            "payments",
-            "billing",
-            "credit-notes",
-            "multi-currency",
-            "accounting"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/invoicing-payments.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/invoicing-payments.blueprint.yaml"
-        },
-        {
-          "feature": "loyalty-coupons",
-          "version": "1.0.0",
-          "description": "Loyalty and promotion engine supporting points, coupons, gift cards, discount codes, buy-X-get-Y offers, e-wallets, and next-order rewards.\n",
-          "tags": [
-            "loyalty",
-            "coupons",
-            "gift-cards",
-            "promotions",
-            "rewards",
-            "discounts"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/loyalty-coupons.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/loyalty-coupons.blueprint.yaml"
-        },
-        {
-          "feature": "pos-core",
-          "version": "1.0.0",
-          "description": "Point-of-sale system managing sales sessions, product orders, payment processing, cash register operations, receipt generation, and accounting integration.\n",
-          "tags": [
-            "point-of-sale",
-            "retail",
-            "cash-register",
-            "receipt",
-            "session-management"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/pos-core.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/pos-core.blueprint.yaml"
-        }
-      ]
-    },
-    "ui": {
-      "count": 7,
-      "blueprints": [
-        {
-          "feature": "accessible-component-library",
-          "version": "1.0.0",
-          "description": "Accessible, composable UI component library built on accessible component primitives with variant system, Tailwind CSS styling, and a multi-style design system",
-          "tags": [
-            "components",
-            "design-system",
-            "accessible-primitives",
-            "tailwind",
-            "accessibility",
-            "react"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/accessible-component-library.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/shadcn-components.blueprint.yaml"
-        },
-        {
-          "feature": "component-registry",
-          "version": "1.0.0",
-          "description": "Pluggable component registration system with config-driven fields, slots, lifecycle hooks, and permissions",
-          "tags": [
-            "component-system",
-            "registry",
-            "plugin",
-            "visual-editor",
-            "configuration"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/component-registry.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/component-registry.blueprint.yaml"
-        },
-        {
-          "feature": "component-registry-cli",
-          "version": "1.0.0",
-          "description": "CLI tool for initializing projects, adding UI components from registries, managing migrations, and providing MCP server integration for AI assistants",
-          "tags": [
-            "cli",
-            "component-registry",
-            "code-generation",
-            "developer-tools",
-            "mcp"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/component-registry-cli.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/shadcn-cli.blueprint.yaml"
-        },
-        {
-          "feature": "drag-drop-editor",
-          "version": "1.0.0",
-          "description": "Drag-and-drop page composition system with nested zones, collision detection, and component reordering",
-          "tags": [
-            "drag-and-drop",
-            "editor",
-            "composition",
-            "visual-builder",
-            "page-builder"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/drag-drop-editor.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/drag-drop-editor.blueprint.yaml"
-        },
-        {
-          "feature": "ecommerce-store",
-          "version": "1.0.0",
-          "description": "Full online storefront with product catalog, category browsing, attribute filtering, shopping cart, multi-step checkout, payment integration, wishlist, and pricelist support.\n",
-          "tags": [
-            "ecommerce",
-            "online-store",
-            "shopping-cart",
-            "checkout",
-            "wishlist",
-            "product-comparison"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/ecommerce-store.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/ecommerce-store.blueprint.yaml"
-        },
-        {
-          "feature": "responsive-viewport",
-          "version": "1.0.0",
-          "description": "Multi-viewport responsive preview with auto-zoom, manual zoom controls, and iframe-based isolated rendering",
-          "tags": [
-            "viewport",
-            "responsive",
-            "preview",
-            "zoom",
-            "iframe",
-            "responsive-design"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/responsive-viewport.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/responsive-viewport.blueprint.yaml"
-        },
-        {
-          "feature": "self-order-kiosk",
-          "version": "1.0.0",
-          "description": "Customer self-ordering system supporting kiosk terminals and mobile QR-code ordering, with menu browsing, cart management, payment processing, and real-time order status updates.\n",
-          "tags": [
-            "self-service",
-            "kiosk",
-            "qr-code",
-            "mobile-ordering",
-            "restaurant"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/self-order-kiosk.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/self-order-kiosk.blueprint.yaml"
-        }
-      ]
-    },
     "workflow": {
       "count": 7,
       "blueprints": [
@@ -266,8 +111,57 @@
         }
       ]
     },
+    "payment": {
+      "count": 3,
+      "blueprints": [
+        {
+          "feature": "invoicing-payments",
+          "version": "1.0.0",
+          "description": "Invoicing and payment lifecycle: customer invoices, vendor bills, credit notes, receipts, payment registration, multi-currency, and follow-up.\n",
+          "tags": [
+            "invoicing",
+            "payments",
+            "billing",
+            "credit-notes",
+            "multi-currency",
+            "accounting"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/invoicing-payments.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/invoicing-payments.blueprint.yaml"
+        },
+        {
+          "feature": "loyalty-coupons",
+          "version": "1.0.0",
+          "description": "Loyalty and promotion engine supporting points, coupons, gift cards, discount codes, buy-X-get-Y offers, e-wallets, and next-order rewards.\n",
+          "tags": [
+            "loyalty",
+            "coupons",
+            "gift-cards",
+            "promotions",
+            "rewards",
+            "discounts"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/loyalty-coupons.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/loyalty-coupons.blueprint.yaml"
+        },
+        {
+          "feature": "pos-core",
+          "version": "1.0.0",
+          "description": "Point-of-sale system managing sales sessions, product orders, payment processing, cash register operations, receipt generation, and accounting integration.\n",
+          "tags": [
+            "point-of-sale",
+            "retail",
+            "cash-register",
+            "receipt",
+            "session-management"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/payment/pos-core.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/payment/pos-core.blueprint.yaml"
+        }
+      ]
+    },
     "integration": {
-      "count": 9,
+      "count": 10,
       "blueprints": [
         {
           "feature": "clearing-house-account-management",
@@ -389,6 +283,20 @@
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/plugin-overrides.blueprint.yaml"
         },
         {
+          "feature": "prisma-cli",
+          "version": "1.0.0",
+          "description": "CLI tools for schema validation, formatting, generation, and database introspection",
+          "tags": [
+            "cli",
+            "schema-tools",
+            "developer-tools",
+            "prisma",
+            "introspection"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/prisma-cli.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/prisma-cli.blueprint.yaml"
+        },
+        {
           "feature": "stablecoin-wallet-api",
           "version": "1.0.0",
           "description": "Stablecoin wallet infrastructure API — multi-chain wallets, addresses, deposits, withdrawals, swaps, gateway, checkout, and fiat offramp",
@@ -407,114 +315,114 @@
         }
       ]
     },
-    "auth": {
+    "ui": {
       "count": 7,
       "blueprints": [
         {
-          "feature": "biometric-auth",
+          "feature": "accessible-component-library",
           "version": "1.0.0",
-          "description": "Palm vein biometric authentication — alternative to password login with enrollment of up to 2 palms per user",
+          "description": "Accessible, composable UI component library built on accessible component primitives with variant system, Tailwind CSS styling, and a multi-style design system",
           "tags": [
-            "biometric",
-            "palm-vein",
-            "authentication",
-            "passwordless",
-            "enrollment"
+            "components",
+            "design-system",
+            "accessible-primitives",
+            "tailwind",
+            "accessibility",
+            "react"
           ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/biometric-auth.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/biometric-auth.blueprint.yaml"
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/accessible-component-library.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/shadcn-components.blueprint.yaml"
         },
         {
-          "feature": "email-verification",
+          "feature": "component-registry",
           "version": "1.0.0",
-          "description": "Verify user email ownership via a one-time token link",
+          "description": "Pluggable component registration system with config-driven fields, slots, lifecycle hooks, and permissions",
           "tags": [
-            "email",
-            "verification",
-            "security",
-            "identity",
-            "onboarding"
+            "component-system",
+            "registry",
+            "plugin",
+            "visual-editor",
+            "configuration"
           ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/email-verification.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/email-verification.blueprint.yaml"
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/component-registry.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/component-registry.blueprint.yaml"
         },
         {
-          "feature": "login",
+          "feature": "component-registry-cli",
           "version": "1.0.0",
-          "description": "Authenticate a user with email and password",
+          "description": "CLI tool for initializing projects, adding UI components from registries, managing migrations, and providing MCP server integration for AI assistants",
           "tags": [
-            "authentication",
-            "session",
-            "security",
-            "identity",
-            "saas"
+            "cli",
+            "component-registry",
+            "code-generation",
+            "developer-tools",
+            "mcp"
           ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/login.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/login.blueprint.yaml"
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/component-registry-cli.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/shadcn-cli.blueprint.yaml"
         },
         {
-          "feature": "logout",
+          "feature": "drag-drop-editor",
           "version": "1.0.0",
-          "description": "End a user session and clear all authentication tokens",
+          "description": "Drag-and-drop page composition system with nested zones, collision detection, and component reordering",
           "tags": [
-            "authentication",
-            "session",
-            "security",
-            "identity"
+            "drag-and-drop",
+            "editor",
+            "composition",
+            "visual-builder",
+            "page-builder"
           ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/logout.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/logout.blueprint.yaml"
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/drag-drop-editor.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/drag-drop-editor.blueprint.yaml"
         },
         {
-          "feature": "password-reset",
+          "feature": "ecommerce-store",
           "version": "1.0.0",
-          "description": "Allow users to reset their password via email verification",
+          "description": "Full online storefront with product catalog, category browsing, attribute filtering, shopping cart, multi-step checkout, payment integration, wishlist, and pricelist support.\n",
           "tags": [
-            "password",
-            "reset",
-            "recovery",
-            "security",
-            "email"
+            "ecommerce",
+            "online-store",
+            "shopping-cart",
+            "checkout",
+            "wishlist",
+            "product-comparison"
           ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/password-reset.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/password-reset.blueprint.yaml"
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/ecommerce-store.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/ecommerce-store.blueprint.yaml"
         },
         {
-          "feature": "payload-auth",
+          "feature": "responsive-viewport",
           "version": "1.0.0",
-          "description": "Full authentication system with JWT sessions, API keys, account locking, email verification, and custom strategies",
+          "description": "Multi-viewport responsive preview with auto-zoom, manual zoom controls, and iframe-based isolated rendering",
           "tags": [
-            "cms",
-            "headless",
-            "jwt",
-            "sessions",
-            "api-key",
-            "pbkdf2",
-            "account-locking",
-            "email-verification",
-            "payload"
+            "viewport",
+            "responsive",
+            "preview",
+            "zoom",
+            "iframe",
+            "responsive-design"
           ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/payload-auth.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/payload-auth.blueprint.yaml"
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/responsive-viewport.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/responsive-viewport.blueprint.yaml"
         },
         {
-          "feature": "signup",
+          "feature": "self-order-kiosk",
           "version": "1.0.0",
-          "description": "Register a new user account with email and password",
+          "description": "Customer self-ordering system supporting kiosk terminals and mobile QR-code ordering, with menu browsing, cart management, payment processing, and real-time order status updates.\n",
           "tags": [
-            "registration",
-            "onboarding",
-            "account-creation",
-            "identity",
-            "saas"
+            "self-service",
+            "kiosk",
+            "qr-code",
+            "mobile-ordering",
+            "restaurant"
           ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/signup.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/signup.blueprint.yaml"
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/self-order-kiosk.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/self-order-kiosk.blueprint.yaml"
         }
       ]
     },
     "data": {
-      "count": 17,
+      "count": 20,
       "blueprints": [
         {
           "feature": "bank-reconciliation",
@@ -718,6 +626,48 @@
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/portfolio-management.blueprint.yaml"
         },
         {
+          "feature": "prisma-crud",
+          "version": "1.0.0",
+          "description": "Execute type-safe database CRUD operations with Prisma Client query builder",
+          "tags": [
+            "crud",
+            "database",
+            "orm",
+            "prisma",
+            "query-builder"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/prisma-crud.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/prisma-crud.blueprint.yaml"
+        },
+        {
+          "feature": "prisma-migrations",
+          "version": "1.0.0",
+          "description": "Manage database schema versioning and evolution with safe migrations",
+          "tags": [
+            "migrations",
+            "database",
+            "schema-evolution",
+            "deployment",
+            "versioning"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/prisma-migrations.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/prisma-migrations.blueprint.yaml"
+        },
+        {
+          "feature": "prisma-schema",
+          "version": "1.0.0",
+          "description": "Define application data models with fields, types, relationships, and validation rules in Prisma schema",
+          "tags": [
+            "schema",
+            "models",
+            "orm",
+            "data-modeling",
+            "prisma"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/prisma-schema.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/prisma-schema.blueprint.yaml"
+        },
+        {
           "feature": "product-configurator",
           "version": "1.0.0",
           "description": "Product configuration with attributes, variant generation, exclusion rules, dynamic pricing, visual pickers, custom inputs, and matrix bulk ordering.\n",
@@ -771,6 +721,112 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/undo-redo.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/undo-redo.blueprint.yaml"
+        }
+      ]
+    },
+    "auth": {
+      "count": 7,
+      "blueprints": [
+        {
+          "feature": "biometric-auth",
+          "version": "1.0.0",
+          "description": "Palm vein biometric authentication — alternative to password login with enrollment of up to 2 palms per user",
+          "tags": [
+            "biometric",
+            "palm-vein",
+            "authentication",
+            "passwordless",
+            "enrollment"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/biometric-auth.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/biometric-auth.blueprint.yaml"
+        },
+        {
+          "feature": "email-verification",
+          "version": "1.0.0",
+          "description": "Verify user email ownership via a one-time token link",
+          "tags": [
+            "email",
+            "verification",
+            "security",
+            "identity",
+            "onboarding"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/email-verification.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/email-verification.blueprint.yaml"
+        },
+        {
+          "feature": "login",
+          "version": "1.0.0",
+          "description": "Authenticate a user with email and password",
+          "tags": [
+            "authentication",
+            "session",
+            "security",
+            "identity",
+            "saas"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/login.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/login.blueprint.yaml"
+        },
+        {
+          "feature": "logout",
+          "version": "1.0.0",
+          "description": "End a user session and clear all authentication tokens",
+          "tags": [
+            "authentication",
+            "session",
+            "security",
+            "identity"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/logout.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/logout.blueprint.yaml"
+        },
+        {
+          "feature": "password-reset",
+          "version": "1.0.0",
+          "description": "Allow users to reset their password via email verification",
+          "tags": [
+            "password",
+            "reset",
+            "recovery",
+            "security",
+            "email"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/password-reset.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/password-reset.blueprint.yaml"
+        },
+        {
+          "feature": "payload-auth",
+          "version": "1.0.0",
+          "description": "Full authentication system with JWT sessions, API keys, account locking, email verification, and custom strategies",
+          "tags": [
+            "cms",
+            "headless",
+            "jwt",
+            "sessions",
+            "api-key",
+            "pbkdf2",
+            "account-locking",
+            "email-verification",
+            "payload"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/payload-auth.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/payload-auth.blueprint.yaml"
+        },
+        {
+          "feature": "signup",
+          "version": "1.0.0",
+          "description": "Register a new user account with email and password",
+          "tags": [
+            "registration",
+            "onboarding",
+            "account-creation",
+            "identity",
+            "saas"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/signup.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/signup.blueprint.yaml"
         }
       ]
     },

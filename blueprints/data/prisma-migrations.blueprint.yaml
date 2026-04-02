@@ -1,0 +1,202 @@
+# ============================================================
+# Prisma Database Migrations — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/prisma/prisma
+# Source: @prisma/migrate package
+
+feature: prisma-migrations
+version: "1.0.0"
+description: "Manage database schema versioning and evolution with safe migrations"
+category: data
+tags: [migrations, database, schema-evolution, deployment, versioning]
+
+actors:
+  - id: developer
+    name: "Developer"
+    type: human
+    role: "Creates migrations"
+
+  - id: ci_cd_pipeline
+    name: "CI/CD Pipeline"
+    type: system
+    role: "Deploys migrations"
+
+  - id: migrations_engine
+    name: "Migrations Engine"
+    type: system
+    role: "Executes and tracks migrations"
+
+  - id: database
+    name: "Database"
+    type: external
+    role: "Stores schema and migration history"
+
+fields:
+  - name: command
+    type: select
+    label: "Migration Command"
+    required: true
+    options:
+      - value: "migrate_dev"
+        label: "Migrate Dev"
+      - value: "migrate_deploy"
+        label: "Migrate Deploy"
+      - value: "migrate_diff"
+        label: "Migrate Diff"
+      - value: "migrate_resolve"
+        label: "Migrate Resolve"
+      - value: "migrate_reset"
+        label: "Migrate Reset"
+      - value: "db_push"
+        label: "DB Push"
+      - value: "db_pull"
+        label: "DB Pull"
+
+  - name: migration_name
+    type: text
+    label: "Migration Name"
+    required: false
+
+  - name: create_only
+    type: boolean
+    label: "Create Only (Don't Apply)"
+    required: false
+    default: false
+
+  - name: force_reset
+    type: boolean
+    label: "Force Reset (Destructive)"
+    required: false
+    default: false
+
+states:
+  field: migration_state
+  values:
+    - name: pending
+      description: "Created but not applied"
+      initial: true
+    - name: applied
+      description: "Successfully applied"
+    - name: failed
+      description: "Failed during execution"
+    - name: conflict
+      description: "Conflicts with other migrations"
+
+rules:
+  development:
+    - "migrate dev: create from schema changes, apply, regenerate client"
+    - "Creates safe migration using shadow database"
+    - "Auto-detects data loss and prompts for confirmation"
+    - "Regenerates Prisma Client with new types"
+
+  production:
+    - "migrate deploy: apply pending migrations in order"
+    - "Requires explicit --force for destructive operations"
+    - "All migrations applied atomically"
+    - "Prevents deployment if pending migrations exist"
+
+  safety:
+    - "Shadow database validates changes before applying"
+    - "Automatic detection of schema conflicts"
+    - "migrate resolve for conflict resolution"
+    - "Data loss warnings before destructive operations"
+
+outcomes:
+  migration_created:
+    priority: 1
+    given:
+      - "command is migrate_dev"
+      - "Schema has changes since last migration"
+    then:
+      - "Migration SQL file created with timestamp"
+      - "migration.created event emitted"
+    result: "Migration SQL file generated"
+
+  migration_applied:
+    priority: 2
+    given:
+      - "Migration SQL is valid"
+      - "Database constraints can be satisfied"
+    then:
+      - "Migration marked as applied"
+      - "migration.applied event emitted"
+    result: "Migration executed; schema updated"
+    transaction: true
+
+  client_regenerated:
+    priority: 3
+    given:
+      - "Migration applied successfully"
+    then:
+      - "client.generated event emitted"
+    result: "Prisma Client regenerated with new types"
+
+  migration_conflict:
+    priority: 10
+    error: MIGRATION_CONFLICT
+    given:
+      - "Two migrations from same base state both applied"
+    then:
+      - action: emit_event
+        event: migration.conflict
+        payload: [migration_a, migration_b]
+    result: "Error: run prisma migrate resolve"
+
+  data_loss_warning:
+    priority: 11
+    error: DATA_LOSS_DETECTED
+    given:
+      - "Migration would drop columns or data"
+      - "User has not confirmed data loss"
+    then: []
+    result: "Error: confirm with --accept-data-loss flag"
+
+errors:
+  - code: MIGRATION_CONFLICT
+    message: "Migrations {a} and {b} conflict. Run: prisma migrate resolve"
+    status: 409
+
+  - code: DATA_LOSS_DETECTED
+    message: "This migration removes data. Confirm with --accept-data-loss"
+    status: 400
+
+  - code: MIGRATION_FAILED
+    message: "Migration failed: {error}"
+    status: 500
+
+  - code: DATABASE_UNREACHABLE
+    message: "Could not connect to database"
+    status: 503
+
+events:
+  - name: migration.created
+    description: "Migration file created"
+    payload: [name, timestamp, changes]
+
+  - name: migration.applied
+    description: "Migration applied to database"
+    payload: [name, applied_at, duration_ms]
+
+  - name: migration.conflict
+    description: "Migration conflict detected"
+    payload: [migration_a, migration_b]
+
+  - name: client.generated
+    description: "Prisma Client regenerated"
+    payload: [timestamp, type_count]
+
+related:
+  - feature: prisma-schema
+    type: required
+    reason: "Schema changes drive migrations"
+
+  - feature: prisma-crud
+    type: required
+    reason: "Migrations create tables for CRUD operations"
+
+extensions:
+  tech_stack:
+    language: "TypeScript / SQL"
+    framework: "Prisma Migrate"
+    database: "PostgreSQL, MySQL, SQLite, MongoDB, SQL Server, MariaDB"

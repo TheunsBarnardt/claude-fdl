@@ -1,0 +1,181 @@
+# ============================================================
+# Prisma Schema Definition — Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/prisma/prisma
+# Source: @prisma/dmmf, @prisma/internals
+
+feature: prisma-schema
+version: "1.0.0"
+description: "Define application data models with fields, types, relationships, and validation rules in Prisma schema"
+category: data
+tags: [schema, models, orm, data-modeling, prisma]
+
+actors:
+  - id: developer
+    name: "Developer"
+    type: human
+    role: "Defines data models"
+
+  - id: schema_engine
+    name: "Schema Engine"
+    type: system
+    role: "Parses and validates schema definitions"
+
+fields:
+  - name: model_name
+    type: text
+    label: "Model Name"
+    required: true
+
+  - name: field_name
+    type: text
+    label: "Field Name"
+    required: true
+
+  - name: field_type
+    type: select
+    label: "Field Type"
+    required: true
+    options:
+      - value: "String"
+        label: "Text"
+      - value: "Int"
+        label: "Integer"
+      - value: "Float"
+        label: "Float"
+      - value: "Decimal"
+        label: "Decimal"
+      - value: "Boolean"
+        label: "Boolean"
+      - value: "DateTime"
+        label: "Date/Time"
+      - value: "JSON"
+        label: "JSON"
+      - value: "Bytes"
+        label: "Bytes"
+      - value: "Enum"
+        label: "Enum"
+
+  - name: is_required
+    type: boolean
+    label: "Is Required"
+    required: true
+    default: true
+
+  - name: is_unique
+    type: boolean
+    label: "Is Unique"
+    required: true
+    default: false
+
+  - name: default_value
+    type: text
+    label: "Default Value"
+    required: false
+
+  - name: relation_type
+    type: select
+    label: "Relation Type"
+    required: false
+    options:
+      - value: "one_to_one"
+        label: "One-to-One"
+      - value: "one_to_many"
+        label: "One-to-Many"
+      - value: "many_to_many"
+        label: "Many-to-Many"
+
+rules:
+  naming:
+    - "Models: PascalCase (User, BlogPost, OrderItem)"
+    - "Fields: camelCase (firstName, emailAddress, createdAt)"
+    - "Enums: UPPER_SNAKE_CASE values (ACTIVE, PENDING, ARCHIVED)"
+
+  validation:
+    - "Required fields cannot be null in database"
+    - "Unique constraints prevent duplicate values"
+    - "Default values must match field type"
+    - "Relations must reference existing models"
+
+  relationships:
+    - "One-to-one: unique constraint on foreign key"
+    - "One-to-many: implicit foreign key in child model"
+    - "Many-to-many: automatic join table created"
+    - "Cascade delete propagates to related records"
+
+states:
+  field: model_status
+  values:
+    - name: defined
+      description: "Model defined in schema"
+      initial: true
+    - name: generated
+      description: "Client generated from schema"
+    - name: migrated
+      description: "Database schema created"
+
+outcomes:
+  model_defined:
+    priority: 1
+    given:
+      - "Schema block contains valid model definition"
+      - "All fields have supported types"
+    then:
+      - "Model definition stored in schema"
+      - "model.defined event emitted"
+    result: "Model definition stored and validated"
+
+  schema_validated:
+    priority: 1
+    given:
+      - "All models syntactically valid"
+      - "All relations reference existing models"
+    then:
+      - "schema.validated event emitted"
+    result: "Schema ready for client generation"
+
+  invalid_type_error:
+    priority: 10
+    error: INVALID_FIELD_TYPE
+    given:
+      - "Field uses unsupported type"
+    then: []
+    result: "Validation error: type not supported"
+
+errors:
+  - code: INVALID_FIELD_TYPE
+    message: "Field type '{type}' is not supported"
+    status: 400
+
+  - code: INVALID_RELATION
+    message: "Relation references non-existent model"
+    status: 400
+
+  - code: SYNTAX_ERROR
+    message: "Schema syntax error at line {line}: {error}"
+    status: 400
+
+events:
+  - name: model.defined
+    description: "Model definition created"
+    payload: [name, field_count, relation_count]
+
+  - name: schema.validated
+    description: "Schema passed validation"
+    payload: [model_count, field_count, validation_time_ms]
+
+related:
+  - feature: prisma-migrations
+    type: recommended
+    reason: "Schema must be migrated to create database"
+
+  - feature: prisma-crud
+    type: recommended
+    reason: "Models are queried via CRUD operations"
+
+extensions:
+  tech_stack:
+    language: "TypeScript / Prisma Schema DSL"
+    framework: "Prisma ORM"
+    database: "PostgreSQL, MySQL, SQLite, MongoDB, SQL Server, MariaDB"

@@ -1,0 +1,311 @@
+{
+  "feature": "prisma-crud",
+  "version": "1.0.0",
+  "description": "Execute type-safe database CRUD operations with Prisma Client query builder",
+  "category": "data",
+  "tags": [
+    "crud",
+    "database",
+    "orm",
+    "prisma",
+    "query-builder"
+  ],
+  "actors": [
+    {
+      "id": "application_code",
+      "name": "Application",
+      "type": "system",
+      "role": "Calls Prisma Client methods"
+    },
+    {
+      "id": "prisma_client",
+      "name": "Prisma Client",
+      "type": "system",
+      "role": "Auto-generated, type-safe query builder"
+    },
+    {
+      "id": "database",
+      "name": "Database",
+      "type": "external",
+      "role": "Executes queries and stores/retrieves data"
+    }
+  ],
+  "fields": [
+    {
+      "name": "operation",
+      "type": "select",
+      "label": "Operation Type",
+      "required": true,
+      "options": [
+        {
+          "value": "find_unique",
+          "label": "Find Unique"
+        },
+        {
+          "value": "find_first",
+          "label": "Find First"
+        },
+        {
+          "value": "find_many",
+          "label": "Find Many"
+        },
+        {
+          "value": "create",
+          "label": "Create"
+        },
+        {
+          "value": "update",
+          "label": "Update"
+        },
+        {
+          "value": "delete",
+          "label": "Delete"
+        },
+        {
+          "value": "upsert",
+          "label": "Upsert"
+        },
+        {
+          "value": "aggregate",
+          "label": "Aggregate"
+        }
+      ]
+    },
+    {
+      "name": "model",
+      "type": "text",
+      "label": "Model Name",
+      "required": true
+    },
+    {
+      "name": "where_conditions",
+      "type": "json",
+      "label": "Filter Conditions",
+      "required": false
+    },
+    {
+      "name": "data",
+      "type": "json",
+      "label": "Record Data",
+      "required": false
+    },
+    {
+      "name": "include_relations",
+      "type": "boolean",
+      "label": "Include Related Records",
+      "required": false,
+      "default": false
+    }
+  ],
+  "rules": {
+    "read_operations": [
+      "findUnique returns single record or null; requires unique field",
+      "findFirst returns first matching record; requires where clause",
+      "findMany returns array; supports pagination via skip/take",
+      "count returns total matching records",
+      "aggregate returns computed values",
+      "groupBy returns grouped results with aggregations"
+    ],
+    "write_operations": [
+      "create inserts one record; returns created record with generated IDs",
+      "createMany batch creates; no auto-rollback on partial failure",
+      "update updates one record by ID; returns updated record",
+      "updateMany bulk updates matching criteria",
+      "upsert atomically creates or updates",
+      "delete removes one record; returns deleted record",
+      "deleteMany bulk deletes matching criteria"
+    ],
+    "constraints": [
+      "Unique constraint violation: value already exists",
+      "Foreign key violation: related record missing",
+      "Type mismatch: wrong data type provided",
+      "NOT NULL violation: required field omitted"
+    ],
+    "transactions": [
+      "Wrap multiple operations in $transaction for atomicity",
+      "All changes rolled back if any operation fails",
+      "Configurable timeout (default 5 seconds)"
+    ]
+  },
+  "outcomes": {
+    "record_found": {
+      "priority": 1,
+      "given": [
+        "operation is find_unique or find_first",
+        "where conditions match exactly one record"
+      ],
+      "then": [],
+      "result": "Record returned with all fields or selected subset"
+    },
+    "multiple_records_found": {
+      "priority": 2,
+      "given": [
+        "operation is find_many"
+      ],
+      "then": [],
+      "result": "Array of matching records returned; empty array if no matches"
+    },
+    "record_created": {
+      "priority": 1,
+      "given": [
+        "operation is create",
+        "All required fields provided",
+        "No unique constraint violations"
+      ],
+      "then": [
+        "New record inserted into database",
+        "Auto-generated ID assigned",
+        "Created and updated timestamps set",
+        "record.created event emitted"
+      ],
+      "result": "New record inserted with auto-generated ID and timestamps",
+      "transaction": true
+    },
+    "record_updated": {
+      "priority": 2,
+      "given": [
+        "operation is update",
+        "Record exists matching where clause"
+      ],
+      "then": [
+        "Record updated with new values",
+        "updatedAt timestamp set to current time",
+        "record.updated event emitted"
+      ],
+      "result": "Record updated; updatedAt timestamp set",
+      "transaction": true
+    },
+    "record_deleted": {
+      "priority": 3,
+      "given": [
+        "operation is delete",
+        "No foreign key constraints prevent deletion"
+      ],
+      "then": [
+        "Record removed from database",
+        "record.deleted event emitted"
+      ],
+      "result": "Record deleted from database",
+      "transaction": true
+    },
+    "record_upserted": {
+      "priority": 2,
+      "given": [
+        "operation is upsert"
+      ],
+      "then": [
+        "Record created if not exists, updated if exists",
+        "record.upserted event emitted with created flag"
+      ],
+      "result": "Record created if not exists, updated if exists (atomic)",
+      "transaction": true
+    },
+    "unique_constraint_violation": {
+      "priority": 20,
+      "error": "UNIQUE_CONSTRAINT_VIOLATION",
+      "given": [
+        "Attempting to create/update with duplicate unique field value"
+      ],
+      "then": [],
+      "result": "Operation fails; error indicates field with conflicting value"
+    },
+    "foreign_key_violation": {
+      "priority": 21,
+      "error": "FOREIGN_KEY_VIOLATION",
+      "given": [
+        "Referencing non-existent record in relation"
+      ],
+      "then": [],
+      "result": "Operation rejected; missing related record"
+    },
+    "record_not_found": {
+      "priority": 22,
+      "error": "NOT_FOUND",
+      "given": [
+        "Using findOrThrow operation",
+        "No record matches where clause"
+      ],
+      "then": [],
+      "result": "NotFoundError thrown"
+    }
+  },
+  "errors": [
+    {
+      "code": "UNIQUE_CONSTRAINT_VIOLATION",
+      "message": "Unique constraint failed on fields: {fields}",
+      "status": 409
+    },
+    {
+      "code": "FOREIGN_KEY_VIOLATION",
+      "message": "Foreign key constraint failed on relation: {relation}",
+      "status": 400
+    },
+    {
+      "code": "NOT_FOUND",
+      "message": "No {model} found",
+      "status": 404
+    },
+    {
+      "code": "VALIDATION_ERROR",
+      "message": "Invalid value for field {field}: {reason}",
+      "status": 400
+    }
+  ],
+  "events": [
+    {
+      "name": "record.created",
+      "description": "A new record has been created",
+      "payload": [
+        "model",
+        "id",
+        "created_at"
+      ]
+    },
+    {
+      "name": "record.updated",
+      "description": "A record has been updated",
+      "payload": [
+        "model",
+        "id",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "record.deleted",
+      "description": "A record has been deleted",
+      "payload": [
+        "model",
+        "id",
+        "deleted_at"
+      ]
+    },
+    {
+      "name": "record.upserted",
+      "description": "A record has been created or updated",
+      "payload": [
+        "model",
+        "id",
+        "created"
+      ]
+    }
+  ],
+  "related": [
+    {
+      "feature": "prisma-schema",
+      "type": "required",
+      "reason": "Models must be defined before querying"
+    },
+    {
+      "feature": "prisma-migrations",
+      "type": "required",
+      "reason": "Schema must be migrated to create database tables"
+    }
+  ],
+  "extensions": {
+    "tech_stack": {
+      "language": "TypeScript / JavaScript",
+      "framework": "Prisma Client",
+      "database": "PostgreSQL, MySQL, SQLite, MongoDB, SQL Server, MariaDB"
+    }
+  }
+}
