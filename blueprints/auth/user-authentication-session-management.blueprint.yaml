@@ -1,0 +1,57 @@
+feature: user-authentication-session-management
+version: "1.0.0"
+description: Authentication flows, session management, brute-force protection
+category: auth
+tags: [authentication, sessions]
+
+fields:
+  - name: username
+    type: text
+    required: true
+    label: Username
+    validation:
+      - type: required
+        message: Username required
+
+  - name: password
+    type: password
+    required: true
+    label: Password
+    sensitive: true
+    validation:
+      - type: required
+        message: Password required
+
+rules:
+  core: Authentication and session lifecycle
+
+outcomes:
+  auth_success:
+    priority: 5
+    given:
+      - field: username
+        operator: exists
+        value: null
+    then:
+      - action: emit_event
+        event: auth.success
+        payload: [username]
+    result: User authenticated
+
+errors:
+  - code: INVALID_CREDENTIALS
+    status: 401
+    message: Invalid credentials
+
+events:
+  - name: auth.success
+    description: Authentication successful
+    payload: [username]
+
+related: []
+
+extensions:
+  source:
+    repo: https://github.com/keycloak/keycloak
+    project: Keycloak
+    tech_stack: Java

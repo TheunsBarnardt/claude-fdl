@@ -1,0 +1,58 @@
+feature: user-federation-ldap-kerberos
+version: "1.0.0"
+description: LDAP, Kerberos, and AD directory integration
+category: integration
+tags: [federation, ldap]
+
+fields:
+  - name: connection_url
+    type: url
+    required: true
+    label: LDAP URL
+    validation:
+      - type: required
+        message: URL required
+      - type: url
+        message: Must be valid URL
+
+  - name: bind_dn
+    type: text
+    required: true
+    label: Bind DN
+    validation:
+      - type: required
+        message: Bind DN required
+
+rules:
+  core: Directory synchronization
+
+outcomes:
+  user_found:
+    priority: 5
+    given:
+      - field: connection_url
+        operator: exists
+        value: null
+    then:
+      - action: emit_event
+        event: federation.user_found
+        payload: [username]
+    result: User found in directory
+
+errors:
+  - code: FEDERATION_ERROR
+    status: 503
+    message: Federation service unavailable
+
+events:
+  - name: federation.user_found
+    description: User found in directory
+    payload: [username]
+
+related: []
+
+extensions:
+  source:
+    repo: https://github.com/keycloak/keycloak
+    project: Keycloak
+    tech_stack: Java

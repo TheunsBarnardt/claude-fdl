@@ -1,0 +1,57 @@
+feature: multi-factor-authentication
+version: "1.0.0"
+description: MFA with OTP, WebAuthn, and recovery codes
+category: auth
+tags: [mfa, credentials]
+
+fields:
+  - name: credential_type
+    type: select
+    required: true
+    label: Credential Type
+    validation:
+      - type: required
+        message: Type required
+
+  - name: otp_code
+    type: text
+    required: false
+    label: OTP Code
+    validation:
+      - type: pattern
+        value: "^[0-9]{6}$"
+        message: Must be 6 digits
+
+rules:
+  core: MFA credential management
+
+outcomes:
+  mfa_verified:
+    priority: 5
+    given:
+      - field: otp_code
+        operator: exists
+        value: null
+    then:
+      - action: emit_event
+        event: mfa.verified
+        payload: [user_id]
+    result: MFA verified
+
+errors:
+  - code: INVALID_OTP
+    status: 401
+    message: Invalid OTP code
+
+events:
+  - name: mfa.verified
+    description: MFA verification successful
+    payload: [user_id]
+
+related: []
+
+extensions:
+  source:
+    repo: https://github.com/keycloak/keycloak
+    project: Keycloak
+    tech_stack: Java

@@ -1,0 +1,56 @@
+feature: fine-grained-authorization
+version: "1.0.0"
+description: Resource-based and policy-based authorization
+category: access
+tags: [authorization, rbac]
+
+fields:
+  - name: resource_id
+    type: text
+    required: true
+    label: Resource ID
+    validation:
+      - type: required
+        message: Resource ID required
+
+  - name: scope_name
+    type: text
+    required: true
+    label: Scope
+    validation:
+      - type: required
+        message: Scope required
+
+rules:
+  core: Authorization policy evaluation
+
+outcomes:
+  access_granted:
+    priority: 5
+    given:
+      - field: resource_id
+        operator: exists
+        value: null
+    then:
+      - action: emit_event
+        event: authz.granted
+        payload: [resource_id]
+    result: Access granted
+
+errors:
+  - code: ACCESS_DENIED
+    status: 403
+    message: Access denied
+
+events:
+  - name: authz.granted
+    description: Authorization granted
+    payload: [resource_id]
+
+related: []
+
+extensions:
+  source:
+    repo: https://github.com/keycloak/keycloak
+    project: Keycloak
+    tech_stack: Java

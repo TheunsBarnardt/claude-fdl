@@ -1,0 +1,83 @@
+feature: openid-connect-server
+version: "1.0.0"
+description: OAuth 2.0 and OpenID Connect identity provider with token issuance
+category: auth
+tags: [oauth2, oidc]
+
+fields:
+  - name: client_id
+    type: text
+    required: true
+    label: Client ID
+    validation:
+      - type: required
+        message: Client ID required
+
+  - name: scope
+    type: text
+    required: true
+    label: Scopes
+    validation:
+      - type: required
+        message: Scope required
+
+  - name: redirect_uri
+    type: url
+    required: true
+    label: Redirect URI
+    validation:
+      - type: required
+        message: Redirect URI required
+      - type: url
+        message: Must be valid URL
+
+rules:
+  core: OIDC protocol compliance
+
+outcomes:
+  authorization_success:
+    priority: 5
+    given:
+      - field: client_id
+        operator: exists
+        value: null
+    then:
+      - action: emit_event
+        event: oidc.authorized
+        payload: [client_id]
+    result: Authorization code issued
+
+  invalid_client:
+    priority: 1
+    error: INVALID_CLIENT
+    given:
+      - field: client_id
+        operator: neq
+        value: registered
+    then:
+      - action: emit_event
+        event: oidc.invalid_client
+        payload: [client_id]
+    result: Invalid client
+
+errors:
+  - code: INVALID_CLIENT
+    status: 401
+    message: Client not found
+
+events:
+  - name: oidc.authorized
+    description: OIDC authorization success
+    payload: [client_id]
+
+  - name: oidc.invalid_client
+    description: Invalid client error
+    payload: [client_id]
+
+related: []
+
+extensions:
+  source:
+    repo: https://github.com/keycloak/keycloak
+    project: Keycloak
+    tech_stack: Java

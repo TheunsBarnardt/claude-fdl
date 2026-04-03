@@ -1,0 +1,56 @@
+feature: user-consent-management
+version: "1.0.0"
+description: OAuth/OIDC consent tracking and enforcement
+category: access
+tags: [consent, oauth2]
+
+fields:
+  - name: client_id
+    type: text
+    required: true
+    label: Client ID
+    validation:
+      - type: required
+        message: Client ID required
+
+  - name: scope
+    type: text
+    required: true
+    label: Scope
+    validation:
+      - type: required
+        message: Scope required
+
+rules:
+  core: Consent enforcement
+
+outcomes:
+  consent_granted:
+    priority: 5
+    given:
+      - field: client_id
+        operator: exists
+        value: null
+    then:
+      - action: emit_event
+        event: consent.granted
+        payload: [client_id]
+    result: Consent recorded
+
+errors:
+  - code: CONSENT_DENIED
+    status: 403
+    message: Consent denied
+
+events:
+  - name: consent.granted
+    description: Consent granted
+    payload: [client_id]
+
+related: []
+
+extensions:
+  source:
+    repo: https://github.com/keycloak/keycloak
+    project: Keycloak
+    tech_stack: Java

@@ -2,10 +2,31 @@
   "$schema": "https://theunsbarnardt.github.io/claude-fdl/api/registry.json",
   "name": "Feature Definition Language (FDL) Blueprint Registry",
   "version": "1.0.0",
-  "generated": "2026-04-03T06:18:13.054Z",
-  "total": 163,
+  "generated": "2026-04-03T06:44:18.711Z",
+  "total": 174,
   "base_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints",
   "categories": {
+    "trading": {
+      "count": 1,
+      "blueprints": [
+        {
+          "feature": "market-data-feeds",
+          "version": "1.0.0",
+          "description": "Consume and distribute real-time and delayed market data including pricing, indices, commodities, forex, and trade feeds from multiple providers",
+          "tags": [
+            "market-data",
+            "feeds",
+            "real-time",
+            "pricing",
+            "indices",
+            "commodities",
+            "watchlist"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/trading/market-data-feeds.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/trading/market-data-feeds.blueprint.yaml"
+        }
+      ]
+    },
     "workflow": {
       "count": 18,
       "blueprints": [
@@ -274,100 +295,6 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/task-management.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/task-management.blueprint.yaml"
-        }
-      ]
-    },
-    "quality": {
-      "count": 3,
-      "blueprints": [
-        {
-          "feature": "maintenance-scheduling",
-          "version": "1.0.0",
-          "description": "Maintenance scheduling and visit management with auto-generated visit dates, holiday avoidance, calendar events, and warranty status tracking for customer equipment.\n",
-          "tags": [
-            "maintenance-schedule",
-            "maintenance-visit",
-            "preventive-maintenance",
-            "warranty",
-            "calendar-events",
-            "field-service"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/maintenance-scheduling.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/maintenance-scheduling.blueprint.yaml"
-        },
-        {
-          "feature": "quality-inspection",
-          "version": "1.0.0",
-          "description": "Quality inspection for incoming, outgoing, and in-process materials with numeric range checks, formula-based acceptance criteria, and template-driven reading parameters.\n",
-          "tags": [
-            "quality-inspection",
-            "incoming-inspection",
-            "outgoing-inspection",
-            "quality-control",
-            "acceptance-criteria",
-            "manufacturing"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/quality-inspection.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/quality-inspection.blueprint.yaml"
-        },
-        {
-          "feature": "quality-management-system",
-          "version": "1.0.0",
-          "description": "Quality management with goals, periodic reviews, hierarchical procedures, feedback collection, and corrective/preventive action tracking for continuous improvement.\n",
-          "tags": [
-            "quality-management",
-            "quality-goals",
-            "quality-review",
-            "quality-procedures",
-            "corrective-action",
-            "preventive-action",
-            "feedback",
-            "continuous-improvement"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/quality-management-system.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/quality-management-system.blueprint.yaml"
-        }
-      ]
-    },
-    "project": {
-      "count": 1,
-      "blueprints": [
-        {
-          "feature": "project-task-management",
-          "version": "1.0.0",
-          "description": "Project and task management with hierarchical tasks, dependency tracking, milestones, templates, and timesheet-based billable time tracking. Progress auto-calculated from tasks.\n",
-          "tags": [
-            "project",
-            "task",
-            "timesheet",
-            "milestone",
-            "dependency",
-            "billing",
-            "time-tracking"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/project/project-task-management.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/project/project-task-management.blueprint.yaml"
-        }
-      ]
-    },
-    "trading": {
-      "count": 1,
-      "blueprints": [
-        {
-          "feature": "market-data-feeds",
-          "version": "1.0.0",
-          "description": "Consume and distribute real-time and delayed market data including pricing, indices, commodities, forex, and trade feeds from multiple providers",
-          "tags": [
-            "market-data",
-            "feeds",
-            "real-time",
-            "pricing",
-            "indices",
-            "commodities",
-            "watchlist"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/trading/market-data-feeds.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/trading/market-data-feeds.blueprint.yaml"
         }
       ]
     },
@@ -685,6 +612,79 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/ui/wizard-stepper.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/ui/wizard-stepper.blueprint.yaml"
+        }
+      ]
+    },
+    "quality": {
+      "count": 3,
+      "blueprints": [
+        {
+          "feature": "maintenance-scheduling",
+          "version": "1.0.0",
+          "description": "Maintenance scheduling and visit management with auto-generated visit dates, holiday avoidance, calendar events, and warranty status tracking for customer equipment.\n",
+          "tags": [
+            "maintenance-schedule",
+            "maintenance-visit",
+            "preventive-maintenance",
+            "warranty",
+            "calendar-events",
+            "field-service"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/maintenance-scheduling.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/maintenance-scheduling.blueprint.yaml"
+        },
+        {
+          "feature": "quality-inspection",
+          "version": "1.0.0",
+          "description": "Quality inspection for incoming, outgoing, and in-process materials with numeric range checks, formula-based acceptance criteria, and template-driven reading parameters.\n",
+          "tags": [
+            "quality-inspection",
+            "incoming-inspection",
+            "outgoing-inspection",
+            "quality-control",
+            "acceptance-criteria",
+            "manufacturing"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/quality-inspection.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/quality-inspection.blueprint.yaml"
+        },
+        {
+          "feature": "quality-management-system",
+          "version": "1.0.0",
+          "description": "Quality management with goals, periodic reviews, hierarchical procedures, feedback collection, and corrective/preventive action tracking for continuous improvement.\n",
+          "tags": [
+            "quality-management",
+            "quality-goals",
+            "quality-review",
+            "quality-procedures",
+            "corrective-action",
+            "preventive-action",
+            "feedback",
+            "continuous-improvement"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/quality-management-system.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/quality-management-system.blueprint.yaml"
+        }
+      ]
+    },
+    "project": {
+      "count": 1,
+      "blueprints": [
+        {
+          "feature": "project-task-management",
+          "version": "1.0.0",
+          "description": "Project and task management with hierarchical tasks, dependency tracking, milestones, templates, and timesheet-based billable time tracking. Progress auto-calculated from tasks.\n",
+          "tags": [
+            "project",
+            "task",
+            "timesheet",
+            "milestone",
+            "dependency",
+            "billing",
+            "time-tracking"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/project/project-task-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/project/project-task-management.blueprint.yaml"
         }
       ]
     },
@@ -1198,7 +1198,7 @@
       ]
     },
     "integration": {
-      "count": 21,
+      "count": 24,
       "blueprints": [
         {
           "feature": "api-gateway",
@@ -1333,6 +1333,29 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/email-service.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/email-service.blueprint.yaml"
+        },
+        {
+          "feature": "identity-brokering-social-login",
+          "version": "1.0.0",
+          "description": "External identity provider integration and social login",
+          "tags": [
+            "identity-brokering",
+            "social-login"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/identity-brokering-social-login.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/identity-brokering-social-login.blueprint.yaml"
+        },
+        {
+          "feature": "oauth-oidc-client-management",
+          "version": "1.0.0",
+          "description": "Client registration, configuration, and protocol mappers",
+          "tags": [
+            "oauth2",
+            "oidc",
+            "client-registration"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/oauth-oidc-client-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/oauth-oidc-client-management.blueprint.yaml"
         },
         {
           "feature": "oauth-provider",
@@ -1491,6 +1514,17 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/stablecoin-wallet-api.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/blockradar-api.blueprint.yaml"
+        },
+        {
+          "feature": "user-federation-ldap-kerberos",
+          "version": "1.0.0",
+          "description": "LDAP, Kerberos, and AD directory integration",
+          "tags": [
+            "federation",
+            "ldap"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/user-federation-ldap-kerberos.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/user-federation-ldap-kerberos.blueprint.yaml"
         },
         {
           "feature": "webhook-ingestion",
@@ -1663,6 +1697,291 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/lead-opportunity-pipeline.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/lead-opportunity-pipeline.blueprint.yaml"
+        }
+      ]
+    },
+    "auth": {
+      "count": 18,
+      "blueprints": [
+        {
+          "feature": "api-key-management",
+          "version": "1.0.0",
+          "description": "Create, rotate, revoke, and scope API keys for programmatic access",
+          "tags": [
+            "authentication",
+            "api-key",
+            "security",
+            "programmatic-access",
+            "developer"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/api-key-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/api-key-management.blueprint.yaml"
+        },
+        {
+          "feature": "biometric-auth",
+          "version": "1.0.0",
+          "description": "Palm vein biometric authentication — alternative to password login with enrollment of up to 2 palms per user",
+          "tags": [
+            "biometric",
+            "palm-vein",
+            "authentication",
+            "passwordless",
+            "enrollment"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/biometric-auth.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/biometric-auth.blueprint.yaml"
+        },
+        {
+          "feature": "email-verification",
+          "version": "1.0.0",
+          "description": "Verify user email ownership via a one-time token link",
+          "tags": [
+            "email",
+            "verification",
+            "security",
+            "identity",
+            "onboarding"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/email-verification.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/email-verification.blueprint.yaml"
+        },
+        {
+          "feature": "login",
+          "version": "1.0.0",
+          "description": "Authenticate a user with email and password",
+          "tags": [
+            "authentication",
+            "session",
+            "security",
+            "identity",
+            "saas"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/login.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/login.blueprint.yaml"
+        },
+        {
+          "feature": "logout",
+          "version": "1.0.0",
+          "description": "End a user session and clear all authentication tokens",
+          "tags": [
+            "authentication",
+            "session",
+            "security",
+            "identity"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/logout.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/logout.blueprint.yaml"
+        },
+        {
+          "feature": "magic-link-auth",
+          "version": "1.0.0",
+          "description": "Passwordless email login via single-use magic links",
+          "tags": [
+            "authentication",
+            "passwordless",
+            "magic-link",
+            "email",
+            "security",
+            "identity"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/magic-link-auth.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/magic-link-auth.blueprint.yaml"
+        },
+        {
+          "feature": "multi-factor-auth",
+          "version": "1.0.0",
+          "description": "Second-factor authentication via TOTP, SMS OTP, or backup codes",
+          "tags": [
+            "authentication",
+            "mfa",
+            "totp",
+            "otp",
+            "security",
+            "2fa",
+            "backup-codes"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/multi-factor-auth.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/multi-factor-auth.blueprint.yaml"
+        },
+        {
+          "feature": "multi-factor-authentication",
+          "version": "1.0.0",
+          "description": "MFA with OTP, WebAuthn, and recovery codes",
+          "tags": [
+            "mfa",
+            "credentials"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/multi-factor-authentication.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/multi-factor-authentication.blueprint.yaml"
+        },
+        {
+          "feature": "oauth-social-login",
+          "version": "1.0.0",
+          "description": "Social sign-in via OAuth2/OIDC with account linking and profile sync",
+          "tags": [
+            "authentication",
+            "oauth",
+            "oidc",
+            "social-login",
+            "identity",
+            "federation"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/oauth-social-login.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/oauth-social-login.blueprint.yaml"
+        },
+        {
+          "feature": "openid-connect-server",
+          "version": "1.0.0",
+          "description": "OAuth 2.0 and OpenID Connect identity provider with token issuance",
+          "tags": [
+            "oauth2",
+            "oidc"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/openid-connect-server.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/openid-connect-server.blueprint.yaml"
+        },
+        {
+          "feature": "password-reset",
+          "version": "1.0.0",
+          "description": "Allow users to reset their password via email verification",
+          "tags": [
+            "password",
+            "reset",
+            "recovery",
+            "security",
+            "email"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/password-reset.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/password-reset.blueprint.yaml"
+        },
+        {
+          "feature": "payload-auth",
+          "version": "1.0.0",
+          "description": "Full authentication system with JWT sessions, API keys, account locking, email verification, and custom strategies",
+          "tags": [
+            "cms",
+            "headless",
+            "jwt",
+            "sessions",
+            "api-key",
+            "pbkdf2",
+            "account-locking",
+            "email-verification",
+            "payload"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/payload-auth.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/payload-auth.blueprint.yaml"
+        },
+        {
+          "feature": "saml-2-identity-provider",
+          "version": "1.0.0",
+          "description": "SAML 2.0 identity provider with assertions and metadata",
+          "tags": [
+            "saml2",
+            "identity-provider"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/saml-2-identity-provider.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/saml-2-identity-provider.blueprint.yaml"
+        },
+        {
+          "feature": "session-management",
+          "version": "1.0.0",
+          "description": "Active session listing, device tracking, and session revocation",
+          "tags": [
+            "authentication",
+            "session",
+            "security",
+            "device-tracking",
+            "identity"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/session-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/session-management.blueprint.yaml"
+        },
+        {
+          "feature": "signup",
+          "version": "1.0.0",
+          "description": "Register a new user account with email and password",
+          "tags": [
+            "registration",
+            "onboarding",
+            "account-creation",
+            "identity",
+            "saas"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/signup.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/signup.blueprint.yaml"
+        },
+        {
+          "feature": "single-sign-on",
+          "version": "1.0.0",
+          "description": "Enterprise SSO via SAML 2.0 and OIDC with JIT provisioning",
+          "tags": [
+            "authentication",
+            "sso",
+            "saml",
+            "oidc",
+            "enterprise",
+            "identity",
+            "federation"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/single-sign-on.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/single-sign-on.blueprint.yaml"
+        },
+        {
+          "feature": "user-account-self-service",
+          "version": "1.0.0",
+          "description": "User self-service account and credential management",
+          "tags": [
+            "account-management"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/user-account-self-service.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/user-account-self-service.blueprint.yaml"
+        },
+        {
+          "feature": "user-authentication-session-management",
+          "version": "1.0.0",
+          "description": "Authentication flows, session management, brute-force protection",
+          "tags": [
+            "authentication",
+            "sessions"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/user-authentication-session-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/user-authentication-session-management.blueprint.yaml"
+        }
+      ]
+    },
+    "asset": {
+      "count": 2,
+      "blueprints": [
+        {
+          "feature": "asset-maintenance-repairs",
+          "version": "1.0.0",
+          "description": "Asset maintenance scheduling and repair management with preventive and corrective tasks, repair cost capitalization, and stock consumption tracking for parts used during repairs.\n",
+          "tags": [
+            "asset-maintenance",
+            "preventive-maintenance",
+            "corrective-maintenance",
+            "repair",
+            "maintenance-log",
+            "asset-lifecycle"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/asset/asset-maintenance-repairs.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/asset/asset-maintenance-repairs.blueprint.yaml"
+        },
+        {
+          "feature": "fixed-asset-lifecycle",
+          "version": "1.0.0",
+          "description": "Fixed asset lifecycle management covering registration, multi-book depreciation, asset movements, value adjustments, disposal, and capitalization with automatic GL entries.\n",
+          "tags": [
+            "fixed-asset",
+            "depreciation",
+            "asset-movement",
+            "capitalization",
+            "finance-books",
+            "general-ledger"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/asset/fixed-asset-lifecycle.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/asset/fixed-asset-lifecycle.blueprint.yaml"
         }
       ]
     },
@@ -2196,237 +2515,6 @@
         }
       ]
     },
-    "asset": {
-      "count": 2,
-      "blueprints": [
-        {
-          "feature": "asset-maintenance-repairs",
-          "version": "1.0.0",
-          "description": "Asset maintenance scheduling and repair management with preventive and corrective tasks, repair cost capitalization, and stock consumption tracking for parts used during repairs.\n",
-          "tags": [
-            "asset-maintenance",
-            "preventive-maintenance",
-            "corrective-maintenance",
-            "repair",
-            "maintenance-log",
-            "asset-lifecycle"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/asset/asset-maintenance-repairs.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/asset/asset-maintenance-repairs.blueprint.yaml"
-        },
-        {
-          "feature": "fixed-asset-lifecycle",
-          "version": "1.0.0",
-          "description": "Fixed asset lifecycle management covering registration, multi-book depreciation, asset movements, value adjustments, disposal, and capitalization with automatic GL entries.\n",
-          "tags": [
-            "fixed-asset",
-            "depreciation",
-            "asset-movement",
-            "capitalization",
-            "finance-books",
-            "general-ledger"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/asset/fixed-asset-lifecycle.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/asset/fixed-asset-lifecycle.blueprint.yaml"
-        }
-      ]
-    },
-    "auth": {
-      "count": 13,
-      "blueprints": [
-        {
-          "feature": "api-key-management",
-          "version": "1.0.0",
-          "description": "Create, rotate, revoke, and scope API keys for programmatic access",
-          "tags": [
-            "authentication",
-            "api-key",
-            "security",
-            "programmatic-access",
-            "developer"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/api-key-management.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/api-key-management.blueprint.yaml"
-        },
-        {
-          "feature": "biometric-auth",
-          "version": "1.0.0",
-          "description": "Palm vein biometric authentication — alternative to password login with enrollment of up to 2 palms per user",
-          "tags": [
-            "biometric",
-            "palm-vein",
-            "authentication",
-            "passwordless",
-            "enrollment"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/biometric-auth.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/biometric-auth.blueprint.yaml"
-        },
-        {
-          "feature": "email-verification",
-          "version": "1.0.0",
-          "description": "Verify user email ownership via a one-time token link",
-          "tags": [
-            "email",
-            "verification",
-            "security",
-            "identity",
-            "onboarding"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/email-verification.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/email-verification.blueprint.yaml"
-        },
-        {
-          "feature": "login",
-          "version": "1.0.0",
-          "description": "Authenticate a user with email and password",
-          "tags": [
-            "authentication",
-            "session",
-            "security",
-            "identity",
-            "saas"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/login.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/login.blueprint.yaml"
-        },
-        {
-          "feature": "logout",
-          "version": "1.0.0",
-          "description": "End a user session and clear all authentication tokens",
-          "tags": [
-            "authentication",
-            "session",
-            "security",
-            "identity"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/logout.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/logout.blueprint.yaml"
-        },
-        {
-          "feature": "magic-link-auth",
-          "version": "1.0.0",
-          "description": "Passwordless email login via single-use magic links",
-          "tags": [
-            "authentication",
-            "passwordless",
-            "magic-link",
-            "email",
-            "security",
-            "identity"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/magic-link-auth.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/magic-link-auth.blueprint.yaml"
-        },
-        {
-          "feature": "multi-factor-auth",
-          "version": "1.0.0",
-          "description": "Second-factor authentication via TOTP, SMS OTP, or backup codes",
-          "tags": [
-            "authentication",
-            "mfa",
-            "totp",
-            "otp",
-            "security",
-            "2fa",
-            "backup-codes"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/multi-factor-auth.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/multi-factor-auth.blueprint.yaml"
-        },
-        {
-          "feature": "oauth-social-login",
-          "version": "1.0.0",
-          "description": "Social sign-in via OAuth2/OIDC with account linking and profile sync",
-          "tags": [
-            "authentication",
-            "oauth",
-            "oidc",
-            "social-login",
-            "identity",
-            "federation"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/oauth-social-login.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/oauth-social-login.blueprint.yaml"
-        },
-        {
-          "feature": "password-reset",
-          "version": "1.0.0",
-          "description": "Allow users to reset their password via email verification",
-          "tags": [
-            "password",
-            "reset",
-            "recovery",
-            "security",
-            "email"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/password-reset.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/password-reset.blueprint.yaml"
-        },
-        {
-          "feature": "payload-auth",
-          "version": "1.0.0",
-          "description": "Full authentication system with JWT sessions, API keys, account locking, email verification, and custom strategies",
-          "tags": [
-            "cms",
-            "headless",
-            "jwt",
-            "sessions",
-            "api-key",
-            "pbkdf2",
-            "account-locking",
-            "email-verification",
-            "payload"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/payload-auth.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/payload-auth.blueprint.yaml"
-        },
-        {
-          "feature": "session-management",
-          "version": "1.0.0",
-          "description": "Active session listing, device tracking, and session revocation",
-          "tags": [
-            "authentication",
-            "session",
-            "security",
-            "device-tracking",
-            "identity"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/session-management.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/session-management.blueprint.yaml"
-        },
-        {
-          "feature": "signup",
-          "version": "1.0.0",
-          "description": "Register a new user account with email and password",
-          "tags": [
-            "registration",
-            "onboarding",
-            "account-creation",
-            "identity",
-            "saas"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/signup.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/signup.blueprint.yaml"
-        },
-        {
-          "feature": "single-sign-on",
-          "version": "1.0.0",
-          "description": "Enterprise SSO via SAML 2.0 and OIDC with JIT provisioning",
-          "tags": [
-            "authentication",
-            "sso",
-            "saml",
-            "oidc",
-            "enterprise",
-            "identity",
-            "federation"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/single-sign-on.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/single-sign-on.blueprint.yaml"
-        }
-      ]
-    },
     "ai": {
       "count": 1,
       "blueprints": [
@@ -2447,7 +2535,7 @@
       ]
     },
     "access": {
-      "count": 6,
+      "count": 9,
       "blueprints": [
         {
           "feature": "data-privacy-compliance",
@@ -2466,6 +2554,17 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/access/data-privacy-compliance.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/access/data-privacy-compliance.blueprint.yaml"
+        },
+        {
+          "feature": "fine-grained-authorization",
+          "version": "1.0.0",
+          "description": "Resource-based and policy-based authorization",
+          "tags": [
+            "authorization",
+            "rbac"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/access/fine-grained-authorization.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/access/fine-grained-authorization.blueprint.yaml"
         },
         {
           "feature": "openclaw-gateway-authentication",
@@ -2545,6 +2644,28 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/access/team-organization.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/access/team-organization.blueprint.yaml"
+        },
+        {
+          "feature": "user-consent-management",
+          "version": "1.0.0",
+          "description": "OAuth/OIDC consent tracking and enforcement",
+          "tags": [
+            "consent",
+            "oauth2"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/access/user-consent-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/access/user-consent-management.blueprint.yaml"
+        },
+        {
+          "feature": "user-groups-organizations",
+          "version": "1.0.0",
+          "description": "Hierarchical groups with role inheritance",
+          "tags": [
+            "groups",
+            "organizations"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/access/user-groups-organizations.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/access/user-groups-organizations.blueprint.yaml"
         }
       ]
     }

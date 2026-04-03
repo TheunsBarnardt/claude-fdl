@@ -1,0 +1,85 @@
+{
+  "feature": "identity-brokering-social-login",
+  "version": "1.0.0",
+  "description": "External identity provider integration and social login",
+  "category": "integration",
+  "tags": [
+    "identity-brokering",
+    "social-login"
+  ],
+  "fields": [
+    {
+      "name": "provider_alias",
+      "type": "text",
+      "required": true,
+      "label": "Provider Alias",
+      "validation": [
+        {
+          "type": "required",
+          "message": "Alias required"
+        }
+      ]
+    },
+    {
+      "name": "client_id",
+      "type": "text",
+      "required": true,
+      "label": "Client ID",
+      "validation": [
+        {
+          "type": "required",
+          "message": "Client ID required"
+        }
+      ]
+    }
+  ],
+  "rules": {
+    "core": "Identity provider delegation"
+  },
+  "outcomes": {
+    "user_authenticated": {
+      "priority": 5,
+      "given": [
+        {
+          "field": "provider_alias",
+          "operator": "exists",
+          "value": null
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "broker.authenticated",
+          "payload": [
+            "user_id"
+          ]
+        }
+      ],
+      "result": "External authentication successful"
+    }
+  },
+  "errors": [
+    {
+      "code": "BROKER_ERROR",
+      "status": 401,
+      "message": "External authentication failed"
+    }
+  ],
+  "events": [
+    {
+      "name": "broker.authenticated",
+      "description": "External authentication successful",
+      "payload": [
+        "user_id"
+      ]
+    }
+  ],
+  "related": [],
+  "extensions": {
+    "source": {
+      "repo": "https://github.com/keycloak/keycloak",
+      "project": "Keycloak",
+      "tech_stack": "Java"
+    }
+  }
+}

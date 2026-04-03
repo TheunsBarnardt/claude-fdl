@@ -1,0 +1,58 @@
+feature: saml-2-identity-provider
+version: "1.0.0"
+description: SAML 2.0 identity provider with assertions and metadata
+category: auth
+tags: [saml2, identity-provider]
+
+fields:
+  - name: issuer_entity_id
+    type: text
+    required: true
+    label: Issuer Entity ID
+    validation:
+      - type: required
+        message: Issuer required
+
+  - name: assertion_consumer_url
+    type: url
+    required: true
+    label: Assertion Consumer URL
+    validation:
+      - type: required
+        message: URL required
+      - type: url
+        message: Must be valid URL
+
+rules:
+  core: SAML protocol compliance
+
+outcomes:
+  assertion_issued:
+    priority: 5
+    given:
+      - field: issuer_entity_id
+        operator: exists
+        value: null
+    then:
+      - action: emit_event
+        event: saml.assertion_created
+        payload: [assertion_id]
+    result: SAML assertion issued
+
+errors:
+  - code: INVALID_ISSUER
+    status: 400
+    message: Invalid issuer
+
+events:
+  - name: saml.assertion_created
+    description: SAML assertion created
+    payload: [assertion_id]
+
+related: []
+
+extensions:
+  source:
+    repo: https://github.com/keycloak/keycloak
+    project: Keycloak
+    tech_stack: Java

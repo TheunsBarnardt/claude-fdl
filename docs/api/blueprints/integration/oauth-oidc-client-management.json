@@ -1,0 +1,91 @@
+{
+  "feature": "oauth-oidc-client-management",
+  "version": "1.0.0",
+  "description": "Client registration, configuration, and protocol mappers",
+  "category": "integration",
+  "tags": [
+    "oauth2",
+    "oidc",
+    "client-registration"
+  ],
+  "fields": [
+    {
+      "name": "client_id",
+      "type": "text",
+      "required": true,
+      "label": "Client ID",
+      "validation": [
+        {
+          "type": "required",
+          "message": "Client ID required"
+        },
+        {
+          "type": "minLength",
+          "value": 1,
+          "message": "Cannot be empty"
+        }
+      ]
+    },
+    {
+      "name": "redirect_uris",
+      "type": "text",
+      "required": true,
+      "label": "Redirect URIs",
+      "validation": [
+        {
+          "type": "required",
+          "message": "Redirect URI required"
+        }
+      ]
+    }
+  ],
+  "rules": {
+    "core": "OAuth2/OIDC client management"
+  },
+  "outcomes": {
+    "client_registered": {
+      "priority": 5,
+      "given": [
+        {
+          "field": "client_id",
+          "operator": "exists",
+          "value": null
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "client.registered",
+          "payload": [
+            "client_id"
+          ]
+        }
+      ],
+      "result": "Client registered"
+    }
+  },
+  "errors": [
+    {
+      "code": "INVALID_CLIENT",
+      "status": 400,
+      "message": "Invalid client configuration"
+    }
+  ],
+  "events": [
+    {
+      "name": "client.registered",
+      "description": "Client registered",
+      "payload": [
+        "client_id"
+      ]
+    }
+  ],
+  "related": [],
+  "extensions": {
+    "source": {
+      "repo": "https://github.com/keycloak/keycloak",
+      "project": "Keycloak",
+      "tech_stack": "Java"
+    }
+  }
+}

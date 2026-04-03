@@ -1,0 +1,56 @@
+feature: user-groups-organizations
+version: "1.0.0"
+description: Hierarchical groups with role inheritance
+category: access
+tags: [groups, organizations]
+
+fields:
+  - name: group_id
+    type: text
+    required: true
+    label: Group ID
+    validation:
+      - type: required
+        message: Group ID required
+
+  - name: group_name
+    type: text
+    required: true
+    label: Group Name
+    validation:
+      - type: required
+        message: Name required
+
+rules:
+  core: Group hierarchy and role inheritance
+
+outcomes:
+  group_created:
+    priority: 5
+    given:
+      - field: group_name
+        operator: exists
+        value: null
+    then:
+      - action: emit_event
+        event: group.created
+        payload: [group_id]
+    result: Group created
+
+errors:
+  - code: GROUP_NOT_FOUND
+    status: 404
+    message: Group not found
+
+events:
+  - name: group.created
+    description: Group created
+    payload: [group_id]
+
+related: []
+
+extensions:
+  source:
+    repo: https://github.com/keycloak/keycloak
+    project: Keycloak
+    tech_stack: Java

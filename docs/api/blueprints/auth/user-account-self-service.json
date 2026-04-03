@@ -1,0 +1,89 @@
+{
+  "feature": "user-account-self-service",
+  "version": "1.0.0",
+  "description": "User self-service account and credential management",
+  "category": "auth",
+  "tags": [
+    "account-management"
+  ],
+  "fields": [
+    {
+      "name": "email",
+      "type": "email",
+      "required": true,
+      "label": "Email",
+      "validation": [
+        {
+          "type": "required",
+          "message": "Email required"
+        },
+        {
+          "type": "email",
+          "message": "Must be valid email"
+        }
+      ]
+    },
+    {
+      "name": "current_password",
+      "type": "password",
+      "required": true,
+      "label": "Current Password",
+      "sensitive": true,
+      "validation": [
+        {
+          "type": "required",
+          "message": "Password required"
+        }
+      ]
+    }
+  ],
+  "rules": {
+    "core": "Account self-service operations"
+  },
+  "outcomes": {
+    "profile_updated": {
+      "priority": 5,
+      "given": [
+        {
+          "field": "email",
+          "operator": "exists",
+          "value": null
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "account.updated",
+          "payload": [
+            "user_id"
+          ]
+        }
+      ],
+      "result": "Profile updated"
+    }
+  },
+  "errors": [
+    {
+      "code": "INVALID_PASSWORD",
+      "status": 401,
+      "message": "Invalid password"
+    }
+  ],
+  "events": [
+    {
+      "name": "account.updated",
+      "description": "Account updated",
+      "payload": [
+        "user_id"
+      ]
+    }
+  ],
+  "related": [],
+  "extensions": {
+    "source": {
+      "repo": "https://github.com/keycloak/keycloak",
+      "project": "Keycloak",
+      "tech_stack": "Java"
+    }
+  }
+}
