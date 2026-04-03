@@ -1,0 +1,517 @@
+# ============================================================
+# openclaw-llm-provider — AI Model Provider Integration
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: github.com/openclaw/openclaw
+# Files: extensions/openai/openai-provider.ts, extensions/anthropic/anthropic-provider.ts
+# ============================================================
+
+feature: openclaw-llm-provider
+version: "1.0.0"
+description: "Multi-provider AI model integration with fallback chains, cost tracking, streaming, and extended thinking support"
+category: integration
+tags:
+  - ai
+  - models
+  - providers
+  - streaming
+  - llm
+
+actors:
+  - id: agent
+    name: "AI Agent"
+    type: system
+  - id: provider
+    name: "AI Provider"
+    type: external
+  - id: gateway
+    name: "OpenClaw Gateway"
+    type: system
+  - id: user
+    name: "End User"
+    type: human
+
+fields:
+  - name: provider_id
+    type: text
+    required: true
+    label: "Provider ID"
+
+  - name: provider_name
+    type: text
+    required: true
+    label: "Provider Name"
+
+  - name: model_id
+    type: text
+    required: true
+    label: "Model ID"
+
+  - name: model_name
+    type: text
+    required: true
+    label: "Model Display Name"
+
+  - name: supports_reasoning
+    type: boolean
+    required: true
+    label: "Reasoning Support"
+
+  - name: input_types
+    type: json
+    required: true
+    label: "Input Types"
+
+  - name: max_input_tokens
+    type: number
+    required: true
+    label: "Context Window"
+
+  - name: max_output_tokens
+    type: number
+    required: true
+    label: "Max Output Tokens"
+
+  - name: cost_per_input_mtok
+    type: number
+    required: true
+    label: "Input Cost ($/MTok)"
+
+  - name: cost_per_output_mtok
+    type: number
+    required: true
+    label: "Output Cost ($/MTok)"
+
+  - name: cost_per_cache_read_mtok
+    type: number
+    required: false
+    label: "Cache Read Cost ($/MTok)"
+
+  - name: cost_per_cache_write_mtok
+    type: number
+    required: false
+    label: "Cache Write Cost ($/MTok)"
+
+  - name: auth_methods
+    type: json
+    required: true
+    label: "Auth Methods"
+
+  - name: api_key
+    type: token
+    required: false
+    label: "API Key"
+
+  - name: oauth_token
+    type: token
+    required: false
+    label: "OAuth Token"
+
+  - name: auth_profile_id
+    type: text
+    required: false
+    label: "Auth Profile ID"
+
+  - name: thinking_level
+    type: select
+    required: false
+    label: "Thinking Level"
+    options:
+      - value: "off"
+        label: "Off"
+      - value: "minimal"
+        label: "Minimal (5-10K)"
+      - value: "low"
+        label: "Low (10-50K)"
+      - value: "medium"
+        label: "Medium (50-200K)"
+      - value: "high"
+        label: "High (200K+)"
+      - value: "xhigh"
+        label: "XHigh (max)"
+      - value: "adaptive"
+        label: "Adaptive"
+
+  - name: thinking_budget_tokens
+    type: number
+    required: false
+    label: "Thinking Budget (tokens)"
+
+  - name: supports_streaming
+    type: boolean
+    required: true
+    label: "Streaming Support"
+
+  - name: supports_vision
+    type: boolean
+    required: true
+    label: "Vision Support"
+
+  - name: supports_caching
+    type: boolean
+    required: false
+    label: "Caching Support"
+
+  - name: supports_tool_use
+    type: boolean
+    required: true
+    label: "Tool Use Support"
+
+  - name: streaming_mode
+    type: select
+    required: true
+    label: "Streaming Display Mode"
+    options:
+      - value: "off"
+        label: "Off (wait for full response)"
+      - value: "partial"
+        label: "Partial (edit message in-place)"
+      - value: "block"
+        label: "Block (display in chunks)"
+      - value: "progress"
+        label: "Progress (show indicator)"
+
+  - name: is_primary
+    type: boolean
+    required: true
+    label: "Is Primary"
+
+  - name: fallback_models
+    type: json
+    required: false
+    label: "Fallback Models"
+
+  - name: input_tokens
+    type: number
+    required: false
+    label: "Input Tokens Used"
+
+  - name: output_tokens
+    type: number
+    required: false
+    label: "Output Tokens Used"
+
+rules:
+  model_selection:
+    model_resolution: |
+      Priority:
+      1. Session-level override (session.model_override)
+      2. Agent-level primary (agent.model.primary)
+      3. System-wide default (config.models.default)
+      4. Fallback chain (if primary unavailable)
+      Resolved at chat.send time (not session creation).
+
+    fallback_chain: |
+      If primary model unavailable:
+      1. Try fallback_models[0]
+      2. Try fallback_models[1], etc.
+      3. Try system default
+      4. Fail with error if none available
+      Triggers: API error, rate limit, auth failure, model deprecated.
+      Transparent: user sees fallback seamlessly.
+
+    forward_compatibility: |
+      Models may change API surface over time.
+      compat_config handles:
+      - Model ID remapping (gpt-4 → gpt-4-turbo)
+      - Default parameter changes
+      - Deprecated feature removal
+      - API endpoint changes
+
+  authentication:
+    auth_method_selection: |
+      Methods per provider:
+      - "api_key" — static key in header
+      - "oauth" — refresh token flow (auto-renew)
+      - "token" — bearer token (static)
+      - "aws-sdk" — AWS credential chain
+      Selection: first available method.
+
+    credential_management: |
+      Stored in:
+      - config.auth (direct, plaintext)
+      - config/auth-profiles.json (named)
+      - Environment variables (${VAR_NAME})
+      - AWS credential chain
+      Priority: session > agent > global.
+      Secrets redaction: _KEY, _TOKEN, _SECRET patterns.
+
+    oauth_refresh_flow: |
+      For OAuth:
+      1. Initial auth: exchange code for tokens
+      2. Token check: verify expiry before API call
+      3. Refresh: if <7 days to expiry, refresh proactively
+      4. Store: save tokens to auth-profiles.json
+      5. Fallback: use cached token if refresh fails
+      Max retries: 3 with exponential backoff.
+
+  model_capabilities:
+    thinking_mode_activation: |
+      Extended thinking (if reasoning=true):
+      - off — no thinking
+      - minimal — 5-10K token budget
+      - low — 10-50K tokens
+      - medium — 50-200K tokens
+      - high — 200K+ tokens
+      - xhigh — max available
+      - adaptive — auto-select by query
+      Thinking tokens separate from response tokens.
+      Cost: may have different cost per provider.
+
+    vision_support: |
+      Image input handling:
+      - OpenAI: URL or base64 (2000 token limit, 20 max images)
+      - Anthropic: base64 (no explicit limit)
+      - Google: URI references (Cloud Storage)
+      Image preprocessing: resize large images, convert formats.
+      Unsupported: send text-only fallback.
+
+    tool_use: |
+      Function calling (if supportsToolUse=true):
+      1. Define tool schema: name, description, parameters
+      2. Model generates tool_calls in response
+      3. Execute tools synchronously
+      4. Append results to conversation
+      5. Continue until no more tool_calls or iteration limit
+      Max iterations: 10 (configurable).
+
+    caching_support: |
+      Prompt caching (if supportsCaching=true):
+      - Anthropic: cache_control on messages, auto-evict
+      - OpenAI: cache_control on logit_bias
+      Cost: cache write ~25% of read cost (saves 90% on reads).
+      Automatic: enabled if >1K tokens.
+
+  streaming:
+    streaming_modes: |
+      Display modes:
+      - "off" — wait for full response
+      - "partial" — edit message in-place
+      - "block" — display in chunks
+      - "progress" — show indicator, full message at end
+      Channel-dependent: Discord partial risky (edit limits).
+      Config: per-agent or per-session override.
+
+    streaming_error_handling: |
+      On stream error:
+      - Connection drop → retry entire request
+      - Invalid delta → skip, log, continue
+      - Rate limit during stream → pause, wait, resume
+      - Partial response → deliver what received, notify user
+      Transparent retry: user doesn't re-send.
+
+    token_counting: |
+      Tracked:
+      - inputTokens — user message + system prompt
+      - outputTokens — model response
+      - cacheReadTokens — from cached prompt
+      - cacheWriteTokens — written to cache
+      Reported by: provider in final response metadata.
+      Accumulated: in session entry for cost tracking.
+
+events:
+  - name: provider.selected
+    payload:
+      - provider_id
+      - model_id
+      - thinking_level
+
+  - name: api.request_sent
+    payload:
+      - provider_id
+      - model_id
+      - input_tokens
+
+  - name: api.response_received
+    payload:
+      - provider_id
+      - model_id
+      - output_tokens
+      - cache_read_tokens
+      - cache_write_tokens
+
+  - name: stream.started
+    payload:
+      - provider_id
+      - model_id
+
+  - name: stream.completed
+    payload:
+      - provider_id
+      - total_tokens
+
+  - name: fallback.triggered
+    payload:
+      - primary_model
+      - fallback_model
+      - reason
+
+  - name: cost.estimated
+    payload:
+      - model_id
+      - estimated_usd
+      - thinking_budget_tokens
+
+errors:
+  - code: MODEL_NOT_AVAILABLE
+    status: 503
+    message: "Model not available"
+
+  - code: AUTH_FAILED
+    status: 401
+    message: "Provider authentication failed"
+
+  - code: RATE_LIMIT_EXCEEDED
+    status: 429
+    message: "Provider rate limit exceeded"
+
+  - code: INVALID_MODEL_CONFIG
+    status: 400
+    message: "Model configuration invalid"
+
+  - code: RESPONSE_FORMAT_ERROR
+    status: 500
+    message: "Failed to parse provider response"
+
+  - code: THINKING_BUDGET_EXCEEDED
+    status: 400
+    message: "Thinking tokens exceeded budget"
+
+  - code: STREAMING_INTERRUPTED
+    status: 500
+    message: "Streaming response interrupted"
+
+states:
+  provider_state:
+    field: provider_availability
+    values:
+      - name: available
+        initial: true
+      - name: rate_limited
+      - name: auth_failed
+      - name: unavailable
+        terminal: true
+      - name: deprecated
+        terminal: true
+
+outcomes:
+  model_loaded:
+    priority: 1
+    given:
+      - field: model_id
+        source: agent
+        operator: exists
+      - "provider API authenticated"
+      - "model_id exists in provider catalog"
+    then:
+      - action: set_field
+        target: provider_id
+        value: "extracted from model config"
+      - action: set_field
+        target: thinking_level
+        value: "session override or agent default"
+      - action: emit_event
+        event: provider.selected
+        payload:
+          - provider_id
+          - model_id
+    result: "Model ready for inference"
+
+  api_request_succeeded:
+    priority: 1
+    given:
+      - "API request sent"
+      - "HTTP 200 or streaming started"
+    then:
+      - action: set_field
+        target: input_tokens
+        value: "from provider response"
+      - action: set_field
+        target: output_tokens
+        value: "from provider response"
+      - action: emit_event
+        event: api.response_received
+        payload:
+          - provider_id
+          - output_tokens
+    result: "Response processed, tokens counted, cost calculated"
+    transaction: true
+
+  streaming_response:
+    priority: 1
+    given:
+      - field: streaming_mode
+        source: config
+        operator: neq
+        value: "off"
+      - "provider supports streaming"
+    then:
+      - action: emit_event
+        event: stream.started
+        payload:
+          - provider_id
+          - model_id
+    result: "Response tokens streamed to client, displayed progressively"
+
+  fallback_activated:
+    priority: 2
+    given:
+      - field: provider_state
+        source: computed
+        operator: in
+        value: ["rate_limited", "auth_failed", "unavailable"]
+      - field: fallback_models
+        source: config
+        operator: exists
+    then:
+      - action: set_field
+        target: model_id
+        value: "fallback_models[0]"
+      - action: emit_event
+        event: fallback.triggered
+        payload:
+          - reason
+          - fallback_model
+    result: "Fallback model used, request retried"
+
+  cost_estimation:
+    priority: 3
+    given:
+      - field: estimated_cost_usd
+        source: computed
+        operator: gt
+        value: "cost_threshold"
+    then:
+      - action: emit_event
+        event: cost.estimated
+        payload:
+          - estimated_usd
+          - thinking_budget_tokens
+    result: "User alerted to high cost before execution"
+
+related:
+  - feature: openclaw-session-management
+    type: required
+    reason: "Tracks token usage and cost per session"
+  - feature: openclaw-plugin-system
+    type: required
+    reason: "Provider implementations are plugins"
+  - feature: openclaw-gateway-authentication
+    type: required
+    reason: "Authenticates provider API calls"
+
+sla:
+  api_latency:
+    p50: "1s"
+    p99: "30s"
+  token_limit_response:
+    max_duration: "5min"
+
+extensions:
+  tech_stack:
+    language: "TypeScript"
+    patterns:
+      - "Provider adapter pattern"
+      - "Streaming response handling"
+      - "Token cost calculation"
+      - "Fallback chain execution"

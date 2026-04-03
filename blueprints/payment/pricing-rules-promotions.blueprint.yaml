@@ -1,0 +1,312 @@
+# ============================================================
+# Pricing Rules & Promotions — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+# This blueprint describes BEHAVIOR, not implementation.
+# It can be used to generate this feature for any framework.
+# ============================================================
+
+feature: pricing-rules-promotions
+version: "1.0.0"
+description: "Define and apply pricing rules, discount schemes, and promotional offers with priority-based conflict resolution, cumulative tracking, and free item support"
+category: payment
+
+tags:
+  - pricing
+  - discounts
+  - promotions
+  - coupons
+  - erp
+  - sales
+  - purchase
+
+fields:
+  - name: title
+    type: text
+    required: true
+    validation:
+      - type: minLength
+        value: 1
+        message: "Title is required"
+      - type: maxLength
+        value: 140
+        message: "Title cannot exceed 140 characters"
+
+  - name: apply_on
+    type: select
+    required: true
+    options:
+      - {value: "item_code", label: "Item Code"}
+      - {value: "item_group", label: "Item Group"}
+      - {value: "brand", label: "Brand"}
+      - {value: "transaction", label: "Transaction"}
+
+  - name: rate_or_discount
+    type: select
+    required: true
+    options:
+      - {value: "rate", label: "Rate"}
+      - {value: "discount_percentage", label: "Discount Percentage"}
+      - {value: "discount_amount", label: "Discount Amount"}
+
+  - name: rate
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Rate must be zero or greater"
+
+  - name: discount_percentage
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Discount percentage must be zero or greater"
+      - type: max
+        value: 100
+        message: "Discount percentage cannot exceed 100"
+
+  - name: discount_amount
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Discount amount must be zero or greater"
+
+  - name: min_qty
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Minimum quantity must be zero or greater"
+
+  - name: max_qty
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Maximum quantity must be zero or greater"
+
+  - name: min_amt
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Minimum amount must be zero or greater"
+
+  - name: max_amt
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Maximum amount must be zero or greater"
+
+  - name: valid_from
+    type: date
+    required: false
+
+  - name: valid_upto
+    type: date
+    required: false
+
+  - name: priority
+    type: number
+    required: true
+    validation:
+      - type: min
+        value: 0
+        message: "Priority must be zero or greater"
+
+  - name: price_or_product_discount
+    type: select
+    required: true
+    options:
+      - {value: "price", label: "Price"}
+      - {value: "product", label: "Product"}
+
+  - name: free_item
+    type: text
+    required: false
+
+  - name: free_qty
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Free quantity must be zero or greater"
+
+  - name: is_cumulative
+    type: boolean
+    required: false
+
+  - name: coupon_code_based
+    type: boolean
+    required: false
+
+  - name: condition
+    type: text
+    required: false
+
+  - name: selling
+    type: boolean
+    required: false
+
+  - name: buying
+    type: boolean
+    required: false
+
+rules:
+  direction_required:
+    description: >
+      Either selling or buying flag must be enabled. A pricing rule must
+      apply to at least one transaction direction.
+  priority_order:
+    description: >
+      Priority determines evaluation order. Lower priority number is
+      evaluated first and takes precedence when multiple rules match.
+  max_discount_enforcement:
+    description: >
+      Discount percentage cannot exceed the item maximum discount if
+      one is configured on the item master.
+  cumulative_tracking:
+    description: >
+      Cumulative rules track total quantity or amount across transactions
+      within the defined validity period.
+  recursive_free_item:
+    description: >
+      Free item quantity is calculated recursively when is_recursive is
+      enabled. For example, buy 3 get 1 free applied to qty 12 gives
+      3 free items.
+  coupon_validation:
+    description: >
+      Coupon-code-based rules are only applied when a valid coupon code
+      is provided at transaction time.
+  date_bound:
+    description: >
+      Date-bound rules are only active between valid_from and valid_upto
+      dates inclusive. Rules outside this range are skipped.
+  transaction_level:
+    description: >
+      Transaction-level rules apply to the entire document total rather
+      than individual line items.
+  conflict_resolution:
+    description: >
+      When multiple rules match, highest priority rule wins. Ties are
+      resolved by the most specific match (item code beats item group
+      beats brand beats transaction).
+
+outcomes:
+  apply_price_discount:
+    given:
+      - field: price_or_product_discount
+        operator: eq
+        value: "price"
+        description: "Rule is a price discount type"
+      - "transaction line matches the rule criteria"
+      - "quantity and amount fall within min/max thresholds"
+      - "current date is within validity period"
+    then:
+      - action: set_field
+        target: item_rate_or_discount
+        description: "Apply calculated rate, discount percentage, or discount amount per rule type"
+      - action: emit_event
+        event: pricing_rule.applied
+        payload: [rule_id, title, apply_on, discount_type, discount_value, transaction_id]
+    result: "Price discount is applied to the matching line items or transaction total"
+
+  apply_product_discount:
+    given:
+      - field: price_or_product_discount
+        operator: eq
+        value: "product"
+        description: "Rule is a product discount type"
+      - field: free_item
+        operator: exists
+        description: "Free item is configured"
+      - "transaction line meets quantity or amount thresholds"
+    then:
+      - action: create_record
+        type: line_item
+        target: free_item_row
+        description: "Add free item row to the transaction with calculated free quantity"
+      - action: emit_event
+        event: pricing_rule.applied
+        payload: [rule_id, title, free_item, free_qty, transaction_id]
+    result: "Free item is added to the transaction with the calculated quantity"
+
+  apply_margin:
+    given:
+      - "rule specifies a margin type (percentage or amount)"
+      - "transaction line matches rule criteria"
+    then:
+      - action: set_field
+        target: margin_rate_or_amount
+        description: "Apply calculated margin based on rule type"
+      - action: emit_event
+        event: pricing_rule.applied
+        payload: [rule_id, title, margin_type, margin_value, transaction_id]
+    result: "Margin is applied to the item rate on the matching transaction lines"
+
+  resolve_conflicts:
+    given:
+      - "multiple pricing rules match the same transaction or line item"
+    then:
+      - action: call_service
+        target: pricing_rule_resolver
+        description: "Select highest priority rule; if tied, select most specific match"
+      - action: emit_event
+        event: pricing_rule.conflict
+        payload: [conflicting_rule_ids, winning_rule_id, transaction_id]
+    result: "Single winning pricing rule is selected and applied; other conflicting rules are skipped"
+    error: PRICING_RULE_CONFLICT
+
+errors:
+  - code: PRICING_RULE_CONFLICT
+    message: "Multiple pricing rules conflict and cannot be resolved automatically."
+    status: 409
+
+  - code: PRICING_MAX_DISCOUNT_EXCEEDED
+    message: "Discount exceeds the maximum allowed discount for this item."
+    status: 400
+
+  - code: PRICING_INVALID_CONDITION
+    message: "Pricing rule condition expression is invalid or references unknown fields."
+    status: 400
+
+events:
+  - name: pricing_rule.applied
+    description: "A pricing rule is successfully applied to a transaction"
+    payload: [rule_id, title, apply_on, discount_type, discount_value, transaction_id]
+
+  - name: pricing_rule.conflict
+    description: "Multiple rules match and conflict resolution is triggered"
+    payload: [conflicting_rule_ids, winning_rule_id, transaction_id]
+
+  - name: promotion.activated
+    description: "A promotional pricing rule becomes active based on its validity dates"
+    payload: [rule_id, title, valid_from, valid_upto]
+
+related:
+  - feature: sales-purchase-invoicing
+    type: recommended
+    reason: "Pricing rules are applied to invoice line items"
+  - feature: sales-order-lifecycle
+    type: recommended
+    reason: "Pricing rules are applied during order creation"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERPNext"
+    tech_stack: "Python, Frappe Framework, MariaDB/PostgreSQL"

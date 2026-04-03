@@ -1,0 +1,495 @@
+# ============================================================
+# CUSTOMER & SUPPLIER MANAGEMENT — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: customer-supplier-management
+version: "1.0.0"
+description: >
+  Customer and supplier master data management with credit limits, territory
+  and group hierarchies, portal access, lead conversion, internal parties,
+  and supplier hold/block controls.
+category: data
+tags:
+  - customer
+  - supplier
+  - master-data
+  - credit-limit
+  - territory
+  - customer-group
+  - portal-access
+  - lead-conversion
+
+actors:
+  - id: sales_user
+    name: Sales User
+    type: human
+    description: Creates and manages customer records, converts leads
+  - id: purchase_user
+    name: Purchase User
+    type: human
+    description: Creates and manages supplier records, controls hold status
+  - id: accounts_user
+    name: Accounts User
+    type: human
+    description: Manages credit limits, account mappings, and frozen status
+  - id: portal_user
+    name: Portal User
+    type: external
+    description: Customer or supplier user accessing self-service portal
+  - id: system
+    name: System
+    type: system
+    description: Validates credit limits, enforces naming rules, manages hierarchies
+
+fields:
+  # === Customer fields ===
+  - name: customer_name
+    type: text
+    label: Customer Name
+    required: true
+  - name: customer_type
+    type: select
+    label: Customer Type
+    required: true
+    options:
+      - {value: "Company", label: "Company"}
+      - {value: "Individual", label: "Individual"}
+      - {value: "Partnership", label: "Partnership"}
+  # Array of company-account pairs mapping the customer to receivable
+  # accounts per company in a multi-company setup
+  - name: customer_accounts
+    type: json
+    label: Customer Accounts
+    required: false
+  # Array of credit limit entries with company, credit_limit amount,
+  # and bypass_credit_limit_check flag
+  - name: credit_limits
+    type: json
+    label: Credit Limits
+    required: false
+  - name: territory
+    type: text
+    label: Territory
+    required: false
+  - name: customer_group
+    type: text
+    label: Customer Group
+    required: false
+  - name: default_price_list
+    type: text
+    label: Default Price List
+    required: false
+  - name: default_currency
+    type: text
+    label: Default Currency
+    required: false
+  # Array of sales persons with allocated percentage for commission tracking
+  - name: sales_team
+    type: json
+    label: Sales Team
+    required: false
+  - name: customer_disabled
+    type: boolean
+    label: Disabled
+    required: false
+  # Frozen customers cannot have new transactions created
+  - name: customer_is_frozen
+    type: boolean
+    label: Is Frozen
+    required: false
+  # Internal customer for inter-company transactions
+  - name: is_internal_customer
+    type: boolean
+    label: Is Internal Customer
+    required: false
+  # Array of portal user email addresses with access to customer data
+  - name: portal_users
+    type: json
+    label: Portal Users
+    required: false
+  # Reference to the lead that was converted to this customer
+  - name: lead_name
+    type: text
+    label: Source Lead
+    required: false
+  # === Supplier fields ===
+  - name: supplier_name
+    type: text
+    label: Supplier Name
+    required: true
+  - name: supplier_type
+    type: select
+    label: Supplier Type
+    required: false
+    options:
+      - {value: "Company", label: "Company"}
+      - {value: "Individual", label: "Individual"}
+      - {value: "Partnership", label: "Partnership"}
+  # Array of company-account pairs mapping the supplier to payable
+  # accounts per company in a multi-company setup
+  - name: supplier_accounts
+    type: json
+    label: Supplier Accounts
+    required: false
+  - name: supplier_default_price_list
+    type: text
+    label: Supplier Default Price List
+    required: false
+  - name: payment_terms
+    type: text
+    label: Payment Terms
+    required: false
+  - name: supplier_disabled
+    type: boolean
+    label: Disabled
+    required: false
+  - name: supplier_is_frozen
+    type: boolean
+    label: Is Frozen
+    required: false
+  - name: on_hold
+    type: boolean
+    label: On Hold
+    required: false
+  - name: hold_type
+    type: select
+    label: Hold Type
+    required: false
+    options:
+      - {value: "All", label: "All"}
+      - {value: "Invoices", label: "Invoices"}
+      - {value: "Payments", label: "Payments"}
+  # Date when the supplier hold is automatically released
+  - name: release_date
+    type: date
+    label: Hold Release Date
+    required: false
+  - name: prevent_rfqs
+    type: boolean
+    label: Prevent RFQs
+    required: false
+  - name: warn_rfqs
+    type: boolean
+    label: Warn on RFQs
+    required: false
+  - name: prevent_pos
+    type: boolean
+    label: Prevent Purchase Orders
+    required: false
+  - name: warn_pos
+    type: boolean
+    label: Warn on Purchase Orders
+    required: false
+  # === Group / Territory fields ===
+  - name: group_name
+    type: text
+    label: Group Name
+    required: false
+  - name: parent_group
+    type: text
+    label: Parent Group
+    required: false
+  # If true, this is a parent node in the hierarchy tree and cannot be assigned directly
+  - name: is_group
+    type: boolean
+    label: Is Group Node
+    required: false
+  - name: group_default_accounts
+    type: json
+    label: Group Default Accounts
+    required: false
+  - name: group_credit_limits
+    type: json
+    label: Group Credit Limits
+    required: false
+  - name: territory_name
+    type: text
+    label: Territory Name
+    required: false
+  - name: parent_territory
+    type: text
+    label: Parent Territory
+    required: false
+  - name: territory_manager
+    type: text
+    label: Territory Manager
+    required: false
+  # Sales targets by fiscal year and distribution for the territory
+  - name: targets
+    type: json
+    label: Territory Targets
+    required: false
+
+rules:
+  naming_configurable:
+    description: >
+      Customer and supplier names can be configured to use the party name
+      directly or follow a naming series pattern. The naming rule is set
+      at the system level and applies to all new records.
+  credit_limits_per_company:
+    description: >
+      Credit limits are validated per company. When a customer's outstanding
+      amount plus a new transaction exceeds the credit limit for that
+      company, the transaction is blocked or a warning is shown.
+  cannot_assign_group_nodes:
+    description: >
+      Group/parent nodes in customer group and territory hierarchies cannot
+      be directly assigned to a customer. Only leaf nodes (is_group = false)
+      are valid for assignment.
+  one_internal_party_per_company:
+    description: >
+      Only one internal customer and one internal supplier can exist per
+      company. This prevents duplicate inter-company transaction paths.
+  primary_contact_auto_created:
+    description: >
+      When a customer or supplier is saved with contact details, a primary
+      contact record is automatically created and linked.
+  primary_address_auto_created:
+    description: >
+      When a customer or supplier is saved with address details, a primary
+      address record is automatically created and linked.
+  portal_users_get_roles:
+    description: >
+      Portal users added to a customer record are automatically assigned
+      the customer portal role, granting access to orders, invoices, and
+      support tickets for that customer.
+  account_currency_must_match:
+    description: >
+      The currency of mapped receivable (customer) or payable (supplier)
+      accounts must match the party's default currency. Mismatched
+      currencies are rejected at save time.
+  lead_conversion_links:
+    description: >
+      When a lead is converted to a customer, all addresses and contacts
+      from the lead are automatically linked to the new customer record.
+      The lead is marked as converted.
+
+outcomes:
+  create_customer:
+    priority: 1
+    given:
+      - "sales user provides customer name and customer type"
+      - "customer name does not already exist (or naming series generates unique name)"
+    then:
+      - action: create_record
+        type: customer
+        description: Create customer record with default values
+      - action: create_record
+        type: contact
+        description: Auto-create primary contact if contact details provided
+      - action: create_record
+        type: address
+        description: Auto-create primary address if address details provided
+      - action: emit_event
+        event: customer.created
+        payload: [customer_id, customer_name, customer_type]
+    result: "Customer created with linked primary contact and address"
+
+  create_supplier:
+    priority: 2
+    given:
+      - "purchase user provides supplier name"
+      - "supplier name does not already exist (or naming series generates unique name)"
+    then:
+      - action: create_record
+        type: supplier
+        description: Create supplier record with default values
+      - action: create_record
+        type: contact
+        description: Auto-create primary contact if contact details provided
+      - action: create_record
+        type: address
+        description: Auto-create primary address if address details provided
+      - action: emit_event
+        event: supplier.created
+        payload: [supplier_id, supplier_name, supplier_type]
+    result: "Supplier created with linked primary contact and address"
+
+  convert_lead_to_customer:
+    priority: 3
+    given:
+      - "a qualified lead exists in the system"
+      - "sales user initiates lead conversion"
+    then:
+      - action: create_record
+        type: customer
+        description: Create customer from lead data
+      - action: set_field
+        target: lead_name
+        description: Link back to original lead record
+      - action: call_service
+        target: link_service
+        description: Transfer all addresses and contacts from lead to customer
+      - action: emit_event
+        event: lead.converted
+        payload: [lead_id, customer_id]
+    result: "Lead converted to customer with all contacts and addresses transferred"
+
+  apply_credit_limit:
+    priority: 4
+    given:
+      - "a transaction is being created or submitted for a customer"
+      - "customer has credit limits configured for the company"
+      - field: grand_total
+        source: computed
+        operator: gt
+        value: 0
+        description: "Transaction amount plus outstanding exceeds credit limit"
+    then:
+      - action: notify
+        channel: ui
+        description: Display credit limit warning with outstanding amount and limit
+      - action: emit_event
+        event: customer.credit_exceeded
+        payload: [customer_id, company, outstanding, credit_limit, transaction_amount]
+    result: "Transaction blocked or warning shown based on credit limit configuration"
+
+  manage_portal_access:
+    priority: 5
+    given:
+      - "portal users are added to or removed from a customer record"
+    then:
+      - action: call_service
+        target: role_service
+        description: Assign or revoke customer portal roles for affected users
+    result: "Portal user roles updated to match customer portal user list"
+
+  freeze_party:
+    priority: 6
+    given:
+      - "accounts user freezes a customer or supplier"
+    then:
+      - action: set_field
+        target: customer_is_frozen
+        value: true
+        description: Set frozen flag (applies to customer or supplier as appropriate)
+    result: "Party frozen, no new transactions can be created"
+
+  put_supplier_on_hold:
+    priority: 7
+    given:
+      - "purchase user places a supplier on hold"
+      - "hold type and optional release date are specified"
+    then:
+      - action: set_field
+        target: on_hold
+        value: true
+      - action: set_field
+        target: hold_type
+        description: Set to All, Invoices, or Payments
+      - action: emit_event
+        event: supplier.on_hold
+        payload: [supplier_id, hold_type, release_date]
+    result: "Supplier placed on hold, transactions restricted per hold type"
+
+  duplicate_name_rejected:
+    priority: 1
+    error: PARTY_DUPLICATE_NAME
+    given:
+      - "user creates a customer or supplier"
+      - "a record with the same name already exists"
+    then:
+      - action: notify
+        channel: ui
+        description: Show existing record name and suggest alternatives
+    result: "Creation blocked due to duplicate name"
+
+  group_assignment_rejected:
+    priority: 1
+    error: PARTY_GROUP_ASSIGNMENT
+    given:
+      - "user assigns a customer to a group or territory node"
+      - "the selected node has is_group = true"
+    then:
+      - action: notify
+        channel: ui
+        description: Inform that only leaf nodes can be assigned
+    result: "Assignment blocked, select a non-group node"
+
+  credit_exceeded:
+    priority: 1
+    error: PARTY_CREDIT_EXCEEDED
+    given:
+      - "transaction amount plus outstanding exceeds credit limit"
+      - "bypass_credit_limit_check is not enabled"
+    then:
+      - action: notify
+        channel: ui
+        description: Show outstanding amount, credit limit, and excess
+    result: "Transaction blocked until credit limit is increased or outstanding reduced"
+
+  internal_duplicate_rejected:
+    priority: 1
+    error: PARTY_INTERNAL_DUPLICATE
+    given:
+      - "user creates an internal customer or supplier for a company"
+      - "an internal party of the same type already exists for that company"
+    then:
+      - action: notify
+        channel: ui
+        description: Show existing internal party for the company
+    result: "Only one internal customer/supplier allowed per company"
+
+  account_currency_mismatch:
+    priority: 1
+    error: PARTY_ACCOUNT_CURRENCY_MISMATCH
+    given:
+      - "user maps a receivable or payable account to a party"
+      - "account currency does not match the party's default currency"
+    then:
+      - action: notify
+        channel: ui
+        description: Show expected currency vs account currency
+    result: "Account mapping rejected due to currency mismatch"
+
+errors:
+  - code: PARTY_DUPLICATE_NAME
+    message: "A customer or supplier with this name already exists."
+    status: 409
+  - code: PARTY_GROUP_ASSIGNMENT
+    message: "Cannot assign a group node. Select a non-group (leaf) node."
+    status: 422
+  - code: PARTY_CREDIT_EXCEEDED
+    message: "Customer credit limit exceeded. Outstanding plus this transaction exceeds the allowed limit."
+    status: 403
+  - code: PARTY_INTERNAL_DUPLICATE
+    message: "Only one internal customer/supplier is allowed per company."
+    status: 409
+  - code: PARTY_ACCOUNT_CURRENCY_MISMATCH
+    message: "Account currency must match the party's default currency."
+    status: 422
+
+events:
+  - name: customer.created
+    description: New customer record created
+    payload: [customer_id, customer_name, customer_type]
+  - name: customer.credit_exceeded
+    description: Customer credit limit exceeded during a transaction
+    payload: [customer_id, company, outstanding, credit_limit, transaction_amount]
+  - name: supplier.created
+    description: New supplier record created
+    payload: [supplier_id, supplier_name, supplier_type]
+  - name: supplier.on_hold
+    description: Supplier placed on hold with transaction restrictions
+    payload: [supplier_id, hold_type, release_date]
+  - name: lead.converted
+    description: Lead converted to a customer record
+    payload: [lead_id, customer_id]
+
+related:
+  - feature: sales-order-lifecycle
+    type: recommended
+    reason: Sales order lifecycle uses customer credit limits and defaults
+  - feature: purchase-order-lifecycle
+    type: recommended
+    reason: Purchase order lifecycle uses supplier hold status and defaults
+  - feature: lead-opportunity-pipeline
+    type: optional
+    reason: Lead management and conversion to customer records
+
+extensions:
+  source: "https://github.com/frappe/erpnext"

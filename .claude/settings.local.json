@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(wslpath /tmp/fdl-extract-erpnext/erpnext/accounts/doctype/sales_invoice/sales_invoice.py)",
+      "Bash(cygpath /tmp/fdl-extract-erpnext/erpnext/accounts/doctype/sales_invoice/sales_invoice.py)"
     ]
   }
 }

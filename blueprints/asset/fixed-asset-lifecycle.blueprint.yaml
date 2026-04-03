@@ -1,0 +1,384 @@
+# ============================================================
+# FIXED ASSET LIFECYCLE — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: fixed-asset-lifecycle
+version: "1.0.0"
+description: >
+  Fixed asset lifecycle management covering registration, multi-book
+  depreciation, asset movements, value adjustments, disposal, and
+  capitalization with automatic GL entries.
+category: asset
+tags:
+  - fixed-asset
+  - depreciation
+  - asset-movement
+  - capitalization
+  - finance-books
+  - general-ledger
+
+fields:
+  - name: asset_name
+    type: text
+    label: Asset Name
+    required: true
+  - name: item_code
+    type: text
+    label: Item Code
+    required: true
+  - name: company
+    type: text
+    label: Company
+    required: true
+  - name: purchase_date
+    type: date
+    label: Purchase Date
+    required: true
+  - name: gross_purchase_amount
+    type: number
+    label: Gross Purchase Amount
+    required: true
+    validation:
+      - type: min
+        value: 0
+        message: "Purchase amount must be non-negative"
+  - name: asset_category
+    type: text
+    label: Asset Category
+    required: true
+  - name: status
+    type: select
+    label: Status
+    required: true
+    options:
+      - {value: "Draft", label: "Draft"}
+      - {value: "Submitted", label: "Submitted"}
+      - {value: "Partially Depreciated", label: "Partially Depreciated"}
+      - {value: "Fully Depreciated", label: "Fully Depreciated"}
+      - {value: "Sold", label: "Sold"}
+      - {value: "Scrapped", label: "Scrapped"}
+      - {value: "Capitalized", label: "Capitalized"}
+      - {value: "Decapitalized", label: "Decapitalized"}
+    default: "Draft"
+  - name: depreciation_method
+    type: select
+    label: Depreciation Method
+    required: false
+    options:
+      - {value: "Straight Line", label: "Straight Line"}
+      - {value: "Written Down Value", label: "Written Down Value"}
+      - {value: "Double Declining Balance", label: "Double Declining Balance"}
+  - name: total_number_of_depreciations
+    type: number
+    label: Total Number of Depreciations
+    required: false
+    validation:
+      - type: min
+        value: 1
+        message: "Must have at least one depreciation period"
+  - name: frequency_of_depreciation
+    type: number
+    label: Frequency of Depreciation (Months)
+    required: false
+    validation:
+      - type: min
+        value: 1
+        message: "Frequency must be at least 1 month"
+  - name: expected_value_after_useful_life
+    type: number
+    label: Expected Value After Useful Life
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Expected value must be non-negative"
+  - name: finance_books
+    type: json
+    label: Finance Books
+    required: false
+  - name: location
+    type: text
+    label: Location
+    required: false
+  - name: custodian
+    type: text
+    label: Custodian
+    required: false
+  - name: department
+    type: text
+    label: Department
+    required: false
+  - name: cost_center
+    type: text
+    label: Cost Center
+    required: false
+
+rules:
+  depreciation_auto_calculate:
+    description: >
+      Depreciation schedules are auto-calculated from the selected method,
+      total number of depreciations, and frequency. Schedule dates and
+      amounts are generated upon submission.
+  multiple_finance_books:
+    description: >
+      Multiple finance books support parallel depreciation methods for
+      the same asset (e.g., tax book vs company book).
+  asset_movement_tracking:
+    description: >
+      Asset movements track changes in location, custodian, and department.
+      Each movement is a separate auditable record.
+  value_adjustment_gl:
+    description: >
+      Value adjustments create corresponding general ledger entries
+      to keep accounting in sync with asset value changes.
+  sold_cannot_scrap:
+    description: "A sold asset cannot be scrapped. Status must not be Sold."
+  scrapped_cannot_sell:
+    description: "A scrapped asset cannot be sold. Status must not be Scrapped."
+  capitalization_conversion:
+    description: >
+      Capitalization converts items or expenses into fixed assets,
+      creating the asset record and corresponding GL entries.
+  depreciation_auto_post:
+    description: >
+      Depreciation entries are auto-posted on the scheduled date via
+      a background job, creating journal entries in the general ledger.
+
+states:
+  field: status
+  values:
+    - id: draft
+      label: Draft
+      initial: true
+    - id: submitted
+      label: Submitted
+    - id: partially_depreciated
+      label: Partially Depreciated
+    - id: fully_depreciated
+      label: Fully Depreciated
+      terminal: true
+    - id: sold
+      label: Sold
+      terminal: true
+    - id: scrapped
+      label: Scrapped
+      terminal: true
+  transitions:
+    - from: draft
+      to: submitted
+      description: "Asset submitted for use"
+    - from: submitted
+      to: partially_depreciated
+      description: "First depreciation entry posted"
+    - from: partially_depreciated
+      to: fully_depreciated
+      description: "All depreciation entries completed"
+    - from: submitted
+      to: sold
+      description: "Asset sold before depreciation starts"
+    - from: submitted
+      to: scrapped
+      description: "Asset scrapped before depreciation starts"
+    - from: partially_depreciated
+      to: sold
+      description: "Asset sold during useful life"
+    - from: partially_depreciated
+      to: scrapped
+      description: "Asset scrapped during useful life"
+    - from: fully_depreciated
+      to: sold
+      description: "Fully depreciated asset sold"
+    - from: fully_depreciated
+      to: scrapped
+      description: "Fully depreciated asset scrapped"
+
+outcomes:
+  register_asset:
+    given:
+      - "asset_name, item_code, company, purchase_date, and gross_purchase_amount are provided"
+      - "asset_category exists and is valid"
+    then:
+      - action: create_record
+        type: asset
+        target: asset
+        description: "Asset record created with Draft status"
+      - action: emit_event
+        event: asset.registered
+        payload: [asset_name, item_code, company, gross_purchase_amount]
+    result: "Asset registered in Draft status with depreciation schedule calculated"
+
+  calculate_depreciation:
+    given:
+      - "asset is in Submitted status"
+      - "depreciation_method, total_number_of_depreciations, and frequency_of_depreciation are set"
+    then:
+      - action: set_field
+        target: depreciation_schedule
+        description: "Generate depreciation schedule with dates and amounts"
+    result: "Depreciation schedule calculated with entries for each period"
+
+  post_depreciation_entry:
+    given:
+      - "scheduled depreciation date has arrived"
+      - "asset status is Submitted or Partially Depreciated"
+    then:
+      - action: create_record
+        type: asset
+        target: journal_entry
+        description: "Depreciation journal entry posted to general ledger"
+      - action: transition_state
+        field: status
+        from: submitted
+        to: partially_depreciated
+      - action: emit_event
+        event: asset.depreciated
+        payload: [asset_name, depreciation_amount, accumulated_depreciation]
+    result: "Depreciation entry posted and asset value updated"
+
+  move_asset:
+    given:
+      - "asset exists and is not in Draft status"
+      - "new location, custodian, or department is specified"
+    then:
+      - action: create_record
+        type: asset
+        target: asset_movement
+        description: "Movement record created tracking location/custodian change"
+      - action: set_field
+        target: location
+        description: "Asset location updated to new value"
+      - action: emit_event
+        event: asset.moved
+        payload: [asset_name, from_location, to_location, custodian]
+    result: "Asset movement recorded and current assignment updated"
+
+  adjust_value:
+    given:
+      - "asset exists and is not Sold or Scrapped"
+      - "adjustment amount is provided"
+    then:
+      - action: set_field
+        target: asset_value
+        description: "Asset gross value adjusted"
+      - action: create_record
+        type: asset
+        target: journal_entry
+        description: "GL entry created for value adjustment"
+      - action: emit_event
+        event: asset.value_adjusted
+        payload: [asset_name, adjustment_amount, new_value]
+    result: "Asset value adjusted with corresponding GL entries"
+
+  sell_asset:
+    given:
+      - "asset exists and status is not Sold or Scrapped"
+      - field: status
+        operator: neq
+        value: "Scrapped"
+        source: db
+    then:
+      - action: transition_state
+        field: status
+        from: current
+        to: sold
+      - action: create_record
+        type: asset
+        target: journal_entry
+        description: "GL entries for asset disposal (sale)"
+      - action: emit_event
+        event: asset.sold
+        payload: [asset_name, sale_amount, book_value, profit_loss]
+    result: "Asset marked as Sold with disposal GL entries created"
+    error: ASSET_ALREADY_SCRAPPED
+
+  scrap_asset:
+    given:
+      - "asset exists and status is not Sold or Scrapped"
+      - field: status
+        operator: neq
+        value: "Sold"
+        source: db
+    then:
+      - action: transition_state
+        field: status
+        from: current
+        to: scrapped
+      - action: create_record
+        type: asset
+        target: journal_entry
+        description: "GL entries for asset write-off"
+      - action: emit_event
+        event: asset.scrapped
+        payload: [asset_name, book_value]
+    result: "Asset marked as Scrapped with write-off GL entries"
+    error: ASSET_ALREADY_SOLD
+
+  capitalize_items:
+    given:
+      - "items or expenses to capitalize are specified"
+      - "target asset category is valid"
+    then:
+      - action: create_record
+        type: asset
+        target: asset
+        description: "New asset created from capitalized items/expenses"
+      - action: create_record
+        type: asset
+        target: journal_entry
+        description: "GL entries transferring value from expense to asset"
+      - action: emit_event
+        event: asset.registered
+        payload: [asset_name, capitalized_amount, source_items]
+    result: "Items/expenses capitalized into a new fixed asset"
+
+errors:
+  - code: ASSET_ALREADY_SOLD
+    message: "This asset has already been sold and cannot be scrapped."
+    status: 400
+  - code: ASSET_ALREADY_SCRAPPED
+    message: "This asset has already been scrapped and cannot be sold."
+    status: 400
+  - code: ASSET_DEPRECIATION_EXISTS
+    message: "Depreciation entries already exist for this period. Cannot recalculate."
+    status: 409
+  - code: ASSET_INVALID_CATEGORY
+    message: "The specified asset category does not exist or is not active."
+    status: 400
+
+events:
+  - name: asset.registered
+    description: Fired when a new asset is created
+    payload: [asset_name, item_code, company, gross_purchase_amount]
+  - name: asset.depreciated
+    description: Fired when a depreciation entry is posted
+    payload: [asset_name, depreciation_amount, accumulated_depreciation]
+  - name: asset.moved
+    description: Fired when asset location or custodian changes
+    payload: [asset_name, from_location, to_location, custodian]
+  - name: asset.sold
+    description: Fired when an asset is sold
+    payload: [asset_name, sale_amount, book_value, profit_loss]
+  - name: asset.scrapped
+    description: Fired when an asset is scrapped
+    payload: [asset_name, book_value]
+  - name: asset.value_adjusted
+    description: Fired when asset value is manually adjusted
+    payload: [asset_name, adjustment_amount, new_value]
+
+related:
+  - feature: general-ledger
+    type: required
+    reason: "Depreciation and disposal entries post to general ledger"
+  - feature: sales-purchase-invoicing
+    type: recommended
+    reason: "Asset sales create sales invoices; purchases link to purchase invoices"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"

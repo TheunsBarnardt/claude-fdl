@@ -1,0 +1,389 @@
+# ============================================================
+# Sales & Purchase Invoicing — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+# This blueprint describes BEHAVIOR, not implementation.
+# It can be used to generate this feature for any framework.
+# ============================================================
+
+feature: sales-purchase-invoicing
+version: "1.0.0"
+description: "Create, submit, and manage sales and purchase invoices with double-entry accounting, tax calculation, returns, and credit limit enforcement"
+category: payment
+
+tags:
+  - accounting
+  - invoicing
+  - sales
+  - purchase
+  - erp
+  - double-entry
+  - returns
+  - credit-limit
+
+fields:
+  - name: invoice_type
+    type: select
+    required: true
+    options:
+      - {value: "sales_invoice", label: "Sales Invoice"}
+      - {value: "purchase_invoice", label: "Purchase Invoice"}
+
+  - name: customer_or_supplier
+    type: text
+    required: true
+    validation:
+      - type: minLength
+        value: 1
+        message: "Customer or supplier must be specified"
+
+  - name: posting_date
+    type: date
+    required: true
+
+  - name: items
+    type: json
+    required: true
+
+  - name: currency
+    type: text
+    required: true
+    validation:
+      - type: pattern
+        value: "^[A-Z]{3}$"
+        message: "Currency must be a valid 3-letter ISO code"
+
+  - name: conversion_rate
+    type: number
+    required: true
+    validation:
+      - type: min
+        value: 0
+        message: "Conversion rate must be greater than zero"
+
+  - name: taxes
+    type: json
+    required: false
+
+  - name: grand_total
+    type: number
+    required: true
+    validation:
+      - type: min
+        value: 0
+        message: "Grand total must be zero or greater"
+
+  - name: outstanding_amount
+    type: number
+    required: true
+    validation:
+      - type: min
+        value: 0
+        message: "Outstanding amount must be zero or greater"
+
+  - name: status
+    type: select
+    required: true
+    options:
+      - {value: "draft", label: "Draft"}
+      - {value: "submitted", label: "Submitted"}
+      - {value: "paid", label: "Paid"}
+      - {value: "partly_paid", label: "Partly Paid"}
+      - {value: "overdue", label: "Overdue"}
+      - {value: "return", label: "Return"}
+      - {value: "credit_note_issued", label: "Credit Note Issued"}
+      - {value: "cancelled", label: "Cancelled"}
+
+  - name: is_return
+    type: boolean
+    required: false
+
+  - name: return_against
+    type: text
+    required: false
+
+  - name: payment_terms
+    type: json
+    required: false
+
+actors:
+  - id: accounts_user
+    name: "Accounts User"
+    type: human
+    description: "Creates and submits invoices"
+  - id: accounts_manager
+    name: "Accounts Manager"
+    type: human
+    description: "Approves credit limit overrides and cancellations"
+  - id: accounting_system
+    name: "Accounting System"
+    type: system
+    description: "Posts GL entries and tracks outstanding balances"
+
+states:
+  field: status
+  values:
+    - name: draft
+      description: "Invoice is being prepared"
+      initial: true
+    - name: submitted
+      description: "Invoice has been posted to the ledger"
+    - name: paid
+      description: "Full payment received"
+      terminal: true
+    - name: partly_paid
+      description: "Partial payment received"
+    - name: overdue
+      description: "Due date passed with outstanding balance"
+    - name: return
+      description: "Return invoice created against original"
+      terminal: true
+    - name: credit_note_issued
+      description: "Credit note issued for this invoice"
+      terminal: true
+    - name: cancelled
+      description: "Invoice cancelled and GL entries reversed"
+      terminal: true
+  transitions:
+    - from: draft
+      to: submitted
+      actor: accounts_user
+      description: "Submit invoice for posting"
+    - from: submitted
+      to: paid
+      actor: accounting_system
+      condition: "outstanding_amount == 0"
+      description: "Full payment received or allocated"
+    - from: submitted
+      to: partly_paid
+      actor: accounting_system
+      condition: "outstanding_amount > 0 and outstanding_amount < grand_total"
+      description: "Partial payment received"
+    - from: submitted
+      to: overdue
+      actor: accounting_system
+      description: "Payment due date has passed"
+    - from: partly_paid
+      to: paid
+      actor: accounting_system
+      condition: "outstanding_amount == 0"
+      description: "Remaining balance cleared"
+    - from: partly_paid
+      to: overdue
+      actor: accounting_system
+      description: "Due date passed with partial balance"
+    - from: submitted
+      to: return
+      actor: accounts_user
+      description: "Return invoice created against original"
+    - from: submitted
+      to: credit_note_issued
+      actor: accounts_user
+      description: "Credit note issued for this invoice"
+    - from: draft
+      to: cancelled
+      actor: accounts_user
+      description: "Cancel draft invoice"
+    - from: submitted
+      to: cancelled
+      actor: accounts_manager
+      description: "Cancel submitted invoice and reverse GL entries"
+
+rules:
+  double_entry_posting:
+    description: >
+      Double-entry GL entries are created automatically on invoice
+      submission. Every debit has a matching credit entry in the
+      general ledger.
+  outstanding_calculation:
+    description: >
+      Outstanding amount is calculated as grand total minus total
+      payments minus write-off amounts. Updated automatically when
+      payments are received.
+  return_reference:
+    description: >
+      Return invoices must reference the original invoice via the
+      return_against field. Return quantity cannot exceed the
+      original invoiced quantity.
+  warehouse_requirement:
+    description: >
+      Stock items require a warehouse to be specified in each line
+      item. Non-stock items and service items are exempt.
+  credit_limit_check:
+    description: >
+      Credit limit is checked on sales invoice submission. If the
+      customer outstanding plus this invoice exceeds the credit
+      limit, submission is blocked unless overridden by an
+      accounts manager.
+  tax_computation:
+    description: >
+      Tax amounts are computed per the tax template and applied
+      row-by-row with cumulative or row-total methods.
+  currency_conversion:
+    description: >
+      Conversion rate must be fetched for the posting date when
+      the invoice currency differs from the company currency.
+  cancellation_reversal:
+    description: >
+      Cancelled invoices reverse all GL entries and update
+      outstanding amounts on linked documents.
+  overdue_detection:
+    description: >
+      Overdue status is set automatically when the due date passes
+      with an outstanding balance remaining.
+
+outcomes:
+  submit_invoice:
+    given:
+      - "invoice is in Draft status"
+      - "all required fields are populated"
+      - field: items
+        operator: exists
+        description: "At least one line item is present"
+    then:
+      - action: transition_state
+        field: status
+        from: draft
+        to: submitted
+      - action: emit_event
+        event: invoice.submitted
+        payload: [invoice_id, invoice_type, customer_or_supplier, grand_total, posting_date]
+      - action: create_record
+        type: gl_entry
+        target: gl_entries
+        description: "Create double-entry GL postings for each line and tax row"
+    result: "Invoice is submitted with GL entries posted and outstanding amount set to grand total"
+    transaction: true
+
+  receive_payment:
+    given:
+      - "invoice is in Submitted or Partly Paid status"
+      - field: outstanding_amount
+        operator: gt
+        value: 0
+        description: "Invoice has remaining balance"
+    then:
+      - action: set_field
+        target: outstanding_amount
+        description: "Recalculated as grand_total minus total_paid minus total_write_off"
+      - action: emit_event
+        event: invoice.paid
+        payload: [invoice_id, paid_amount, outstanding_amount]
+        when: "outstanding_amount == 0"
+    result: "Outstanding amount is reduced and status transitions to Paid or Partly Paid accordingly"
+
+  create_return:
+    given:
+      - "original invoice is in Submitted or Paid status"
+      - field: is_return
+        operator: eq
+        value: true
+        description: "Invoice is flagged as a return"
+      - field: return_against
+        operator: exists
+        description: "Original invoice reference is provided"
+    then:
+      - action: create_record
+        type: invoice
+        target: return_invoice
+        description: "Create return invoice with negative quantities"
+      - action: emit_event
+        event: invoice.return_created
+        payload: [invoice_id, return_invoice_id, return_amount]
+    result: "Return invoice is created, reversing GL entries and adjusting outstanding on original invoice"
+    error: INVOICE_RETURN_QTY_EXCEEDED
+
+  cancel_invoice:
+    given:
+      - "invoice is in Draft or Submitted status"
+      - "no payments have been allocated against this invoice"
+    then:
+      - action: transition_state
+        field: status
+        from: submitted
+        to: cancelled
+      - action: emit_event
+        event: invoice.cancelled
+        payload: [invoice_id, invoice_type, grand_total]
+      - action: create_record
+        type: gl_entry
+        target: gl_entries
+        description: "Reverse all GL entries for this invoice"
+    result: "Invoice is cancelled with all GL entries reversed"
+    error: INVOICE_ALREADY_CANCELLED
+
+  credit_limit_exceeded:
+    priority: 1
+    error: INVOICE_CREDIT_EXCEEDED
+    given:
+      - "invoice type is Sales Invoice"
+      - field: grand_total
+        operator: gt
+        value: 0
+      - "customer total outstanding plus this invoice exceeds credit limit"
+    then:
+      - action: notify
+        channel: ui
+        description: "Inform user that credit limit would be exceeded"
+    result: "Invoice submission is blocked due to credit limit breach"
+
+errors:
+  - code: INVOICE_WAREHOUSE_REQUIRED
+    message: "Warehouse is required for stock items in invoice line items."
+    status: 400
+
+  - code: INVOICE_CREDIT_EXCEEDED
+    message: "Customer credit limit would be exceeded by this invoice."
+    status: 403
+
+  - code: INVOICE_RETURN_QTY_EXCEEDED
+    message: "Return quantity exceeds the quantity available on the original invoice."
+    status: 400
+
+  - code: INVOICE_ALREADY_CANCELLED
+    message: "This invoice has already been cancelled."
+    status: 409
+
+events:
+  - name: invoice.submitted
+    description: "Invoice transitions from Draft to Submitted with GL entries posted"
+    payload: [invoice_id, invoice_type, customer_or_supplier, grand_total, posting_date]
+
+  - name: invoice.paid
+    description: "Outstanding amount reaches zero after payment allocation"
+    payload: [invoice_id, paid_amount, outstanding_amount]
+
+  - name: invoice.overdue
+    description: "Due date passes with outstanding balance remaining"
+    payload: [invoice_id, customer_or_supplier, outstanding_amount, due_date]
+
+  - name: invoice.cancelled
+    description: "Invoice is cancelled and GL entries reversed"
+    payload: [invoice_id, invoice_type, grand_total]
+
+  - name: invoice.return_created
+    description: "Return invoice is created against an original"
+    payload: [invoice_id, return_invoice_id, return_amount]
+
+related:
+  - feature: payment-processing
+    type: required
+    reason: "Payments must be allocated against invoices to clear outstanding balances"
+  - feature: general-ledger
+    type: required
+    reason: "Invoice submission creates double-entry GL postings"
+  - feature: tax-engine
+    type: required
+    reason: "Tax calculation is applied to invoice line items"
+  - feature: sales-order-lifecycle
+    type: recommended
+    reason: "Sales invoices are often created from sales orders"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERPNext"
+    tech_stack: "Python, Frappe Framework, MariaDB/PostgreSQL"

@@ -1,0 +1,466 @@
+# ============================================================
+# WORK ORDERS & JOB CARDS — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: work-orders-job-cards
+version: "1.0.0"
+description: >
+  Work order execution and job card tracking for manufacturing operations,
+  including material transfers, time logging, sequential operation control,
+  and production completion.
+category: manufacturing
+tags:
+  - work-order
+  - job-card
+  - production
+  - manufacturing
+  - shop-floor
+  - time-tracking
+
+fields:
+  # --- Work Order fields ---
+  - name: production_item
+    type: text
+    label: Item to Manufacture
+    required: true
+    validation:
+      - {type: required, message: "Production item is required"}
+  - name: bom_no
+    type: text
+    label: BOM Number
+    required: true
+    validation:
+      - {type: required, message: "A valid BOM is required"}
+  - name: qty
+    type: number
+    label: Quantity to Manufacture
+    required: true
+    validation:
+      - {type: min, value: 0.001, message: "Quantity must be greater than zero"}
+  - name: wo_status
+    type: select
+    label: Work Order Status
+    required: true
+    options:
+      - {value: "draft", label: "Draft"}
+      - {value: "not_started", label: "Not Started"}
+      - {value: "in_process", label: "In Process"}
+      - {value: "completed", label: "Completed"}
+      - {value: "stopped", label: "Stopped"}
+      - {value: "closed", label: "Closed"}
+      - {value: "cancelled", label: "Cancelled"}
+  - name: planned_start_date
+    type: datetime
+    label: Planned Start Date
+    required: true
+  - name: actual_start_date
+    type: datetime
+    label: Actual Start Date
+    required: false
+  - name: actual_end_date
+    type: datetime
+    label: Actual End Date
+    required: false
+  - name: required_items
+    type: json
+    label: Required Items
+    required: false
+  - name: wo_operations
+    type: json
+    label: Work Order Operations
+    required: false
+  - name: source_warehouse
+    type: text
+    label: Source Warehouse
+    required: true
+  - name: fg_warehouse
+    type: text
+    label: Finished Goods Warehouse
+    required: true
+  - name: wip_warehouse
+    type: text
+    label: Work-in-Progress Warehouse
+    required: true
+  - name: produced_qty
+    type: number
+    label: Produced Quantity
+    required: false
+    default: 0
+  - name: material_transferred_for_manufacturing
+    type: number
+    label: Material Transferred
+    required: false
+    default: 0
+  - name: skip_transfer
+    type: boolean
+    label: Skip Material Transfer
+    required: false
+    default: false
+  - name: reserve_stock
+    type: boolean
+    label: Reserve Stock
+    required: false
+    default: false
+  - name: use_multi_level_bom
+    type: boolean
+    label: Use Multi-Level BOM
+    required: false
+    default: true
+  - name: planned_operating_cost
+    type: number
+    label: Planned Operating Cost
+    required: false
+    default: 0
+  - name: actual_operating_cost
+    type: number
+    label: Actual Operating Cost
+    required: false
+    default: 0
+  # --- Job Card fields ---
+  - name: work_order
+    type: text
+    label: Work Order Reference
+    required: true
+  - name: operation
+    type: text
+    label: Operation
+    required: true
+  - name: for_quantity
+    type: number
+    label: For Quantity
+    required: true
+    validation:
+      - {type: min, value: 0.001, message: "Quantity must be greater than zero"}
+  - name: jc_status
+    type: select
+    label: Job Card Status
+    required: true
+    options:
+      - {value: "open", label: "Open"}
+      - {value: "work_in_progress", label: "Work In Progress"}
+      - {value: "material_transferred", label: "Material Transferred"}
+      - {value: "on_hold", label: "On Hold"}
+      - {value: "completed", label: "Completed"}
+      - {value: "cancelled", label: "Cancelled"}
+  - name: time_logs
+    type: json
+    label: Time Logs
+    required: false
+  - name: manufactured_qty
+    type: number
+    label: Manufactured Quantity
+    required: false
+    default: 0
+  - name: workstation
+    type: text
+    label: Workstation
+    required: true
+  - name: hour_rate
+    type: number
+    label: Hour Rate
+    required: false
+    default: 0
+  - name: total_time_in_mins
+    type: number
+    label: Total Time (Minutes)
+    required: false
+    default: 0
+  - name: jc_items
+    type: json
+    label: Consumed Materials
+    required: false
+
+states:
+  field: wo_status
+  values:
+    - name: draft
+      description: Work order being prepared, fully editable
+      initial: true
+    - name: not_started
+      description: Work order submitted, awaiting production start
+    - name: in_process
+      description: Manufacturing in progress with active job cards
+    - name: completed
+      description: All quantities produced and operations finished
+      terminal: true
+    - name: stopped
+      description: Production halted before completion
+    - name: closed
+      description: Work order closed after partial or full production
+      terminal: true
+    - name: cancelled
+      description: Work order cancelled before any production
+      terminal: true
+  transitions:
+    - from: draft
+      to: not_started
+      actor: production_manager
+      description: Submit work order to start manufacturing process
+      condition: "BOM must be submitted and active"
+    - from: not_started
+      to: in_process
+      actor: shop_floor_operator
+      description: Begin production by starting first job card
+    - from: in_process
+      to: completed
+      actor: system
+      description: All quantities produced and operations finished
+      condition: "produced_qty equals qty"
+    - from: in_process
+      to: stopped
+      actor: production_manager
+      description: Halt production before completion
+    - from: stopped
+      to: in_process
+      actor: production_manager
+      description: Resume halted production
+    - from: in_process
+      to: closed
+      actor: production_manager
+      description: Close work order after partial production
+    - from: not_started
+      to: cancelled
+      actor: production_manager
+      description: Cancel work order before production begins
+
+rules:
+  bom_must_be_active:
+    description: >
+      Work order can only be submitted if the referenced BOM is in submitted
+      status and marked as active. Draft or cancelled BOMs are rejected.
+  overproduction_limit:
+    description: >
+      Produced quantity cannot exceed the ordered quantity plus the configured
+      overproduction tolerance percentage. Excess production is rejected.
+  job_cards_auto_created:
+    description: >
+      When a work order with operations is submitted, job cards are
+      automatically created for each operation defined in the BOM.
+  time_log_no_overlap:
+    description: >
+      Time logs on the same workstation cannot overlap. The system validates
+      from_time and to_time against existing logs for the workstation.
+  sequential_operations:
+    description: >
+      When operations are marked as sequential, each operation's job card
+      can only start after the previous operation's job card is completed.
+  material_transfer_required:
+    description: >
+      Raw materials must be transferred from source warehouse to WIP
+      warehouse before manufacturing can begin, unless skip_transfer is
+      enabled on the work order.
+  quality_inspection_required:
+    description: >
+      If the BOM specifies inspection_required, a quality inspection record
+      must be created and approved before the work order can be completed.
+  no_cancel_with_production:
+    description: >
+      A work order with produced_qty greater than zero cannot be cancelled.
+      It must be stopped or closed instead.
+
+outcomes:
+  create_work_order:
+    priority: 1
+    given:
+      - "user provides production item, BOM, quantity, and warehouse details"
+    then:
+      - action: create_record
+        type: work_order
+        description: "Create work order in draft status"
+      - action: set_field
+        target: wo_status
+        value: draft
+      - action: set_field
+        target: required_items
+        description: "Populate required items from BOM materials"
+    result: "Work order is created in draft with materials populated from BOM"
+
+  submit_work_order:
+    priority: 2
+    given:
+      - field: wo_status
+        source: db
+        operator: eq
+        value: draft
+      - field: bom_no
+        source: db
+        operator: exists
+      - "referenced BOM is submitted and active"
+    then:
+      - action: transition_state
+        field: wo_status
+        from: draft
+        to: not_started
+      - action: create_record
+        type: job_card
+        description: "Auto-create job cards for each BOM operation"
+      - action: emit_event
+        event: work_order.submitted
+        payload: [work_order_id, production_item, qty, bom_no]
+    result: "Work order is submitted with job cards created for each operation"
+    error: WO_BOM_INVALID
+
+  create_job_card:
+    priority: 3
+    given:
+      - "work order is submitted with operations"
+      - "operation has a workstation and time defined"
+    then:
+      - action: create_record
+        type: job_card
+        description: "Create job card for the operation"
+      - action: set_field
+        target: jc_status
+        value: open
+    result: "Job card is created and linked to the work order operation"
+
+  log_time:
+    priority: 4
+    given:
+      - field: jc_status
+        source: db
+        operator: in
+        value: [open, work_in_progress]
+      - "time log from_time and to_time do not overlap with existing logs on the workstation"
+    then:
+      - action: set_field
+        target: jc_status
+        value: work_in_progress
+      - action: set_field
+        target: total_time_in_mins
+        description: "Accumulate time from all time logs"
+      - action: emit_event
+        event: job_card.started
+        payload: [job_card_id, work_order_id, operation, workstation]
+    result: "Time log is recorded and job card status updated to work in progress"
+    error: JC_TIME_OVERLAP
+
+  transfer_material:
+    priority: 5
+    given:
+      - field: wo_status
+        source: db
+        operator: in
+        value: [not_started, in_process]
+      - field: skip_transfer
+        source: db
+        operator: eq
+        value: false
+    then:
+      - action: create_record
+        type: stock_entry
+        description: "Create material transfer entry from source to WIP warehouse"
+      - action: set_field
+        target: material_transferred_for_manufacturing
+        description: "Update transferred quantity"
+      - action: emit_event
+        event: material.transferred
+        payload: [work_order_id, items, source_warehouse, wip_warehouse]
+    result: "Raw materials transferred from source warehouse to WIP warehouse"
+
+  complete_manufacturing:
+    priority: 6
+    given:
+      - field: wo_status
+        source: db
+        operator: eq
+        value: in_process
+      - "all job cards are completed"
+      - "produced_qty meets ordered qty"
+    then:
+      - action: transition_state
+        field: wo_status
+        from: in_process
+        to: completed
+      - action: create_record
+        type: stock_entry
+        description: "Create manufacture entry moving finished goods to FG warehouse"
+      - action: emit_event
+        event: work_order.completed
+        payload: [work_order_id, production_item, produced_qty, actual_operating_cost]
+    result: "Work order completed, finished goods moved to target warehouse"
+    error: WO_OVERPRODUCTION
+
+  stop_production:
+    priority: 7
+    given:
+      - field: wo_status
+        source: db
+        operator: eq
+        value: in_process
+    then:
+      - action: transition_state
+        field: wo_status
+        from: in_process
+        to: stopped
+      - action: emit_event
+        event: work_order.stopped
+        payload: [work_order_id, production_item, produced_qty, qty]
+    result: "Production is halted; work order can be resumed or closed later"
+
+errors:
+  - code: WO_BOM_INVALID
+    status: 422
+    message: "Referenced BOM must be submitted and active before the work order can proceed."
+    retry: true
+  - code: WO_OVERPRODUCTION
+    status: 422
+    message: "Produced quantity exceeds the allowed limit (order quantity plus overproduction tolerance)."
+    retry: false
+  - code: WO_CANCEL_WITH_PRODUCTION
+    status: 409
+    message: "Cannot cancel a work order that has already produced items. Stop or close it instead."
+    retry: false
+  - code: JC_TIME_OVERLAP
+    status: 409
+    message: "Time log overlaps with an existing entry on the same workstation."
+    retry: true
+  - code: JC_SEQUENCE_VIOLATION
+    status: 422
+    message: "Previous operation must be completed before starting this sequential operation."
+    retry: false
+  - code: JC_INSPECTION_REQUIRED
+    status: 422
+    message: "Quality inspection must be completed and approved before finishing this job card."
+    retry: true
+
+events:
+  - name: work_order.submitted
+    payload: [work_order_id, production_item, qty, bom_no]
+    description: "Fired when a work order is submitted and job cards are created"
+  - name: work_order.completed
+    payload: [work_order_id, production_item, produced_qty, actual_operating_cost]
+    description: "Fired when all quantities are produced and work order is completed"
+  - name: work_order.stopped
+    payload: [work_order_id, production_item, produced_qty, qty]
+    description: "Fired when production is halted before completion"
+  - name: job_card.started
+    payload: [job_card_id, work_order_id, operation, workstation]
+    description: "Fired when a job card begins time logging"
+  - name: job_card.completed
+    payload: [job_card_id, work_order_id, operation, manufactured_qty, total_time_in_mins]
+    description: "Fired when a job card operation is fully completed"
+  - name: material.transferred
+    payload: [work_order_id, items, source_warehouse, wip_warehouse]
+    description: "Fired when raw materials are transferred to WIP warehouse for manufacturing"
+
+related:
+  - feature: bill-of-materials
+    type: required
+    reason: "Work orders consume BOMs to determine materials and operations"
+  - feature: stock-entry-movements
+    type: required
+    reason: "Material transfers and manufacture entries use stock entry documents"
+  - feature: production-planning
+    type: recommended
+    reason: "Production planning auto-creates work orders from planned items"
+  - feature: quality-inspection
+    type: optional
+    reason: "Quality inspections validate manufactured goods before completion"
+
+extensions:
+  source: "https://github.com/frappe/erpnext"

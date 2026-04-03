@@ -1,0 +1,419 @@
+# ============================================================
+# SUPPORT TICKETS & SLAs — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: support-tickets-sla
+version: "1.0.0"
+description: >
+  Support ticket management with SLA tracking, priority-based
+  response/resolution deadlines, working hours calculation with
+  holiday exclusions, and warranty claim handling.
+category: workflow
+tags:
+  - support
+  - tickets
+  - sla
+  - issue-tracking
+  - warranty
+  - customer-service
+  - helpdesk
+
+fields:
+  - name: subject
+    type: text
+    label: Subject
+    required: true
+  - name: status
+    type: select
+    label: Issue Status
+    required: true
+    options:
+      - {value: "Open", label: "Open"}
+      - {value: "Replied", label: "Replied"}
+      - {value: "On Hold", label: "On Hold"}
+      - {value: "Resolved", label: "Resolved"}
+      - {value: "Closed", label: "Closed"}
+    default: "Open"
+  - name: priority
+    type: select
+    label: Priority
+    required: true
+    options:
+      - {value: "Low", label: "Low"}
+      - {value: "Medium", label: "Medium"}
+      - {value: "High", label: "High"}
+      - {value: "Urgent", label: "Urgent"}
+    default: "Medium"
+  - name: issue_type
+    type: text
+    label: Issue Type
+    required: false
+  - name: customer
+    type: text
+    label: Customer
+    required: false
+  - name: raised_by
+    type: email
+    label: Raised By
+    required: false
+  - name: description
+    type: rich_text
+    label: Description
+    required: false
+  - name: resolution
+    type: rich_text
+    label: Resolution
+    required: false
+  - name: first_responded_on
+    type: datetime
+    label: First Responded On
+    required: false
+  - name: resolution_date
+    type: datetime
+    label: Resolution Date
+    required: false
+  - name: opening_date
+    type: date
+    label: Opening Date
+    required: true
+  - name: service_level_agreement
+    type: text
+    label: Service Level Agreement
+    required: false
+  - name: response_by
+    type: datetime
+    label: Response By
+    required: false
+  - name: resolution_by
+    type: datetime
+    label: Resolution By
+    required: false
+  - name: agreement_status
+    type: select
+    label: Agreement Status
+    required: false
+    options:
+      - {value: "Ongoing", label: "Ongoing"}
+      - {value: "Fulfilled", label: "Fulfilled"}
+      - {value: "Failed", label: "Failed"}
+  - name: first_response_time
+    type: number
+    label: First Response Time (seconds)
+    required: false
+  - name: avg_response_time
+    type: number
+    label: Average Response Time (seconds)
+    required: false
+  - name: service_level
+    type: text
+    label: Service Level Name
+    required: true
+  - name: enabled
+    type: boolean
+    label: Enabled
+    required: false
+    default: true
+  - name: default_sla
+    type: boolean
+    label: Default SLA
+    required: false
+    default: false
+  - name: entity_type
+    type: select
+    label: Entity Type
+    required: false
+    options:
+      - {value: "Customer", label: "Customer"}
+      - {value: "Customer Group", label: "Customer Group"}
+      - {value: "Territory", label: "Territory"}
+  - name: entity
+    type: text
+    label: Entity
+    required: false
+  - name: priorities
+    type: json
+    label: SLA Priorities
+    required: false
+  - name: support_and_resolution
+    type: json
+    label: Support Hours
+    required: false
+  - name: holiday_list
+    type: text
+    label: Holiday List
+    required: false
+  - name: apply_sla_for_resolution
+    type: boolean
+    label: Apply SLA for Resolution
+    required: false
+    default: true
+  - name: condition
+    type: text
+    label: SLA Condition
+    required: false
+  - name: warranty_customer
+    type: text
+    label: Warranty Customer
+    required: false
+  - name: item_code
+    type: text
+    label: Item Code
+    required: false
+  - name: serial_no
+    type: text
+    label: Serial Number
+    required: false
+  - name: complaint
+    type: text
+    label: Complaint
+    required: false
+  - name: warranty_status
+    type: select
+    label: Warranty Status
+    required: false
+    options:
+      - {value: "Open", label: "Open"}
+      - {value: "Work In Progress", label: "Work In Progress"}
+      - {value: "Closed", label: "Closed"}
+      - {value: "Cancelled", label: "Cancelled"}
+  - name: complaint_date
+    type: date
+    label: Complaint Date
+    required: false
+  - name: warranty_resolution_date
+    type: date
+    label: Warranty Resolution Date
+    required: false
+  - name: warranty_resolution
+    type: text
+    label: Warranty Resolution
+    required: false
+
+rules:
+  sla_auto_assignment:
+    description: >
+      SLA is auto-assigned based on entity matching hierarchy:
+      specific customer > customer group > territory > default SLA.
+  sla_deadline_calculation:
+    description: >
+      Response and resolution deadlines are calculated from SLA
+      priority settings and working hours, excluding holidays.
+  holiday_exclusion:
+    description: >
+      Holiday list exclusions extend SLA deadlines by skipping
+      non-working days in the calculation.
+  agreement_status_auto_set:
+    description: >
+      Agreement status is auto-set to Fulfilled if resolved within
+      SLA deadlines, or Failed if any deadline is exceeded.
+  first_response_tracking:
+    description: >
+      First response time is tracked from issue creation to the
+      first reply, and compared against the SLA response deadline.
+  multiple_sla_priority:
+    description: >
+      Multiple SLAs can exist; priority-based selection ensures
+      the most specific applicable SLA is applied.
+  warranty_serial_link:
+    description: >
+      Warranty claims are linked to serial numbers and items,
+      validating that the serial is under warranty.
+
+states:
+  field: status
+  values:
+    - id: open
+      label: Open
+      initial: true
+    - id: replied
+      label: Replied
+    - id: on_hold
+      label: On Hold
+    - id: resolved
+      label: Resolved
+    - id: closed
+      label: Closed
+      terminal: true
+  transitions:
+    - from: open
+      to: replied
+      description: "Agent responds to the issue"
+    - from: replied
+      to: on_hold
+      description: "Issue put on hold awaiting customer input"
+    - from: open
+      to: on_hold
+      description: "Issue put on hold"
+    - from: on_hold
+      to: open
+      description: "Issue reopened from hold"
+    - from: replied
+      to: resolved
+      description: "Issue resolved by agent"
+    - from: open
+      to: resolved
+      description: "Issue resolved directly"
+    - from: resolved
+      to: closed
+      description: "Resolution confirmed, issue closed"
+    - from: resolved
+      to: open
+      description: "Issue reopened after resolution"
+
+outcomes:
+  create_issue:
+    given:
+      - "subject and opening_date are provided"
+    then:
+      - action: create_record
+        type: issue
+        target: issue
+        description: "Issue created with Open status"
+      - action: emit_event
+        event: issue.created
+        payload: [subject, priority, customer, raised_by]
+    result: "Support issue created and SLA assignment triggered"
+
+  assign_sla:
+    given:
+      - "issue exists and is Open"
+      - "at least one matching SLA is enabled"
+    then:
+      - action: set_field
+        target: service_level_agreement
+        description: "Most specific matching SLA assigned"
+      - action: set_field
+        target: response_by
+        description: "Response deadline calculated from SLA and working hours"
+      - action: set_field
+        target: resolution_by
+        description: "Resolution deadline calculated from SLA and working hours"
+      - action: emit_event
+        event: issue.sla_assigned
+        payload: [subject, service_level_agreement, response_by, resolution_by]
+    result: "SLA assigned with calculated response and resolution deadlines"
+    error: ISSUE_SLA_NOT_FOUND
+
+  track_response_time:
+    given:
+      - "issue exists and first_responded_on is not set"
+      - "a reply is posted to the issue"
+    then:
+      - action: set_field
+        target: first_responded_on
+        description: "Timestamp of first response recorded"
+      - action: set_field
+        target: first_response_time
+        description: "Duration from creation to first response calculated"
+      - action: emit_event
+        event: issue.first_response
+        payload: [subject, first_response_time, response_by]
+    result: "First response time recorded and compared against SLA"
+
+  resolve_issue:
+    given:
+      - "issue exists and is not Closed"
+      - "resolution description is provided"
+    then:
+      - action: set_field
+        target: status
+        value: "Resolved"
+      - action: set_field
+        target: resolution_date
+        description: "Current timestamp"
+      - action: set_field
+        target: agreement_status
+        description: "Set to Fulfilled or Failed based on SLA comparison"
+      - action: emit_event
+        event: issue.resolved
+        payload: [subject, resolution_date, agreement_status]
+    result: "Issue resolved with SLA status determined"
+
+  close_issue:
+    given:
+      - "issue is in Resolved status"
+    then:
+      - action: set_field
+        target: status
+        value: "Closed"
+    result: "Issue closed after resolution confirmation"
+    error: ISSUE_ALREADY_CLOSED
+
+  escalate_issue:
+    given:
+      - "response_by or resolution_by deadline has passed"
+      - "issue is not Resolved or Closed"
+    then:
+      - action: set_field
+        target: agreement_status
+        value: "Failed"
+      - action: emit_event
+        event: issue.sla_failed
+        payload: [subject, priority, response_by, resolution_by]
+    result: "SLA marked as failed and escalation triggered"
+
+  create_warranty_claim:
+    given:
+      - "warranty_customer and item_code are provided"
+      - "serial_no is valid and under warranty"
+    then:
+      - action: create_record
+        target: warranty_claim
+        description: "Warranty claim created with Open status"
+      - action: emit_event
+        event: warranty.claimed
+        payload: [warranty_customer, item_code, serial_no, complaint]
+    result: "Warranty claim created and linked to serial number"
+    error: WARRANTY_SERIAL_INVALID
+
+errors:
+  - code: ISSUE_SLA_NOT_FOUND
+    message: "No matching service level agreement found for this issue."
+    status: 404
+  - code: ISSUE_ALREADY_CLOSED
+    message: "This issue is already closed and cannot be modified."
+    status: 400
+  - code: WARRANTY_SERIAL_INVALID
+    message: "The specified serial number is invalid or not found."
+    status: 400
+  - code: WARRANTY_EXPIRED
+    message: "The warranty period for this serial number has expired."
+    status: 400
+
+events:
+  - name: issue.created
+    description: Fired when a new support issue is created
+    payload: [subject, priority, customer, raised_by]
+  - name: issue.sla_assigned
+    description: Fired when an SLA is assigned to an issue
+    payload: [subject, service_level_agreement, response_by, resolution_by]
+  - name: issue.first_response
+    description: Fired when the first response is recorded
+    payload: [subject, first_response_time, response_by]
+  - name: issue.resolved
+    description: Fired when an issue is resolved
+    payload: [subject, resolution_date, agreement_status]
+  - name: issue.sla_failed
+    description: Fired when SLA deadlines are exceeded
+    payload: [subject, priority, response_by, resolution_by]
+  - name: warranty.claimed
+    description: Fired when a warranty claim is created
+    payload: [warranty_customer, item_code, serial_no, complaint]
+
+related:
+  - feature: customer-supplier-management
+    type: recommended
+    reason: "Customer data used for SLA entity matching"
+  - feature: serial-batch-tracking
+    type: optional
+    reason: "Serial numbers used for warranty claim validation"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"

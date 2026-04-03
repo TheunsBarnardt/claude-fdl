@@ -1,0 +1,238 @@
+# ============================================================
+# QUALITY INSPECTION — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: quality-inspection
+version: "1.0.0"
+description: >
+  Quality inspection for incoming, outgoing, and in-process materials
+  with numeric range checks, formula-based acceptance criteria, and
+  template-driven reading parameters.
+category: quality
+tags:
+  - quality-inspection
+  - incoming-inspection
+  - outgoing-inspection
+  - quality-control
+  - acceptance-criteria
+  - manufacturing
+
+fields:
+  - name: inspection_type
+    type: select
+    label: Inspection Type
+    required: true
+    options:
+      - {value: "Incoming", label: "Incoming"}
+      - {value: "Outgoing", label: "Outgoing"}
+      - {value: "In Process", label: "In Process"}
+  - name: reference_type
+    type: select
+    label: Reference Document Type
+    required: false
+    options:
+      - {value: "Purchase Receipt", label: "Purchase Receipt"}
+      - {value: "Delivery Note", label: "Delivery Note"}
+      - {value: "Stock Entry", label: "Stock Entry"}
+      - {value: "Job Card", label: "Job Card"}
+  - name: reference_name
+    type: text
+    label: Reference Document Name
+    required: false
+  - name: item_code
+    type: text
+    label: Item Code
+    required: true
+  - name: sample_size
+    type: number
+    label: Sample Size
+    required: false
+    validation:
+      - type: min
+        value: 1
+        message: "Sample size must be at least 1"
+  - name: status
+    type: select
+    label: Inspection Status
+    required: true
+    options:
+      - {value: "Accepted", label: "Accepted"}
+      - {value: "Rejected", label: "Rejected"}
+      - {value: "Cancelled", label: "Cancelled"}
+  - name: inspected_by
+    type: text
+    label: Inspected By
+    required: false
+  - name: report_date
+    type: date
+    label: Report Date
+    required: true
+  - name: readings
+    type: json
+    label: Inspection Readings
+    required: true
+  - name: quality_inspection_template
+    type: text
+    label: Inspection Template
+    required: false
+  - name: manual_inspection
+    type: boolean
+    label: Manual Inspection
+    required: false
+    default: false
+  - name: batch_no
+    type: text
+    label: Batch Number
+    required: false
+
+rules:
+  template_auto_populate:
+    description: >
+      When a quality inspection template is selected, reading parameters
+      (specification, min_value, max_value, formula) are auto-populated
+      from the template.
+  numeric_range_check:
+    description: >
+      Numeric readings are evaluated against min_value and max_value.
+      A reading within the range (inclusive) is Accepted; outside is Rejected.
+  non_numeric_exact_match:
+    description: >
+      Non-numeric readings are evaluated as exact value matches against
+      the expected specification value.
+  formula_based_criteria:
+    description: >
+      Formula-based acceptance criteria are supported, allowing complex
+      expressions to determine acceptance status.
+  all_readings_required:
+    description: >
+      All readings must have a status (Accepted/Rejected) before the
+      inspection can be submitted.
+  overall_status_from_readings:
+    description: >
+      Overall inspection status is set to Rejected if any individual
+      reading is Rejected. All readings must be Accepted for overall
+      Accepted status.
+  source_document_link:
+    description: >
+      Inspection links back to the source document (Purchase Receipt,
+      Delivery Note, Stock Entry, or Job Card) for traceability.
+  inspection_required_flag:
+    description: >
+      Items must have the inspection_required flag enabled in their
+      master data for inspections to be created.
+  stock_settings_on_failure:
+    description: >
+      Stock settings control the action on inspection failure:
+      Warn (allow with warning), Stop (block), or Ignore.
+
+outcomes:
+  create_inspection:
+    given:
+      - "item_code and inspection_type are provided"
+      - "item has inspection_required flag enabled"
+    then:
+      - action: create_record
+        target: quality_inspection
+        description: "Quality inspection record created"
+      - action: emit_event
+        event: inspection.created
+        payload: [item_code, inspection_type, reference_type, reference_name]
+    result: "Quality inspection created and ready for readings"
+    error: QI_INSPECTION_NOT_REQUIRED
+
+  populate_from_template:
+    given:
+      - "quality_inspection_template is provided and exists"
+    then:
+      - action: set_field
+        target: readings
+        description: "Reading parameters populated from template"
+    result: "Inspection readings pre-populated from template specifications"
+    error: QI_TEMPLATE_NOT_FOUND
+
+  evaluate_readings:
+    given:
+      - "all readings have reading_value entered"
+    then:
+      - action: set_field
+        target: readings
+        description: "Each reading status set based on acceptance criteria"
+    result: "All readings evaluated against acceptance criteria"
+    error: QI_FORMULA_INVALID
+
+  accept_inspection:
+    given:
+      - "all readings have status Accepted"
+      - field: status
+        operator: neq
+        value: "Cancelled"
+        source: db
+    then:
+      - action: set_field
+        target: status
+        value: "Accepted"
+      - action: emit_event
+        event: inspection.accepted
+        payload: [item_code, inspection_type, reference_name]
+    result: "Inspection accepted, material cleared for use"
+
+  reject_inspection:
+    given:
+      - "one or more readings have status Rejected"
+    then:
+      - action: set_field
+        target: status
+        value: "Rejected"
+      - action: emit_event
+        event: inspection.rejected
+        payload: [item_code, inspection_type, reference_name, rejected_readings]
+    result: "Inspection rejected, material flagged per stock settings"
+
+errors:
+  - code: QI_READING_STATUS_MISSING
+    message: "All readings must have an Accepted or Rejected status before submission."
+    status: 400
+  - code: QI_FORMULA_INVALID
+    message: "The acceptance formula for one or more readings is invalid."
+    status: 400
+  - code: QI_INSPECTION_NOT_REQUIRED
+    message: "Quality inspection is not required for this item."
+    status: 400
+  - code: QI_TEMPLATE_NOT_FOUND
+    message: "The specified quality inspection template does not exist."
+    status: 404
+
+events:
+  - name: inspection.created
+    description: Fired when a quality inspection is created
+    payload: [item_code, inspection_type, reference_type, reference_name]
+  - name: inspection.accepted
+    description: Fired when an inspection passes all readings
+    payload: [item_code, inspection_type, reference_name]
+  - name: inspection.rejected
+    description: Fired when an inspection has rejected readings
+    payload: [item_code, inspection_type, reference_name, rejected_readings]
+  - name: inspection.cancelled
+    description: Fired when an inspection is cancelled
+    payload: [item_code, inspection_type, reference_name]
+
+related:
+  - feature: stock-entry-movements
+    type: recommended
+    reason: "Inspections linked to stock entries for in-process checks"
+  - feature: pick-list-shipping
+    type: recommended
+    reason: "Outgoing inspections linked to delivery notes"
+  - feature: work-orders-job-cards
+    type: optional
+    reason: "In-process inspections linked to job cards"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"

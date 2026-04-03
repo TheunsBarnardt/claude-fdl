@@ -1,0 +1,408 @@
+# ============================================================
+# SUBCONTRACTING — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: subcontracting
+version: "1.0.0"
+description: >
+  Subcontracting workflow for outsourcing manufacturing to suppliers,
+  including raw material dispatch, finished goods receipt, quality
+  inspection, rejection handling, and cost tracking.
+category: manufacturing
+tags:
+  - subcontracting
+  - outsourced-manufacturing
+  - supplier
+  - contract-manufacturing
+  - procurement
+
+fields:
+  # --- Subcontracting Order fields ---
+  - name: purchase_order
+    type: text
+    label: Purchase Order Reference
+    required: true
+    validation:
+      - {type: required, message: "Purchase order reference is required"}
+  - name: supplier
+    type: text
+    label: Supplier
+    required: true
+    validation:
+      - {type: required, message: "Supplier is required"}
+  - name: order_items
+    type: json
+    label: Finished Goods Items
+    required: true
+    validation:
+      - {type: required, message: "At least one finished good item is required"}
+  - name: service_items
+    type: json
+    label: Service Items
+    required: false
+  - name: supplied_items
+    type: json
+    label: Supplied Raw Materials
+    required: true
+    validation:
+      - {type: required, message: "Raw materials to supply are required"}
+  - name: order_status
+    type: select
+    label: Order Status
+    required: true
+    options:
+      - {value: "draft", label: "Draft"}
+      - {value: "open", label: "Open"}
+      - {value: "partially_received", label: "Partially Received"}
+      - {value: "completed", label: "Completed"}
+      - {value: "cancelled", label: "Cancelled"}
+      - {value: "closed", label: "Closed"}
+  - name: order_additional_costs
+    type: json
+    label: Order Additional Costs
+    required: false
+  - name: distribute_additional_costs_based_on
+    type: select
+    label: Distribute Additional Costs Based On
+    required: false
+    default: "qty"
+    options:
+      - {value: "qty", label: "Qty"}
+      - {value: "amount", label: "Amount"}
+  - name: reserve_stock
+    type: boolean
+    label: Reserve Stock
+    required: false
+    default: false
+  # --- Subcontracting Receipt fields ---
+  - name: receipt_company
+    type: text
+    label: Company
+    required: true
+  - name: receipt_posting_date
+    type: date
+    label: Posting Date
+    required: true
+  - name: receipt_items
+    type: json
+    label: Received Items
+    required: true
+  - name: receipt_supplied_items
+    type: json
+    label: Consumed Raw Materials
+    required: false
+  - name: is_return
+    type: boolean
+    label: Is Return
+    required: false
+    default: false
+  - name: return_against
+    type: text
+    label: Return Against Receipt
+    required: false
+  - name: bill_no
+    type: text
+    label: Supplier Invoice Number
+    required: false
+  - name: bill_date
+    type: date
+    label: Supplier Invoice Date
+    required: false
+  - name: receipt_additional_costs
+    type: json
+    label: Receipt Additional Costs
+    required: false
+  - name: receipt_status
+    type: select
+    label: Receipt Status
+    required: true
+    options:
+      - {value: "draft", label: "Draft"}
+      - {value: "completed", label: "Completed"}
+      - {value: "cancelled", label: "Cancelled"}
+      - {value: "return_issued", label: "Return Issued"}
+
+states:
+  field: order_status
+  values:
+    - name: draft
+      description: Subcontracting order being prepared
+      initial: true
+    - name: open
+      description: Order submitted, awaiting raw material dispatch and goods receipt
+    - name: partially_received
+      description: Some finished goods received but order not fully fulfilled
+    - name: completed
+      description: All ordered quantities received from supplier
+      terminal: true
+    - name: closed
+      description: Order closed before full receipt
+      terminal: true
+    - name: cancelled
+      description: Order cancelled
+      terminal: true
+  transitions:
+    - from: draft
+      to: open
+      actor: procurement_manager
+      description: Submit subcontracting order to begin outsourced manufacturing
+      condition: "Purchase order must be submitted with subcontracted flag"
+    - from: open
+      to: partially_received
+      actor: warehouse_operator
+      description: Partial receipt of finished goods from supplier
+    - from: partially_received
+      to: completed
+      actor: warehouse_operator
+      description: Final receipt completes the order
+      condition: "All ordered quantities received within tolerance"
+    - from: open
+      to: completed
+      actor: warehouse_operator
+      description: Full receipt of all ordered quantities in one delivery
+    - from: open
+      to: closed
+      actor: procurement_manager
+      description: Close order before full receipt
+    - from: partially_received
+      to: closed
+      actor: procurement_manager
+      description: Close partially received order
+    - from: draft
+      to: cancelled
+      actor: procurement_manager
+      description: Cancel order before submission
+
+rules:
+  purchase_order_subcontracted:
+    description: >
+      The linked purchase order must be in submitted status with the
+      subcontracted flag enabled. Non-subcontracted purchase orders cannot
+      be used.
+  items_must_be_stock:
+    description: >
+      All finished good items in the order must be stock items with a valid
+      BOM. Non-stock items are only allowed in the service items table.
+  service_items_non_stock:
+    description: >
+      Service items represent non-stock charges (labor, handling, etc.) and
+      must not be stock items. They are added to the cost of finished goods.
+  warehouse_conflict_prevention:
+    description: >
+      The raw material reserve warehouse cannot be the same as the supplier
+      warehouse. Materials must move from an internal warehouse to the
+      supplier location.
+  raw_material_reservation:
+    description: >
+      Raw materials are reserved from the specified reserve warehouse when
+      reserve_stock is enabled. Reserved quantities are deducted from
+      available stock to prevent over-commitment.
+  receipt_qty_tolerance:
+    description: >
+      Received quantity per item cannot exceed the ordered quantity plus the
+      configured over-receipt tolerance percentage. Excess receipts are
+      rejected.
+  quality_inspection_on_receipt:
+    description: >
+      If the BOM specifies inspection_required, a quality inspection must
+      be created and approved for each received item before the receipt can
+      be submitted.
+  rejected_items_warehouse:
+    description: >
+      Items that fail quality inspection are moved to a separate rejected
+      items warehouse. The rejected quantity is tracked separately from
+      accepted quantity.
+  cost_calculation:
+    description: >
+      Total cost per finished good equals raw material cost plus service
+      charges plus additional costs. Additional costs are distributed across
+      items based on quantity or amount as configured.
+
+outcomes:
+  create_subcontracting_order:
+    priority: 1
+    given:
+      - "purchase order exists with subcontracted flag enabled"
+      - "all items have valid BOMs"
+      - "supplier and warehouses are specified"
+    then:
+      - action: create_record
+        type: subcontracting_order
+        description: "Create subcontracting order with items and supplied materials"
+      - action: set_field
+        target: order_status
+        value: open
+      - action: set_field
+        target: supplied_items
+        description: "Populate raw materials from BOMs of ordered items"
+      - action: emit_event
+        event: subcontract.order_created
+        payload: [order_id, supplier, items, supplied_items]
+    result: "Subcontracting order created with raw material requirements from BOMs"
+    error: SC_PO_NOT_SUBCONTRACTED
+
+  send_raw_materials:
+    priority: 2
+    given:
+      - field: order_status
+        source: db
+        operator: eq
+        value: open
+      - "raw materials are available in reserve warehouse"
+    then:
+      - action: create_record
+        type: stock_entry
+        description: "Create stock entry to transfer raw materials to supplier"
+      - action: set_field
+        target: supplied_items
+        description: "Update supplied quantity for each raw material"
+      - action: emit_event
+        event: subcontract.materials_sent
+        payload: [order_id, supplier, materials, warehouse]
+    result: "Raw materials dispatched to supplier via stock transfer entry"
+
+  receive_finished_goods:
+    priority: 3
+    given:
+      - field: order_status
+        source: db
+        operator: in
+        value: [open, partially_received]
+      - "received quantity is within ordered quantity plus tolerance"
+    then:
+      - action: create_record
+        type: subcontracting_receipt
+        description: "Create receipt with received quantities and consumed materials"
+      - action: set_field
+        target: receipt_supplied_items
+        description: "Record raw materials consumed by supplier"
+      - action: transition_state
+        field: order_status
+        from: open
+        to: partially_received
+        description: "Or to completed if all quantities received"
+      - action: emit_event
+        event: subcontract.goods_received
+        payload: [order_id, receipt_id, received_items, consumed_materials]
+    result: "Finished goods received and raw material consumption recorded"
+    error: SC_OVERRECEIPT
+
+  reject_items:
+    priority: 4
+    given:
+      - "received items fail quality inspection"
+      - "rejected items warehouse is configured"
+    then:
+      - action: set_field
+        target: receipt_items
+        description: "Split received quantity into accepted and rejected"
+      - action: create_record
+        type: stock_entry
+        description: "Move rejected items to rejected items warehouse"
+      - action: emit_event
+        event: subcontract.items_rejected
+        payload: [order_id, receipt_id, rejected_items, rejection_reason]
+    result: "Rejected items moved to separate warehouse with rejection reason recorded"
+    error: SC_INSPECTION_FAILED
+
+  process_return:
+    priority: 5
+    given:
+      - "receipt exists in completed status"
+      - field: is_return
+        source: input
+        operator: eq
+        value: true
+    then:
+      - action: create_record
+        type: subcontracting_receipt
+        description: "Create return receipt with negative quantities"
+      - action: set_field
+        target: receipt_status
+        value: return_issued
+      - action: set_field
+        target: supplied_items
+        description: "Reverse raw material consumption for returned items"
+    result: "Return processed with finished goods returned and raw material consumption reversed"
+
+  close_order:
+    priority: 6
+    given:
+      - field: order_status
+        source: db
+        operator: in
+        value: [open, partially_received]
+    then:
+      - action: transition_state
+        field: order_status
+        from: open
+        to: closed
+        description: "Or from partially_received to closed"
+      - action: emit_event
+        event: subcontract.order_completed
+        payload: [order_id, supplier, total_received, total_ordered]
+    result: "Subcontracting order closed; no further receipts can be made"
+
+errors:
+  - code: SC_PO_NOT_SUBCONTRACTED
+    status: 422
+    message: "The linked purchase order must have the subcontracted flag enabled."
+    retry: true
+  - code: SC_ITEM_NOT_STOCK
+    status: 422
+    message: "All finished good items must be stock items with a valid BOM."
+    retry: true
+  - code: SC_WAREHOUSE_CONFLICT
+    status: 422
+    message: "Raw material reserve warehouse cannot be the same as the supplier warehouse."
+    retry: true
+  - code: SC_OVERRECEIPT
+    status: 422
+    message: "Received quantity exceeds the ordered quantity plus the allowed tolerance."
+    retry: false
+  - code: SC_INSPECTION_FAILED
+    status: 422
+    message: "Quality inspection must be completed and approved before accepting received items."
+    retry: true
+  - code: SC_BOM_QTY_MISMATCH
+    status: 422
+    message: "Consumed raw material quantities do not match the expected BOM quantities within tolerance."
+    retry: true
+
+events:
+  - name: subcontract.order_created
+    payload: [order_id, supplier, items, supplied_items]
+    description: "Fired when a new subcontracting order is created and submitted"
+  - name: subcontract.materials_sent
+    payload: [order_id, supplier, materials, warehouse]
+    description: "Fired when raw materials are dispatched to the supplier"
+  - name: subcontract.goods_received
+    payload: [order_id, receipt_id, received_items, consumed_materials]
+    description: "Fired when finished goods are received from the supplier"
+  - name: subcontract.items_rejected
+    payload: [order_id, receipt_id, rejected_items, rejection_reason]
+    description: "Fired when received items fail quality inspection and are rejected"
+  - name: subcontract.order_completed
+    payload: [order_id, supplier, total_received, total_ordered]
+    description: "Fired when a subcontracting order is fully received or closed"
+
+related:
+  - feature: purchase-order-lifecycle
+    type: required
+    reason: "Subcontracting orders are linked to purchase orders with subcontracted flag"
+  - feature: bill-of-materials
+    type: required
+    reason: "BOMs define raw material requirements for subcontracted items"
+  - feature: stock-entry-movements
+    type: required
+    reason: "Stock entries handle raw material dispatch and finished goods receipt"
+  - feature: quality-inspection
+    type: optional
+    reason: "Quality inspection validates received goods before acceptance"
+
+extensions:
+  source: "https://github.com/frappe/erpnext"

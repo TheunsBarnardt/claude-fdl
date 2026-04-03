@@ -1,0 +1,411 @@
+# ============================================================
+# PURCHASE ORDER LIFECYCLE — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: purchase-order-lifecycle
+version: "1.0.0"
+description: >
+  Purchase order lifecycle from draft through receipt and billing to completion,
+  with supplier validation, material request tracking, warehouse bin updates,
+  and over-receipt tolerance enforcement.
+category: workflow
+tags:
+  - purchasing
+  - procurement
+  - order-management
+  - goods-receipt
+  - billing
+  - material-request
+
+actors:
+  - id: purchase_user
+    name: Purchase User
+    type: human
+    description: Creates and submits purchase orders, tracks supplier deliveries
+  - id: warehouse_user
+    name: Warehouse User
+    type: human
+    description: Creates purchase receipts when goods arrive at warehouse
+  - id: accounts_user
+    name: Accounts User
+    type: human
+    description: Creates purchase invoices and processes supplier payments
+  - id: system
+    name: System
+    type: system
+    description: Validates suppliers, updates warehouse bins, computes status
+
+fields:
+  - name: supplier
+    type: text
+    label: Supplier
+    required: true
+  - name: transaction_date
+    type: date
+    label: Transaction Date
+    required: true
+  - name: schedule_date
+    type: date
+    label: Required By Date
+    required: true
+  # Items: array of line items with item_code, qty, rate, amount, warehouse,
+  # material_request, material_request_item, received_qty, billed_amt
+  - name: items
+    type: json
+    label: Order Items
+    required: true
+  - name: grand_total
+    type: number
+    label: Grand Total
+    required: true
+  - name: per_received
+    type: number
+    label: "% Received"
+    required: false
+    validation:
+      - {type: "min", value: 0, message: "Received percentage cannot be negative"}
+      - {type: "max", value: 100, message: "Received percentage cannot exceed 100%"}
+  - name: per_billed
+    type: number
+    label: "% Billed"
+    required: false
+    validation:
+      - {type: "min", value: 0, message: "Billed percentage cannot be negative"}
+      - {type: "max", value: 100, message: "Billed percentage cannot exceed 100%"}
+  - name: status
+    type: select
+    label: Status
+    required: true
+    options:
+      - {value: "Draft", label: "Draft"}
+      - {value: "On Hold", label: "On Hold"}
+      - {value: "To Receive and Bill", label: "To Receive and Bill"}
+      - {value: "To Bill", label: "To Bill"}
+      - {value: "To Receive", label: "To Receive"}
+      - {value: "Completed", label: "Completed"}
+      - {value: "Cancelled", label: "Cancelled"}
+      - {value: "Closed", label: "Closed"}
+  # Indicates order is for subcontracted items requiring raw material transfer
+  - name: is_subcontracted
+    type: boolean
+    label: Is Subcontracted
+    required: false
+
+states:
+  field: status
+  values:
+    - name: Draft
+      description: Purchase order being prepared, fully editable
+      initial: true
+    - name: On Hold
+      description: Order temporarily on hold, no receipt or billing actions
+    - name: To Receive and Bill
+      description: Order submitted, awaiting both goods receipt and billing
+    - name: To Bill
+      description: All goods received, awaiting billing
+    - name: To Receive
+      description: Fully billed, awaiting goods receipt
+    - name: Completed
+      description: Fully received and fully billed
+      terminal: true
+    - name: Cancelled
+      description: Order has been cancelled
+      terminal: true
+    - name: Closed
+      description: Order manually closed regardless of receipt/billing status
+      terminal: true
+  transitions:
+    - from: Draft
+      to: On Hold
+      actor: purchase_user
+      description: Place order on hold before submission
+    - from: On Hold
+      to: Draft
+      actor: purchase_user
+      description: Resume order from hold
+    - from: Draft
+      to: To Receive and Bill
+      actor: purchase_user
+      description: Submit purchase order to supplier
+      condition: Supplier must not be on hold or closed
+    - from: To Receive and Bill
+      to: To Bill
+      actor: warehouse_user
+      description: All ordered items received at warehouse
+      condition: per_received reaches 100%
+    - from: To Receive and Bill
+      to: To Receive
+      actor: accounts_user
+      description: All items billed by supplier
+      condition: per_billed reaches 100%
+    - from: [To Receive and Bill, To Bill, To Receive]
+      to: Completed
+      actor: system
+      description: Both receipt and billing reach 100%
+      condition: per_received == 100% and per_billed == 100%
+    - from: [Draft, On Hold, To Receive and Bill, To Bill, To Receive]
+      to: Cancelled
+      actor: purchase_user
+      description: Cancel the purchase order
+      condition: No linked submitted receipts or invoices prevent cancellation
+    - from: [To Receive and Bill, To Bill, To Receive, Completed]
+      to: Closed
+      actor: purchase_user
+      description: Manually close order to stop further receipts or billing
+
+rules:
+  supplier_not_on_hold:
+    description: >
+      Orders cannot be submitted to a supplier that is currently on hold.
+      The hold must be released before the order can proceed.
+  supplier_not_closed:
+    description: >
+      Orders cannot be created for a supplier that has been permanently
+      disabled or closed in the system.
+  material_request_tracking:
+    description: >
+      When items originate from a material request, the ordered quantity
+      is tracked against the material request item. The material request
+      status updates based on how much has been ordered.
+  posting_date_validation:
+    description: >
+      Purchase receipt and purchase invoice posting dates must be on or
+      after the purchase order transaction date.
+  warehouse_bin_update_on_submit:
+    description: >
+      On submission, ordered quantity is updated in the warehouse bin for
+      each item-warehouse combination, enabling stock planning visibility.
+  over_receipt_tolerance:
+    description: >
+      Received quantity cannot exceed the ordered quantity beyond the
+      configured over-receipt tolerance percentage for the item or globally.
+  last_purchase_rate_tracking:
+    description: >
+      The system tracks the last purchase rate per supplier-item pair
+      after receipt, used for future pricing reference and reports.
+  subcontract_raw_material_transfer:
+    description: >
+      For subcontracted orders, raw materials must be transferred to the
+      supplier warehouse before the finished goods can be received.
+
+outcomes:
+  create_purchase_order:
+    priority: 1
+    given:
+      - "purchase user provides supplier, items, and schedule date"
+      - "supplier is active and not on hold or closed"
+      - "at least one line item with valid item code, qty, and rate"
+    then:
+      - action: create_record
+        type: purchase_order
+        description: Create purchase order in Draft status
+      - action: set_field
+        target: status
+        value: "Draft"
+    result: "Purchase order created in Draft status with computed totals"
+
+  submit_order:
+    priority: 2
+    given:
+      - "purchase order is in Draft status"
+      - "supplier is not on hold and not closed"
+      - "all items have valid warehouses for stock items"
+    then:
+      - action: transition_state
+        field: status
+        from: Draft
+        to: To Receive and Bill
+      - action: set_field
+        target: per_received
+        value: 0
+      - action: set_field
+        target: per_billed
+        value: 0
+      - action: call_service
+        target: warehouse_bin_service
+        description: Update ordered qty in warehouse bins for all items
+      - action: emit_event
+        event: purchase_order.submitted
+        payload: [order_id, supplier, grand_total, schedule_date]
+    result: "Purchase order submitted, warehouse bins updated with ordered quantities"
+    transaction: true
+
+  create_purchase_receipt:
+    priority: 3
+    given:
+      - "purchase order is in To Receive and Bill or To Receive status"
+      - "received qty does not exceed ordered qty beyond tolerance"
+    then:
+      - action: create_record
+        type: purchase_receipt
+        description: Create purchase receipt linked to this order
+      - action: set_field
+        target: per_received
+        description: Updated based on received qty vs ordered qty
+      - action: call_service
+        target: warehouse_bin_service
+        description: Update actual qty in warehouse bins
+      - action: emit_event
+        event: purchase_order.received
+        payload: [order_id, receipt_id, per_received]
+    result: "Purchase receipt created, stock updated, receipt percentage recalculated"
+
+  create_purchase_invoice:
+    priority: 4
+    given:
+      - "purchase order is in To Receive and Bill or To Bill status"
+    then:
+      - action: create_record
+        type: purchase_invoice
+        description: Create purchase invoice linked to this order
+      - action: set_field
+        target: per_billed
+        description: Updated based on billed amount vs ordered amount
+      - action: emit_event
+        event: purchase_order.billed
+        payload: [order_id, invoice_id, per_billed]
+    result: "Purchase invoice created, billing percentage updated"
+
+  close_order:
+    priority: 5
+    given:
+      - "purchase order is in a submitted status (not Draft or Cancelled)"
+      - "purchase user elects to close the order"
+    then:
+      - action: transition_state
+        field: status
+        to: Closed
+      - action: emit_event
+        event: purchase_order.completed
+        payload: [order_id, per_received, per_billed]
+    result: "Purchase order closed, no further receipts or invoices expected"
+
+  cancel_order:
+    priority: 6
+    given:
+      - "purchase order has no linked submitted receipts or invoices"
+      - "purchase user cancels the order"
+    then:
+      - action: transition_state
+        field: status
+        to: Cancelled
+      - action: call_service
+        target: warehouse_bin_service
+        description: Reverse ordered qty in warehouse bins
+      - action: emit_event
+        event: purchase_order.cancelled
+        payload: [order_id]
+    result: "Purchase order cancelled, warehouse bin ordered quantities reversed"
+    transaction: true
+
+  supplier_on_hold_blocked:
+    priority: 1
+    error: PO_SUPPLIER_ON_HOLD
+    given:
+      - "purchase user submits order"
+      - "supplier is currently on hold"
+    then:
+      - action: notify
+        channel: ui
+        description: Display supplier on-hold message with hold type and release date
+    result: "Submission blocked until supplier hold is released"
+
+  supplier_closed_blocked:
+    priority: 1
+    error: PO_SUPPLIER_CLOSED
+    given:
+      - "purchase user creates or submits order"
+      - "supplier is disabled or closed"
+    then:
+      - action: notify
+        channel: ui
+        description: Inform that supplier is no longer active
+    result: "Order cannot proceed with a closed supplier"
+
+  qty_mismatch_blocked:
+    priority: 1
+    error: PO_QTY_MISMATCH
+    given:
+      - "purchase receipt qty exceeds ordered qty beyond tolerance"
+    then:
+      - action: notify
+        channel: ui
+        description: Show ordered qty, received qty, and tolerance limit
+    result: "Over-receipt prevented, qty must be within tolerance"
+
+  posting_date_invalid:
+    priority: 1
+    error: PO_POSTING_DATE_INVALID
+    given:
+      - "purchase receipt or invoice posting date is before the purchase order date"
+    then:
+      - action: notify
+        channel: ui
+        description: Show PO date and attempted posting date
+    result: "Posting date must be on or after the purchase order transaction date"
+
+  material_request_invalid:
+    priority: 1
+    error: PO_MATERIAL_REQUEST_INVALID
+    given:
+      - "item references a material request that does not exist or is cancelled"
+    then:
+      - action: notify
+        channel: ui
+        description: Show invalid material request reference
+    result: "Material request reference is invalid or no longer active"
+
+errors:
+  - code: PO_SUPPLIER_ON_HOLD
+    message: "Supplier is currently on hold. Release the hold before submitting this order."
+    status: 403
+  - code: PO_SUPPLIER_CLOSED
+    message: "Supplier is disabled or closed. Orders cannot be placed with inactive suppliers."
+    status: 422
+  - code: PO_QTY_MISMATCH
+    message: "Received quantity exceeds ordered quantity beyond the allowed tolerance."
+    status: 422
+  - code: PO_POSTING_DATE_INVALID
+    message: "Posting date cannot be before the purchase order transaction date."
+    status: 422
+  - code: PO_MATERIAL_REQUEST_INVALID
+    message: "Referenced material request does not exist or has been cancelled."
+    status: 422
+
+events:
+  - name: purchase_order.submitted
+    description: Purchase order submitted to supplier
+    payload: [order_id, supplier, grand_total, schedule_date]
+  - name: purchase_order.received
+    description: Purchase receipt created against the purchase order
+    payload: [order_id, receipt_id, per_received]
+  - name: purchase_order.billed
+    description: Purchase invoice created against the purchase order
+    payload: [order_id, invoice_id, per_billed]
+  - name: purchase_order.completed
+    description: Purchase order fully received and billed, or manually closed
+    payload: [order_id, per_received, per_billed]
+  - name: purchase_order.cancelled
+    description: Purchase order has been cancelled
+    payload: [order_id]
+
+related:
+  - feature: sales-purchase-invoicing
+    type: required
+    reason: Invoicing engine for creating purchase invoices from orders
+  - feature: stock-entry-movements
+    type: recommended
+    reason: Stock entry and movement tracking for warehouse operations
+  - feature: customer-supplier-management
+    type: required
+    reason: Supplier master data, hold status, and payment terms
+  - feature: subcontracting
+    type: optional
+    reason: Subcontracting workflow for outsourced manufacturing
+
+extensions:
+  source: "https://github.com/frappe/erpnext"

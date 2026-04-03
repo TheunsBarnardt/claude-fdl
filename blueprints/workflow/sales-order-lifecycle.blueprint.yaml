@@ -1,0 +1,421 @@
+# ============================================================
+# SALES ORDER LIFECYCLE — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: sales-order-lifecycle
+version: "1.0.0"
+description: >
+  Sales order lifecycle from draft through delivery and billing to completion,
+  with credit limits, blanket orders, stock reservation, and auto-status.
+category: workflow
+tags:
+  - sales
+  - order-management
+  - delivery
+  - billing
+  - credit-limit
+  - stock-reservation
+
+actors:
+  - id: sales_user
+    name: Sales User
+    type: human
+    description: Creates and submits sales orders, monitors fulfillment progress
+  - id: warehouse_user
+    name: Warehouse User
+    type: human
+    description: Creates delivery notes from sales orders, manages stock picking
+  - id: accounts_user
+    name: Accounts User
+    type: human
+    description: Creates sales invoices from sales orders, manages billing
+  - id: system
+    name: System
+    type: system
+    description: Validates credit limits, computes status, enforces stock rules
+
+fields:
+  - name: customer
+    type: text
+    label: Customer
+    required: true
+  - name: transaction_date
+    type: date
+    label: Transaction Date
+    required: true
+  - name: delivery_date
+    type: date
+    label: Delivery Date
+    required: false
+  # Items: array of line items with item_code, item_name, qty, rate, amount,
+  # warehouse, delivery_date, blanket_order, blanket_order_rate
+  - name: items
+    type: json
+    label: Order Items
+    required: true
+  - name: grand_total
+    type: number
+    label: Grand Total
+    required: true
+  - name: per_delivered
+    type: number
+    label: "% Delivered"
+    required: false
+    validation:
+      - {type: "min", value: 0, message: "Delivered percentage cannot be negative"}
+      - {type: "max", value: 100, message: "Delivered percentage cannot exceed 100%"}
+  - name: per_billed
+    type: number
+    label: "% Billed"
+    required: false
+    validation:
+      - {type: "min", value: 0, message: "Billed percentage cannot be negative"}
+      - {type: "max", value: 100, message: "Billed percentage cannot exceed 100%"}
+  - name: per_picked
+    type: number
+    label: "% Picked"
+    required: false
+    validation:
+      - {type: "min", value: 0, message: "Picked percentage cannot be negative"}
+      - {type: "max", value: 100, message: "Picked percentage cannot exceed 100%"}
+  - name: status
+    type: select
+    label: Status
+    required: true
+    options:
+      - {value: "Draft", label: "Draft"}
+      - {value: "On Hold", label: "On Hold"}
+      - {value: "To Pay", label: "To Pay"}
+      - {value: "To Deliver and Bill", label: "To Deliver and Bill"}
+      - {value: "To Bill", label: "To Bill"}
+      - {value: "To Deliver", label: "To Deliver"}
+      - {value: "Completed", label: "Completed"}
+      - {value: "Cancelled", label: "Cancelled"}
+      - {value: "Closed", label: "Closed"}
+  - name: advance_paid
+    type: number
+    label: Advance Paid
+    required: false
+  - name: advance_payment_status
+    type: select
+    label: Advance Payment Status
+    required: false
+    options:
+      - {value: "Not Requested", label: "Not Requested"}
+      - {value: "Requested", label: "Requested"}
+      - {value: "Partially Paid", label: "Partially Paid"}
+      - {value: "Fully Paid", label: "Fully Paid"}
+  # Payment schedule: array of payment terms with due_date, invoice_portion, payment_amount
+  - name: payment_schedule
+    type: json
+    label: Payment Schedule
+    required: false
+  - name: reserve_stock
+    type: boolean
+    label: Reserve Stock
+    required: false
+
+states:
+  field: status
+  values:
+    - name: Draft
+      description: Order is being prepared, fully editable
+      initial: true
+    - name: On Hold
+      description: Order is temporarily on hold, no fulfillment actions allowed
+    - name: To Pay
+      description: Advance payment required before delivery can proceed
+    - name: To Deliver and Bill
+      description: Order submitted, awaiting both delivery and billing
+    - name: To Bill
+      description: Delivery complete, awaiting billing
+    - name: To Deliver
+      description: Billing complete, awaiting delivery
+    - name: Completed
+      description: Fully delivered and fully billed
+      terminal: true
+    - name: Cancelled
+      description: Order has been cancelled
+      terminal: true
+    - name: Closed
+      description: Order manually closed regardless of fulfillment status
+      terminal: true
+  transitions:
+    - from: Draft
+      to: On Hold
+      actor: sales_user
+      description: Place order on hold before submission
+    - from: On Hold
+      to: Draft
+      actor: sales_user
+      description: Resume order from hold
+    - from: Draft
+      to: To Pay
+      actor: sales_user
+      description: Submit order that requires advance payment
+      condition: Advance payment is required and not yet received
+    - from: Draft
+      to: To Deliver and Bill
+      actor: sales_user
+      description: Submit order for fulfillment
+      condition: Credit limit not exceeded, all validations pass
+    - from: To Deliver and Bill
+      to: To Bill
+      actor: warehouse_user
+      description: All items delivered, billing remaining
+      condition: per_delivered reaches 100%
+    - from: To Deliver and Bill
+      to: To Deliver
+      actor: accounts_user
+      description: All items billed, delivery remaining
+      condition: per_billed reaches 100%
+    - from: [To Deliver and Bill, To Bill, To Deliver]
+      to: Completed
+      actor: system
+      description: Both delivery and billing reach 100%
+      condition: per_delivered == 100% and per_billed == 100%
+    - from: [Draft, On Hold, To Pay, To Deliver and Bill, To Bill, To Deliver]
+      to: Cancelled
+      actor: sales_user
+      description: Cancel the order
+      condition: No linked documents prevent cancellation
+    - from: [To Deliver and Bill, To Bill, To Deliver, Completed]
+      to: Closed
+      actor: sales_user
+      description: Manually close order to stop further fulfillment
+
+rules:
+  credit_limit_on_submit:
+    description: >
+      System validates the customer's credit limit before allowing order
+      submission. Outstanding amount plus new order total must not exceed
+      the configured credit limit for the customer-company pair.
+  blanket_order_compliance:
+    description: >
+      If items reference a blanket order, the ordered quantity and rate must
+      comply with the blanket order terms. Rate cannot exceed blanket order
+      rate, and total ordered qty cannot exceed blanket order qty.
+  stock_items_need_warehouse:
+    description: >
+      Every line item that is a stock item must have a warehouse assigned.
+      Non-stock and service items do not require a warehouse.
+  status_auto_computed:
+    description: >
+      Status is automatically computed based on per_delivered and per_billed
+      percentages. No manual status override is allowed on submitted orders.
+  naming_series:
+    description: >
+      Sales orders follow the naming series pattern SAL-ORD-.YYYY.-
+      generating sequential document names per fiscal year.
+  amendment_creates_new_version:
+    description: >
+      Amending a cancelled order creates a new sales order with a version
+      suffix (e.g., SAL-ORD-2024-00001-1) and links back to the original.
+  reserve_stock_on_submit:
+    description: >
+      When reserve_stock is enabled, stock is reserved in the specified
+      warehouses upon order submission to prevent overselling.
+
+outcomes:
+  create_sales_order:
+    priority: 1
+    given:
+      - "sales user provides customer, items, and delivery date"
+      - "at least one line item is present with valid item code, qty, and rate"
+    then:
+      - action: create_record
+        type: sales_order
+        description: Create sales order in Draft status
+      - action: set_field
+        target: status
+        value: "Draft"
+    result: "Sales order created in Draft status with computed totals"
+
+  submit_order:
+    priority: 2
+    given:
+      - "sales order is in Draft status"
+      - "customer credit limit is not exceeded"
+      - "all stock items have warehouses assigned"
+      - "blanket order terms are satisfied (if applicable)"
+    then:
+      - action: transition_state
+        field: status
+        from: Draft
+        to: To Deliver and Bill
+      - action: set_field
+        target: per_delivered
+        value: 0
+      - action: set_field
+        target: per_billed
+        value: 0
+      - action: emit_event
+        event: sales_order.submitted
+        payload: [order_id, customer, grand_total, delivery_date]
+    result: "Sales order submitted and ready for fulfillment"
+    transaction: true
+
+  create_delivery_note:
+    priority: 3
+    given:
+      - "sales order is in To Deliver and Bill or To Deliver status"
+      - "items have sufficient stock in assigned warehouses"
+    then:
+      - action: create_record
+        type: delivery_note
+        description: Create delivery note linked to this sales order
+      - action: set_field
+        target: per_delivered
+        description: Updated based on delivered qty vs ordered qty
+      - action: emit_event
+        event: sales_order.delivered
+        payload: [order_id, delivery_note_id, per_delivered]
+    result: "Delivery note created, delivery percentage updated"
+
+  create_sales_invoice:
+    priority: 4
+    given:
+      - "sales order is in To Deliver and Bill or To Bill status"
+    then:
+      - action: create_record
+        type: sales_invoice
+        description: Create sales invoice linked to this sales order
+      - action: set_field
+        target: per_billed
+        description: Updated based on billed qty vs ordered qty
+      - action: emit_event
+        event: sales_order.billed
+        payload: [order_id, invoice_id, per_billed]
+    result: "Sales invoice created, billing percentage updated"
+
+  close_order:
+    priority: 5
+    given:
+      - "sales order is in a submitted status (not Draft or Cancelled)"
+      - "sales user elects to close the order"
+    then:
+      - action: transition_state
+        field: status
+        to: Closed
+      - action: emit_event
+        event: sales_order.completed
+        payload: [order_id, per_delivered, per_billed]
+    result: "Sales order closed, no further deliveries or invoices created"
+
+  cancel_order:
+    priority: 6
+    given:
+      - "sales order has no linked submitted delivery notes or invoices"
+      - "sales user cancels the order"
+    then:
+      - action: transition_state
+        field: status
+        to: Cancelled
+      - action: emit_event
+        event: sales_order.cancelled
+        payload: [order_id]
+    result: "Sales order cancelled, reserved stock released"
+    transaction: true
+
+  credit_limit_exceeded:
+    priority: 1
+    error: SO_CREDIT_LIMIT_EXCEEDED
+    given:
+      - "sales user submits order"
+      - field: grand_total
+        source: computed
+        operator: gt
+        value: 0
+        description: "Customer outstanding plus order total exceeds credit limit"
+    then:
+      - action: notify
+        channel: ui
+        description: Display credit limit exceeded warning with outstanding amount
+    result: "Submission blocked until credit limit is resolved or overridden"
+
+  warehouse_required:
+    priority: 1
+    error: SO_WAREHOUSE_REQUIRED
+    given:
+      - "sales user submits order"
+      - "one or more stock items do not have a warehouse assigned"
+    then:
+      - action: notify
+        channel: ui
+        description: Highlight items missing warehouse assignment
+    result: "Submission blocked until all stock items have warehouses"
+
+  blanket_order_violation:
+    priority: 1
+    error: SO_BLANKET_ORDER_VIOLATION
+    given:
+      - "item references a blanket order"
+      - "ordered qty or rate violates blanket order terms"
+    then:
+      - action: notify
+        channel: ui
+        description: Show blanket order constraint that was violated
+    result: "Submission blocked until blanket order compliance is met"
+
+  overallocation_prevented:
+    priority: 1
+    error: SO_OVERALLOCATION
+    given:
+      - "delivery note qty exceeds sales order qty beyond tolerance"
+    then:
+      - action: notify
+        channel: ui
+        description: Show allowed qty vs attempted qty
+    result: "Over-delivery prevented, qty must be within allowed tolerance"
+
+errors:
+  - code: SO_CREDIT_LIMIT_EXCEEDED
+    message: "Customer credit limit exceeded. Outstanding amount plus this order exceeds the allowed limit."
+    status: 403
+  - code: SO_WAREHOUSE_REQUIRED
+    message: "Warehouse is required for all stock items in the sales order."
+    status: 422
+  - code: SO_BLANKET_ORDER_VIOLATION
+    message: "Order violates blanket order terms. Check qty and rate against the blanket order."
+    status: 422
+  - code: SO_OVERALLOCATION
+    message: "Delivery qty exceeds the sales order qty beyond the allowed tolerance."
+    status: 422
+
+events:
+  - name: sales_order.submitted
+    description: Sales order has been submitted for fulfillment
+    payload: [order_id, customer, grand_total, delivery_date]
+  - name: sales_order.delivered
+    description: Delivery note created against the sales order
+    payload: [order_id, delivery_note_id, per_delivered]
+  - name: sales_order.billed
+    description: Sales invoice created against the sales order
+    payload: [order_id, invoice_id, per_billed]
+  - name: sales_order.completed
+    description: Sales order fully delivered and billed, or manually closed
+    payload: [order_id, per_delivered, per_billed]
+  - name: sales_order.cancelled
+    description: Sales order has been cancelled
+    payload: [order_id]
+
+related:
+  - feature: sales-purchase-invoicing
+    type: required
+    reason: Invoicing engine for creating sales invoices from orders
+  - feature: pick-list-shipping
+    type: recommended
+    reason: Pick list and shipping workflow for warehouse fulfillment
+  - feature: customer-supplier-management
+    type: recommended
+    reason: Customer master data, credit limits, and territory management
+  - feature: pricing-rules-promotions
+    type: optional
+    reason: Pricing rules and discount schemes applied to order items
+
+extensions:
+  source: "https://github.com/frappe/erpnext"

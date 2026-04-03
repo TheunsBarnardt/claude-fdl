@@ -1,0 +1,309 @@
+# ============================================================
+# openclaw-message-routing — Message Router & Binding Resolution
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: github.com/openclaw/openclaw
+# Files: routing/resolve-route.ts, routing/bindings.ts, routing/session-key.ts
+# ============================================================
+
+feature: openclaw-message-routing
+version: "1.0.0"
+description: "Central message router resolving inbound messages to agents via binding precedence, role-based routing, and guild/channel/peer matching"
+category: integration
+tags:
+  - gateway
+  - routing
+  - messaging
+  - multi-tenant
+  - binding-resolution
+
+actors:
+  - id: message_source
+    name: "Inbound Message Source"
+    type: external
+  - id: gateway
+    name: "OpenClaw Gateway"
+    type: system
+  - id: agent
+    name: "AI Agent"
+    type: system
+  - id: config_store
+    name: "Configuration Store"
+    type: system
+
+fields:
+  - name: channel
+    type: text
+    required: true
+    label: "Messaging Channel"
+
+  - name: account_id
+    type: text
+    required: false
+    label: "Account ID"
+
+  - name: peer_kind
+    type: select
+    required: false
+    label: "Peer Type"
+    options:
+      - value: direct
+        label: "Direct Message (1:1)"
+      - value: group
+        label: "Group Chat"
+      - value: channel
+        label: "Channel"
+      - value: thread
+        label: "Thread"
+      - value: topic
+        label: "Topic"
+
+  - name: peer_id
+    type: text
+    required: false
+    label: "Peer ID"
+
+  - name: guild_id
+    type: text
+    required: false
+    label: "Guild ID"
+
+  - name: team_id
+    type: text
+    required: false
+    label: "Team ID"
+
+  - name: member_role_ids
+    type: json
+    required: false
+    label: "Member Roles"
+
+  - name: agent_id
+    type: text
+    required: true
+    label: "Resolved Agent ID"
+
+  - name: session_key
+    type: text
+    required: true
+    label: "Session Key"
+
+  - name: main_session_key
+    type: text
+    required: true
+    label: "Main Session Key"
+
+  - name: last_route_policy
+    type: select
+    required: true
+    label: "Last Route Policy"
+    options:
+      - value: main
+        label: "Main (collapsed DMs)"
+      - value: session
+        label: "Session (per-peer context)"
+
+  - name: matched_by
+    type: select
+    required: true
+    label: "Binding Match Type"
+    options:
+      - value: binding.peer
+        label: "Direct Peer Match"
+      - value: binding.peer.parent
+        label: "Thread Parent Match"
+      - value: binding.peer.wildcard
+        label: "Wildcard Peer Match"
+      - value: binding.guild+roles
+        label: "Guild + Roles Match"
+      - value: binding.guild
+        label: "Guild Match"
+      - value: binding.team
+        label: "Team Match"
+      - value: binding.account
+        label: "Account Default"
+      - value: binding.channel
+        label: "Channel Default"
+      - value: default
+        label: "System Default"
+
+rules:
+  routing:
+    binding_precedence: |
+      Bindings evaluated in strict order (first match wins):
+      1. binding.peer — exact direct peer (highest priority)
+      2. binding.peer.parent — thread parent peer
+      3. binding.peer.wildcard — wildcard peer kind (group ↔ channel)
+      4. binding.guild+roles — guild + role intersection
+      5. binding.guild — guild ID match
+      6. binding.team — team ID match
+      7. binding.account — account-level default
+      8. binding.channel — channel-level default
+      9. default — system default agent (lowest priority)
+
+    agent_id_normalization: |
+      All agent IDs normalized to lowercase for matching.
+      Case-insensitive lookup preserves original ID casing in resolution.
+      Missing/empty agent_id falls back to resolveDefaultAgentId(cfg).
+
+    session_key_derivation: |
+      Format: agent:<agentId>:<scoped_path>
+      Examples:
+      - agent:mybot:main (DM collapse)
+      - agent:mybot:discord:direct:userid (per-channel DM)
+      - agent:mybot:group:groupid (group messages)
+      - agent:mybot:discord:direct:userid:thread:threadid (threaded)
+      Max length: 255 characters
+      Normalized to lowercase for storage
+
+    cache_strategy: |
+      Resolved routes cached with per-cfg object weak map.
+      Cache limit: 4000 entries (entire cache cleared on limit exceeded).
+      Stale detection: config change clears all caches for that object.
+
+  binding_matching:
+    peer_normalization: |
+      Peer ID normalization:
+      - String: trimmed directly
+      - Number/BigInt: converted to string
+      - Null/undefined: treated as "unknown"
+      Wildcard: "group" matches "channel" (platforms differ)
+
+    role_matching: |
+      Discord role-based routing via set intersection.
+      All specified roles required to match (AND logic).
+      Empty roles[] matches any member (no restriction).
+
+    guild_team_scoping: |
+      guildId/teamId matching bypasses channel scope.
+      Sub-guild bindings override guild bindings.
+
+  dm_policy:
+    peer_kind_matching: |
+      peer.kind values: direct (1:1), group (multi-user), channel (public)
+      Peer.id normalization: trimmed, ID-only (remove prefixes)
+      Parent peer matching for threads: inheritance of parent policy
+
+    last_route_policy_logic: |
+      lastRoutePolicy = (sessionKey === mainSessionKey) ? "main" : "session"
+      "main": all inbound from peer update mainSessionKey (collapsed)
+      "session": updates target specific sessionKey (per-peer context)
+
+events:
+  - name: route.resolved
+    payload:
+      - agent_id
+      - channel
+      - matched_by
+      - session_key
+      - last_route_policy
+
+  - name: route.fallback
+    payload:
+      - channel
+      - account_id
+      - peer_kind
+      - default_agent_id
+
+  - name: route.cache_cleared
+    payload:
+      - reason
+      - cache_size_before
+
+errors:
+  - code: AGENT_NOT_FOUND
+    status: 404
+    message: "Agent not found in configuration"
+
+  - code: INVALID_SESSION_KEY
+    status: 400
+    message: "Invalid session key format"
+
+  - code: BINDING_RESOLUTION_FAILED
+    status: 500
+    message: "Unable to resolve agent binding"
+
+  - code: CACHE_MISS
+    status: 500
+    message: "Route cache miss"
+
+states:
+  routing_state:
+    field: matched_by
+    values:
+      - name: unmatched
+        initial: true
+      - name: matched
+      - name: fallback
+      - name: resolved
+        terminal: true
+
+outcomes:
+  binding_matched:
+    priority: 1
+    given:
+      - "message received on channel"
+      - "channel and account_id provided"
+      - field: matched_by
+        source: computed
+        operator: neq
+        value: "default"
+    then:
+      - action: set_field
+        target: agent_id
+        value: "resolved agent from binding"
+      - action: set_field
+        target: session_key
+        value: "derived from agentId, channel, peer, dmScope"
+      - action: set_field
+        target: matched_by
+        value: "binding rule that matched"
+      - action: emit_event
+        event: route.resolved
+        payload:
+          - agent_id
+          - matched_by
+    result: "Agent determined, route resolved to session_key"
+
+  fallback_to_default:
+    priority: 10
+    given:
+      - "message processed"
+      - "no binding matched any rule"
+    then:
+      - action: set_field
+        target: agent_id
+        value: "resolveDefaultAgentId(cfg)"
+      - action: set_field
+        target: matched_by
+        value: "default"
+      - action: emit_event
+        event: route.fallback
+        payload:
+          - channel
+          - account_id
+          - default_agent_id
+    result: "Fallback agent used, message proceeds to dispatch"
+
+related:
+  - feature: openclaw-session-management
+    type: required
+    reason: "Session key used in persistent conversation store"
+  - feature: openclaw-gateway-authentication
+    type: required
+    reason: "Auth must resolve before routing to determine user scope"
+
+sla:
+  routing_latency:
+    max_duration: "100ms"
+  cache_hit_ratio:
+    target: "95%"
+
+extensions:
+  tech_stack:
+    language: "TypeScript"
+    framework: "Node.js"
+    patterns:
+      - "Precedence-based matching"
+      - "Weak-map caching"
+      - "Lazy role intersection evaluation"

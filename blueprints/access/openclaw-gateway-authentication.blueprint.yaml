@@ -1,0 +1,405 @@
+# ============================================================
+# openclaw-gateway-authentication — Gateway Access Control
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: github.com/openclaw/openclaw
+# Files: gateway/auth.ts, gateway/auth-rate-limit.ts, gateway/credentials.ts
+# ============================================================
+
+feature: openclaw-gateway-authentication
+version: "1.0.0"
+description: "Multi-mode gateway authentication with rate limiting, device tokens, and Tailscale VPN integration"
+category: access
+tags:
+  - authentication
+  - authorization
+  - security
+  - rate-limiting
+  - gateway
+
+actors:
+  - id: client
+    name: "Client"
+    type: external
+  - id: gateway
+    name: "OpenClaw Gateway"
+    type: system
+  - id: tailscale
+    name: "Tailscale VPN"
+    type: external
+  - id: trusted_proxy
+    name: "Reverse Proxy"
+    type: system
+
+fields:
+  - name: auth_mode
+    type: select
+    required: true
+    label: "Authentication Mode"
+    options:
+      - value: "none"
+        label: "None (no auth)"
+      - value: "token"
+        label: "Bearer Token"
+      - value: "password"
+        label: "Static Password"
+      - value: "trusted-proxy"
+        label: "Trusted Proxy"
+      - value: "tailscale"
+        label: "Tailscale VPN"
+      - value: "device-token"
+        label: "Device Token"
+      - value: "bootstrap-token"
+        label: "Bootstrap Token (pairing)"
+
+  - name: token
+    type: token
+    required: false
+    label: "Bearer Token"
+
+  - name: password
+    type: password
+    required: false
+    label: "Password"
+
+  - name: device_token
+    type: token
+    required: false
+    label: "Device Token"
+
+  - name: bootstrap_token
+    type: token
+    required: false
+    label: "Bootstrap Token"
+
+  - name: client_ip
+    type: text
+    required: true
+    label: "Client IP"
+
+  - name: authenticated
+    type: boolean
+    required: true
+    label: "Authenticated"
+
+  - name: auth_method
+    type: select
+    required: false
+    label: "Auth Method Used"
+    options:
+      - value: "none"
+        label: "None"
+      - value: "token"
+        label: "Token"
+      - value: "password"
+        label: "Password"
+      - value: "tailscale"
+        label: "Tailscale"
+      - value: "device-token"
+        label: "Device Token"
+      - value: "bootstrap-token"
+        label: "Bootstrap Token"
+      - value: "trusted-proxy"
+        label: "Trusted Proxy"
+
+  - name: authenticated_user
+    type: text
+    required: false
+    label: "Authenticated User"
+
+  - name: rate_limited
+    type: boolean
+    required: false
+    label: "Rate Limited"
+
+  - name: remaining_attempts
+    type: number
+    required: false
+    label: "Remaining Attempts"
+
+  - name: retry_after_ms
+    type: number
+    required: false
+    label: "Retry After (ms)"
+
+  - name: is_loopback
+    type: boolean
+    required: false
+    label: "Is Loopback"
+
+rules:
+  auth_mode_selection:
+    mode_priority: |
+      Selection order:
+      1. Check override (e.g., --auth override mode)
+      2. Check config.auth.mode
+      3. Check credentials provided (password/token)
+      4. Default: "none" (only if explicitly enabled)
+      All modes except "none" must be explicitly enabled.
+
+    mode_availability: |
+      "none" — No auth (ONLY if config allows)
+      "token" — Bearer token (require token in config)
+      "password" — Static password (require password in config)
+      "trusted-proxy" — X-Forwarded-For headers (require proxy config)
+      "tailscale" — Tailscale VPN membership (require Tailscale access)
+      "device-token" — Paired device token (require prior pairing)
+      "bootstrap-token" — One-time pairing token
+
+  rate_limiting:
+    rate_limit_config: |
+      maxAttempts: 10 (default, configurable)
+      windowMs: 60000 (1 minute sliding window)
+      lockoutMs: 300000 (5 minute lockout)
+      exemptLoopback: true (localhost always passes)
+      pruneIntervalMs: 60000 (cleanup stale entries)
+
+    sliding_window_logic: |
+      Track failed attempt timestamps within windowMs.
+      On failure: append timestamp to attempts[].
+      When attempts.length >= maxAttempts: set lockedUntil = now + lockoutMs.
+      On check: if now < lockedUntil, return allowed=false.
+
+    loopback_bypass: |
+      Clients from 127.0.0.1 or ::1:
+      - Always pass rate limit checks (if exemptLoopback=true, default)
+      - Useful for local development
+      - Can be disabled (not recommended)
+
+  token_authentication:
+    token_validation: |
+      Format: "Authorization: Bearer <token>"
+      Comparison: constant-time (safeEqualSecret) prevents timing attacks
+      Constraints:
+      - Length: >= 16 characters
+      - Characters: [a-zA-Z0-9_.-]+
+      - Stored in: config.auth.token (plaintext)
+      - Rotation: manual (no auto-expiry)
+
+    rate_limit_scope: |
+      Scope: "shared-secret" (all token failures in same bucket)
+
+  password_authentication:
+    password_validation: |
+      Sent via: POST body { password: "..." }
+      Comparison: constant-time (safeEqualSecret)
+      Constraints:
+      - Length: >= 8 characters
+      - Stored in: config.auth.password (plaintext)
+
+    rate_limit_scope: |
+      Scope: "shared-secret" (same bucket as token)
+
+  tailscale_authentication:
+    tailscale_flow: |
+      1. Client connects from Tailscale VPN
+      2. Gateway reads TLS client certificate
+      3. Extract identity: loginName, displayName, profilePic
+      4. Verify VPN membership via Tailscale whois lookup
+      5. Allow if verified
+      Only if allowTailscale=true.
+
+    tailscale_ip_matching: |
+      Tailscale CIDR: 100.64.0.0/10 (WireGuard)
+      Detect: client_ip in Tailscale range
+      Verify: call tailscale whois API
+
+  device_token_authentication:
+    pairing_prerequisites: |
+      Device must be paired first:
+      1. Device initiates: POST /gateway/pair { deviceId, deviceName }
+      2. Gateway generates: deviceToken (32 bytes random)
+      3. User confirms pairing (code or biometric)
+      4. Device stores securely: deviceId + deviceToken
+      5. On next request: "Authorization: Bearer <deviceId>:<deviceToken>"
+
+    device_token_validation: |
+      Format: "<deviceId>:<deviceTokenSecret>"
+      Lookup: config/device-tokens.json
+      Comparison: constant-time secret comparison
+      Refresh: one-time POST /gateway/device/<deviceId>/refresh
+      Revocation: manual or automatic (>1 year inactivity)
+
+    rate_limit_scope: |
+      Scope: "device-token" (per-device buckets)
+
+  trusted_proxy_authentication:
+    proxy_flow: |
+      Reverse proxy (nginx, caddy, etc.) forwards to gateway:
+      1. Client → Proxy (authenticated by proxy)
+      2. Proxy → Gateway with X-Forwarded-For: <client_ip>
+      3. Gateway checks: proxy_ip in trustedProxies list
+      4. Extract client_ip from header
+      5. Allow request (no further auth)
+
+    proxy_allowlist: |
+      trustedProxies: string[] (CIDR ranges or IPs)
+      Strict matching: client_ip in CIDR range
+      Invalid: log warning, deny all requests
+
+    header_precedence: |
+      1. X-Forwarded-For (preferred, rightmost = original client)
+      2. X-Real-IP (Nginx/Caddy fallback)
+      3. Direct connection IP
+
+  ip_resolution:
+    resolution_order: |
+      1. Check is_loopback (::1 or 127.0.0.1) → bypass auth
+      2. Check trusted proxy → extract from headers
+      3. Use client socket IP → direct connection
+      4. Fallback to X-Real-IP (if allowRealIpFallback=true)
+
+states:
+  auth_state:
+    field: authenticated
+    values:
+      - name: unauthenticated
+        initial: true
+      - name: rate_limited
+      - name: invalid_credentials
+      - name: authenticated
+        terminal: true
+
+outcomes:
+  token_authenticated:
+    priority: 1
+    given:
+      - "Authorization header present"
+      - field: auth_mode
+        source: config
+        operator: eq
+        value: "token"
+      - "token header matches config.auth.token"
+    then:
+      - action: set_field
+        target: authenticated
+        value: "true"
+      - action: set_field
+        target: auth_method
+        value: "token"
+    result: "Request allowed, token authenticated"
+
+  password_authenticated:
+    priority: 1
+    given:
+      - field: auth_mode
+        source: config
+        operator: eq
+        value: "password"
+      - "password POST body matches config.auth.password"
+    then:
+      - action: set_field
+        target: authenticated
+        value: "true"
+      - action: set_field
+        target: auth_method
+        value: "password"
+    result: "Request allowed, password authenticated"
+
+  device_authenticated:
+    priority: 1
+    given:
+      - field: auth_mode
+        source: config
+        operator: eq
+        value: "device-token"
+      - "deviceId:deviceToken valid in config/device-tokens.json"
+    then:
+      - action: set_field
+        target: authenticated
+        value: "true"
+      - action: set_field
+        target: auth_method
+        value: "device-token"
+    result: "Paired device allowed"
+
+  rate_limit_exceeded:
+    priority: 2
+    given:
+      - field: failed_attempts_in_window
+        source: computed
+        operator: gte
+        value: max_attempts
+    then:
+      - action: set_field
+        target: rate_limited
+        value: "true"
+      - action: set_field
+        target: authenticated
+        value: "false"
+      - action: set_field
+        target: retry_after_ms
+        value: "calculated backoff"
+    result: "Request blocked by rate limiter, retry after delay"
+    error: AUTH_RATE_LIMITED
+
+  loopback_bypass:
+    priority: 0
+    given:
+      - field: is_loopback
+        source: computed
+        operator: eq
+        value: "true"
+      - field: exempt_loopback
+        source: config
+        operator: eq
+        value: "true"
+    then:
+      - action: set_field
+        target: authenticated
+        value: "true"
+      - action: set_field
+        target: auth_method
+        value: "none"
+    result: "Localhost allowed (if exemptLoopback=true)"
+
+errors:
+  - code: AUTH_RATE_LIMITED
+    status: 429
+    message: "Too many failed authentication attempts"
+
+  - code: INVALID_CREDENTIALS
+    status: 401
+    message: "Authentication failed"
+
+  - code: AUTH_MODE_NOT_CONFIGURED
+    status: 401
+    message: "Authentication required but not configured"
+
+  - code: TAILSCALE_VERIFICATION_FAILED
+    status: 401
+    message: "Tailscale VPN verification failed"
+
+  - code: INVALID_DEVICE_TOKEN
+    status: 401
+    message: "Device token invalid or expired"
+
+  - code: TRUSTED_PROXY_NOT_ALLOWED
+    status: 403
+    message: "Request source not in trusted proxies"
+
+  - code: ORIGIN_MISMATCH
+    status: 403
+    message: "Origin not allowed"
+
+related:
+  - feature: openclaw-session-management
+    type: recommended
+    reason: "Auth determines session isolation scope"
+  - feature: openclaw-message-routing
+    type: required
+    reason: "Auth must precede message routing"
+
+sla:
+  auth_latency:
+    max_duration: "50ms"
+  rate_limit_check:
+    max_duration: "10ms"
+
+extensions:
+  tech_stack:
+    language: "TypeScript"
+    patterns:
+      - "Constant-time string comparison"
+      - "Sliding window rate limiting"
+      - "IP-based rate limit buckets"

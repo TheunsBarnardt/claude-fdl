@@ -1,0 +1,471 @@
+# ============================================================
+# PICK LIST & SHIPPING — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: pick-list-shipping
+version: "1.0.0"
+description: >
+  Pick list and shipping system with warehouse picking, delivery notes, shipment tracking, and delivery trip planning.
+category: inventory
+tags:
+  - pick-list
+  - shipping
+  - delivery-note
+  - shipment
+  - delivery-trip
+  - logistics
+  - inventory
+
+fields:
+  # === Pick List fields ===
+  - name: pick_list_company
+    type: text
+    label: Company
+    required: true
+  - name: pick_list_purpose
+    type: select
+    label: Pick List Purpose
+    required: true
+    options:
+      - {value: "Material Transfer", label: "Material Transfer"}
+      - {value: "Delivery", label: "Delivery"}
+  - name: locations
+    type: json
+    label: Pick List Locations
+    required: true
+  - name: pick_list_status
+    type: select
+    label: Pick List Status
+    required: true
+    options:
+      - {value: "Draft", label: "Draft"}
+      - {value: "Open", label: "Open"}
+      - {value: "Partly Delivered", label: "Partly Delivered"}
+      - {value: "Completed", label: "Completed"}
+  - name: scan_mode
+    type: boolean
+    label: Scan Mode
+    required: false
+  - name: group_same_items
+    type: boolean
+    label: Group Same Items
+    required: false
+  # === Delivery Note fields ===
+  - name: customer
+    type: text
+    label: Customer
+    required: true
+  - name: posting_date
+    type: date
+    label: Posting Date
+    required: true
+  - name: delivery_items
+    type: json
+    label: Delivery Items
+    required: true
+  - name: is_return
+    type: boolean
+    label: Is Return
+    required: false
+  - name: return_against
+    type: text
+    label: Return Against
+    required: false
+  - name: per_billed
+    type: number
+    label: Percentage Billed
+    required: false
+  - name: shipping_address
+    type: text
+    label: Shipping Address
+    required: false
+  - name: driver
+    type: text
+    label: Driver
+    required: false
+  - name: vehicle_no
+    type: text
+    label: Vehicle Number
+    required: false
+  # === Shipment fields ===
+  - name: shipment_type
+    type: select
+    label: Shipment Type
+    required: true
+    options:
+      - {value: "Goods", label: "Goods"}
+      - {value: "Documents", label: "Documents"}
+  - name: pickup_date
+    type: date
+    label: Pickup Date
+    required: true
+  - name: parcels
+    type: json
+    label: Parcels
+    required: true
+  - name: carrier
+    type: text
+    label: Shipping Carrier
+    required: false
+  - name: awb_number
+    type: text
+    label: AWB / Tracking Number
+    required: false
+  - name: tracking_status
+    type: text
+    label: Tracking Status
+    required: false
+  - name: total_weight
+    type: number
+    label: Total Weight
+    required: false
+  - name: value_of_goods
+    type: number
+    label: Value of Goods
+    required: false
+  # === Delivery Trip fields ===
+  - name: trip_vehicle
+    type: text
+    label: Vehicle
+    required: true
+  - name: trip_driver
+    type: text
+    label: Driver
+    required: true
+  - name: delivery_stops
+    type: json
+    label: Delivery Stops
+    required: true
+  - name: departure_time
+    type: datetime
+    label: Departure Time
+    required: false
+  - name: total_distance
+    type: number
+    label: Total Distance
+    required: false
+
+rules:
+  pick_list_stock_availability:
+    description: >
+      Pick list items are limited by available stock in the specified
+      warehouse. The system validates that actual_qty minus already reserved
+      quantities is sufficient for each pick item. Batch-specific availability
+      is checked when batch tracking is enabled.
+  batch_expiry_during_picking:
+    description: >
+      When picking batch-tracked items, the system validates that the
+      batch expiry date has not passed. Expired batches are excluded from
+      auto-picking and flagged during manual picking.
+  delivery_note_gl_entry:
+    description: >
+      Submitting a delivery note creates accounts receivable GL entries for
+      the delivery value. Cost of goods sold entries are created based on
+      the item valuation from the source warehouse.
+  shipment_parcel_requirement:
+    description: >
+      A shipment requires at least one parcel entry. Each parcel must have
+      a weight greater than zero. Total weight is auto-calculated from
+      individual parcel weights.
+  delivery_trip_driver_required:
+    description: >
+      A delivery trip must have a driver assigned before it can be
+      scheduled or dispatched. The driver must be an active employee
+      or contractor.
+  trip_stop_address_validation:
+    description: >
+      Each delivery stop must have a valid address. Stops are ordered
+      by their order_index for route planning. The visited flag is
+      updated as the driver completes each stop.
+
+states:
+  field: composite_status
+  values:
+    # Pick List states
+    - id: pick_draft
+      label: "Pick List: Draft"
+      initial: true
+    - id: pick_open
+      label: "Pick List: Open"
+    - id: pick_partly_delivered
+      label: "Pick List: Partly Delivered"
+    - id: pick_completed
+      label: "Pick List: Completed"
+      terminal: true
+    # Delivery Note states
+    - id: dn_draft
+      label: "Delivery Note: Draft"
+    - id: dn_to_bill
+      label: "Delivery Note: To Bill"
+    - id: dn_completed
+      label: "Delivery Note: Completed"
+      terminal: true
+    - id: dn_return
+      label: "Delivery Note: Return"
+      terminal: true
+    # Shipment states
+    - id: shipment_draft
+      label: "Shipment: Draft"
+    - id: shipment_submitted
+      label: "Shipment: Submitted"
+    - id: shipment_booked
+      label: "Shipment: Booked"
+    - id: shipment_completed
+      label: "Shipment: Completed"
+      terminal: true
+    # Delivery Trip states
+    - id: trip_draft
+      label: "Trip: Draft"
+    - id: trip_scheduled
+      label: "Trip: Scheduled"
+    - id: trip_in_transit
+      label: "Trip: In Transit"
+    - id: trip_completed
+      label: "Trip: Completed"
+      terminal: true
+  transitions:
+    - from: pick_draft
+      to: pick_open
+      actor: stock_user
+      description: "Pick list submitted for warehouse picking"
+    - from: pick_open
+      to: pick_partly_delivered
+      actor: stock_user
+      description: "Some items from pick list have been delivered"
+    - from: pick_open
+      to: pick_completed
+      actor: stock_user
+      description: "All items from pick list have been delivered"
+    - from: pick_partly_delivered
+      to: pick_completed
+      actor: stock_user
+      description: "Remaining items delivered, pick list complete"
+    - from: dn_draft
+      to: dn_to_bill
+      actor: stock_user
+      description: "Delivery note submitted, pending billing"
+    - from: dn_to_bill
+      to: dn_completed
+      actor: accounts_user
+      description: "Delivery note fully billed"
+    - from: dn_to_bill
+      to: dn_return
+      actor: stock_user
+      description: "Delivery note returned by customer"
+    - from: shipment_draft
+      to: shipment_submitted
+      actor: stock_user
+      description: "Shipment submitted for carrier booking"
+    - from: shipment_submitted
+      to: shipment_booked
+      actor: system
+      description: "Shipment booked with carrier, AWB assigned"
+    - from: shipment_booked
+      to: shipment_completed
+      actor: system
+      description: "Shipment delivered to destination"
+    - from: trip_draft
+      to: trip_scheduled
+      actor: stock_user
+      description: "Delivery trip scheduled with driver and stops"
+    - from: trip_scheduled
+      to: trip_in_transit
+      actor: driver
+      description: "Driver departs for delivery route"
+    - from: trip_in_transit
+      to: trip_completed
+      actor: driver
+      description: "All stops visited, trip completed"
+
+outcomes:
+  create_pick_list:
+    priority: 1
+    given:
+      - "user creates a pick list with purpose and item locations"
+      - "all items have available stock in specified warehouses"
+    then:
+      - action: create_record
+        type: pick_list
+        target: pick_list
+        description: "Pick list created with item locations for warehouse picking"
+      - action: emit_event
+        event: pick_list.completed
+        payload: [pick_list_id, purpose, item_count]
+    result: "Pick list created and ready for warehouse fulfillment"
+
+  auto_pick_locations:
+    priority: 2
+    given:
+      - "pick list items have no warehouse locations specified"
+      - "items have stock available across one or more warehouses"
+    then:
+      - action: set_field
+        target: locations
+        description: "Locations auto-populated based on stock availability, batch expiry (FEFO), and warehouse priority"
+    result: "Pick locations automatically assigned using optimal stock allocation"
+
+  submit_delivery_note:
+    priority: 3
+    given:
+      - "delivery note has valid customer and item details"
+      - "all items have sufficient stock in source warehouses"
+      - "serial/batch numbers are valid for tracked items"
+    then:
+      - action: create_record
+        type: stock_ledger_entry
+        target: stock_ledger_entries
+        description: "Outgoing SLE created for each delivered item"
+      - action: create_record
+        type: gl_entry
+        target: gl_entries
+        description: "AR and COGS GL entries created"
+      - action: emit_event
+        event: delivery.submitted
+        payload: [delivery_note_id, customer, total_qty, total_amount]
+    result: "Delivery note submitted with stock and accounting entries created"
+
+  create_shipment:
+    priority: 4
+    given:
+      - "shipment has at least one parcel with weight greater than zero"
+      - "pickup date is specified"
+    then:
+      - action: create_record
+        type: shipment
+        target: shipment
+        description: "Shipment created with parcel details and carrier info"
+      - action: emit_event
+        event: shipment.booked
+        payload: [shipment_id, carrier, awb_number, total_weight]
+    result: "Shipment created and ready for carrier booking"
+
+  plan_delivery_trip:
+    priority: 5
+    given:
+      - "delivery trip has a driver and vehicle assigned"
+      - "at least one delivery stop has a valid address"
+    then:
+      - action: create_record
+        type: delivery_trip
+        target: delivery_trip
+        description: "Delivery trip created with route and stop sequence"
+      - action: emit_event
+        event: trip.completed
+        payload: [trip_id, driver, stop_count, total_distance]
+    result: "Delivery trip planned with driver, vehicle, and ordered stops"
+
+  mark_stop_visited:
+    priority: 6
+    given:
+      - "delivery trip is in transit"
+      - "driver arrives at a delivery stop"
+    then:
+      - action: set_field
+        target: "delivery_stops[].visited"
+        value: true
+        description: "Stop marked as visited with timestamp"
+    result: "Delivery stop marked as completed"
+
+  return_delivery:
+    priority: 7
+    given:
+      - "original delivery note exists and is submitted"
+      - "return quantity does not exceed delivered quantity"
+      - "is_return is true and return_against references the original"
+    then:
+      - action: create_record
+        type: stock_ledger_entry
+        target: stock_ledger_entries
+        description: "Incoming SLE created to return stock to warehouse"
+      - action: emit_event
+        event: delivery.returned
+        payload: [delivery_note_id, return_against, return_qty]
+    result: "Sales return processed and stock returned to warehouse"
+
+  pick_insufficient_stock:
+    priority: 1
+    error: PICK_INSUFFICIENT_STOCK
+    given:
+      - "pick list item requested quantity exceeds available stock"
+    then: []
+    result: "Pick list creation blocked due to insufficient stock"
+
+  pick_batch_expired:
+    priority: 1
+    error: PICK_BATCH_EXPIRED
+    given:
+      - "pick list references a batch that has passed its expiry date"
+    then: []
+    result: "Expired batch excluded from pick list"
+
+  delivery_return_exceeded:
+    priority: 1
+    error: DELIVERY_RETURN_QTY_EXCEEDED
+    given:
+      - "return quantity exceeds the originally delivered quantity"
+    then: []
+    result: "Return rejected because quantity exceeds original delivery"
+
+errors:
+  - code: PICK_INSUFFICIENT_STOCK
+    message: "Insufficient stock available for the requested pick quantity in the specified warehouse."
+    status: 400
+  - code: PICK_BATCH_EXPIRED
+    message: "The specified batch has expired and cannot be included in the pick list."
+    status: 400
+  - code: DELIVERY_RETURN_QTY_EXCEEDED
+    message: "Return quantity cannot exceed the quantity in the original delivery note."
+    status: 400
+  - code: SHIPMENT_NO_PARCELS
+    message: "Shipment must have at least one parcel with a weight greater than zero."
+    status: 400
+  - code: TRIP_NO_DRIVER
+    message: "A driver must be assigned before the delivery trip can be scheduled."
+    status: 400
+
+events:
+  - name: pick_list.completed
+    description: Pick list created or fully picked
+    payload: [pick_list_id, purpose, item_count]
+  - name: delivery.submitted
+    description: Delivery note submitted with stock and GL entries
+    payload: [delivery_note_id, customer, total_qty, total_amount]
+  - name: delivery.returned
+    description: Delivery note return processed
+    payload: [delivery_note_id, return_against, return_qty]
+  - name: shipment.booked
+    description: Shipment booked with carrier and tracking assigned
+    payload: [shipment_id, carrier, awb_number, total_weight]
+  - name: trip.completed
+    description: Delivery trip completed with all stops visited
+    payload: [trip_id, driver, stop_count, total_distance]
+
+related:
+  - feature: stock-entry-movements
+    type: required
+    reason: "Pick lists generate stock entries for material transfers"
+  - feature: warehouse-bin-management
+    type: required
+    reason: "Stock availability checked against warehouse bins"
+  - feature: serial-batch-tracking
+    type: recommended
+    reason: "Serial and batch numbers validated during picking and delivery"
+  - feature: sales-order-lifecycle
+    type: recommended
+    reason: "Delivery notes fulfill sales orders and update billing status"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"
+    files_traced: 30
+    entry_points:
+      - "erpnext/stock/doctype/pick_list/pick_list.py"
+      - "erpnext/stock/doctype/delivery_note/delivery_note.py"
+      - "erpnext/stock/doctype/shipment/shipment.py"
+      - "erpnext/stock/doctype/delivery_trip/delivery_trip.py"

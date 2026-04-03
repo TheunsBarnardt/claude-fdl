@@ -1,0 +1,405 @@
+# ============================================================
+# APPOINTMENT BOOKING — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: appointment-booking
+version: "1.0.0"
+description: >
+  Self-service appointment scheduling with availability slot management,
+  email verification, agent assignment, and calendar event integration.
+category: crm
+tags:
+  - appointment
+  - scheduling
+  - booking
+  - calendar
+  - self-service
+
+actors:
+  - id: visitor
+    name: Visitor
+    type: human
+    description: External person booking an appointment via the public form
+  - id: agent
+    name: Agent
+    type: human
+    description: Internal team member assigned to handle the appointment
+  - id: system
+    name: System
+    type: system
+    description: Validates availability, sends verification emails, assigns agents, creates calendar events
+
+# ─── FIELDS ───────────────────────────────────────────────
+# Appointment fields
+
+fields:
+  - name: appointment_status
+    type: select
+    label: Appointment Status
+    required: true
+    options:
+      - {value: "Open", label: "Open"}
+      - {value: "Unverified", label: "Unverified"}
+      - {value: "Closed", label: "Closed"}
+  - name: customer_name
+    type: text
+    label: Customer Name
+    required: true
+    validation:
+      - type: required
+        message: "Customer name is required"
+  - name: customer_email
+    type: email
+    label: Customer Email
+    required: true
+    validation:
+      - type: required
+        message: "Email address is required"
+      - type: email
+        message: "Must be a valid email address"
+  - name: customer_phone_number
+    type: phone
+    label: Customer Phone
+    required: false
+  - name: customer_details
+    type: text
+    label: Customer Details
+    required: false
+  - name: scheduled_time
+    type: datetime
+    label: Scheduled Time
+    required: true
+  - name: party_type
+    type: select
+    label: Party Type
+    required: false
+    options:
+      - {value: "Lead", label: "Lead"}
+      - {value: "Customer", label: "Customer"}
+  - name: party
+    type: text
+    label: Party
+    required: false
+    # Links to Lead or Customer record
+  - name: calendar_event
+    type: text
+    label: Calendar Event
+    required: false
+    # Reference to the created calendar event
+
+  # ─── Settings fields ────────────────────────────────────
+  - name: enable_scheduling
+    type: boolean
+    label: Enable Appointment Scheduling
+    required: false
+  - name: advance_booking_days
+    type: number
+    label: Advance Booking Days
+    required: false
+    validation:
+      - type: min
+        value: 1
+        message: "Must allow at least 1 day advance booking"
+  - name: appointment_duration
+    type: number
+    label: Appointment Duration (minutes)
+    required: false
+    validation:
+      - type: min
+        value: 1
+        message: "Duration must be at least 1 minute"
+  - name: number_of_agents
+    type: number
+    label: Number of Agents
+    required: false
+    validation:
+      - type: min
+        value: 1
+        message: "At least one agent is required"
+  - name: agent_list
+    type: json
+    label: Agent List
+    required: false
+    # Array of { user, active }
+  - name: holiday_list
+    type: text
+    label: Holiday List
+    required: false
+  - name: email_reminders
+    type: boolean
+    label: Send Email Reminders
+    required: false
+  - name: success_redirect_url
+    type: url
+    label: Success Redirect URL
+    required: false
+  - name: availability_slots
+    type: json
+    label: Availability Slots
+    required: false
+    # Array of { day_of_week, from_time, to_time }
+
+# ─── STATES ──────────────────────────────────────────────
+
+states:
+  field: appointment_status
+  values:
+    - name: Unverified
+      description: Appointment created by unknown visitor, awaiting email verification
+      initial: true
+    - name: Open
+      description: Appointment verified and confirmed, agent assigned
+    - name: Closed
+      description: Appointment completed or cancelled
+      terminal: true
+  transitions:
+    - from: Unverified
+      to: Open
+      actor: system
+      description: Visitor confirms email via verification link
+    - from: Open
+      to: Closed
+      actor: agent
+      description: Agent closes the appointment after completion or cancellation
+
+# ─── RULES ───────────────────────────────────────────────
+
+rules:
+  slot_availability_enforcement:
+    description: >
+      Before creating an appointment, the system checks that the requested
+      time slot is available. The maximum concurrent appointments per slot
+      is limited by the number_of_agents setting.
+  email_verification_flow:
+    description: >
+      Appointments from unknown visitors (no existing lead/customer match)
+      start in Unverified status. A verification email is sent and the
+      appointment is only promoted to Open after confirmation.
+  auto_create_lead:
+    description: >
+      When a verified appointment has no matching lead or customer, a new
+      Lead record is automatically created from the visitor's details.
+  agent_assignment:
+    description: >
+      Agents are auto-assigned based on the latest opportunity owner for the
+      party, or by least current workload if no prior relationship exists.
+  calendar_event_creation:
+    description: >
+      A calendar event is created with both the party and the assigned
+      agent/employee as participants upon appointment confirmation.
+  availability_time_validation:
+    description: >
+      Availability slot from_time must be earlier than to_time. Slots
+      cannot overlap within the same day of the week.
+  slot_duration_divisibility:
+    description: >
+      Each availability slot duration must be evenly divisible by the
+      appointment_duration setting to avoid partial time blocks.
+  holiday_exclusion:
+    description: >
+      Dates in the configured holiday list are excluded from available
+      booking dates. Visitors cannot book on holidays.
+
+# ─── OUTCOMES ────────────────────────────────────────────
+
+outcomes:
+  create_appointment:
+    priority: 1
+    given:
+      - "visitor provides name, email, and desired time"
+      - "requested time slot has availability"
+    then:
+      - action: create_record
+        type: appointment
+        description: Appointment created in Unverified or Open status
+      - action: emit_event
+        event: appointment.created
+        payload: [appointment_id, customer_email, scheduled_time]
+    result: "Appointment is created and queued for verification if visitor is unknown"
+
+  verify_email:
+    priority: 2
+    given:
+      - "appointment is in Unverified status"
+      - "visitor clicks the email verification link"
+    then:
+      - action: transition_state
+        field: appointment_status
+        from: Unverified
+        to: Open
+      - action: emit_event
+        event: appointment.verified
+        payload: [appointment_id, customer_email]
+    result: "Appointment is verified and promoted to Open status"
+
+  assign_agent:
+    priority: 3
+    given:
+      - "appointment is in Open status"
+      - "agent list is configured in settings"
+    then:
+      - action: set_field
+        target: party
+        description: Assign agent based on prior relationship or least workload
+      - action: emit_event
+        event: appointment.agent_assigned
+        payload: [appointment_id, agent_id]
+    result: "Agent is assigned to handle the appointment"
+
+  create_calendar_event:
+    priority: 4
+    given:
+      - "appointment is in Open status"
+      - "agent has been assigned"
+    then:
+      - action: create_record
+        type: calendar_event
+        description: Calendar event with party and agent as participants
+      - action: set_field
+        target: calendar_event
+        description: Link calendar event reference to appointment
+    result: "Calendar event created with all participants notified"
+
+  book_slot:
+    priority: 5
+    given:
+      - "visitor selects an available date and time"
+      - "slot has fewer current bookings than number_of_agents"
+    then:
+      - action: set_field
+        target: scheduled_time
+        description: Slot reserved for the visitor
+    result: "Time slot is reserved for the appointment"
+
+  cancel_appointment:
+    priority: 6
+    given:
+      - "appointment is in Open status"
+      - "agent or visitor requests cancellation"
+    then:
+      - action: transition_state
+        field: appointment_status
+        from: Open
+        to: Closed
+      - action: delete_record
+        type: calendar_event
+        description: Remove the linked calendar event
+    result: "Appointment is cancelled and calendar event removed"
+
+  # ─── Error outcomes ────────────────────────────────────
+  slot_unavailable:
+    priority: 1
+    error: APPOINTMENT_SLOT_UNAVAILABLE
+    given:
+      - "requested time slot has no remaining agent capacity"
+    then:
+      - action: notify
+        channel: ui
+        description: Show available alternative time slots
+    result: "Booking blocked — no available agents for the requested slot"
+
+  verification_failed:
+    priority: 1
+    error: APPOINTMENT_VERIFICATION_FAILED
+    given:
+      - "verification token is invalid or expired"
+    then:
+      - action: notify
+        channel: ui
+        description: Prompt visitor to request a new verification email
+    result: "Email verification failed — token invalid or expired"
+
+  slot_duration_invalid:
+    priority: 1
+    error: APPOINTMENT_SLOT_DURATION_INVALID
+    given:
+      - "availability slot duration is not evenly divisible by appointment_duration"
+    then:
+      - action: notify
+        channel: ui
+        description: Show that slot duration must be a multiple of appointment duration
+    result: "Settings rejected — slot duration must be divisible by appointment duration"
+
+  slot_time_invalid:
+    priority: 1
+    error: APPOINTMENT_SLOT_TIME_INVALID
+    given:
+      - "availability slot from_time is not earlier than to_time"
+    then:
+      - action: notify
+        channel: ui
+        description: Show that from_time must be before to_time
+    result: "Settings rejected — from_time must be earlier than to_time"
+
+  send_reminder:
+    priority: 10
+    given:
+      - "appointment is in Open status"
+      - "email_reminders is enabled in settings"
+      - "reminder send time has been reached"
+    then:
+      - action: call_service
+        target: email_service
+        description: Send appointment reminder to visitor and agent
+      - action: emit_event
+        event: appointment.reminder_sent
+        payload: [appointment_id, customer_email]
+    result: "Reminder email sent to both visitor and assigned agent"
+
+# ─── ERRORS ──────────────────────────────────────────────
+
+errors:
+  - code: APPOINTMENT_SLOT_UNAVAILABLE
+    message: The requested time slot is fully booked. Please choose a different time.
+    status: 409
+  - code: APPOINTMENT_VERIFICATION_FAILED
+    message: Email verification failed. The link may have expired. Please request a new verification email.
+    status: 400
+  - code: APPOINTMENT_SLOT_DURATION_INVALID
+    message: Availability slot duration must be evenly divisible by the appointment duration setting.
+    status: 400
+  - code: APPOINTMENT_SLOT_TIME_INVALID
+    message: Availability slot start time must be earlier than end time.
+    status: 400
+
+# ─── EVENTS ──────────────────────────────────────────────
+
+events:
+  - name: appointment.created
+    description: New appointment booking submitted
+    payload: [appointment_id, customer_email, scheduled_time]
+  - name: appointment.verified
+    description: Visitor confirmed email and appointment is active
+    payload: [appointment_id, customer_email]
+  - name: appointment.agent_assigned
+    description: Agent assigned to handle the appointment
+    payload: [appointment_id, agent_id]
+  - name: appointment.reminder_sent
+    description: Reminder email sent before the appointment
+    payload: [appointment_id, customer_email]
+
+# ─── RELATED FEATURES ───────────────────────────────────
+
+related:
+  - feature: lead-opportunity-pipeline
+    type: recommended
+    reason: Verified appointments auto-create leads for unknown visitors
+  - feature: customer-supplier-management
+    type: optional
+    reason: Appointments may be linked to existing customer records
+
+# ─── EXTENSIONS ──────────────────────────────────────────
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERPNext"
+    tech_stack: "Python/Frappe Framework"
+    files_traced: 5
+    entry_points:
+      - "erpnext/crm/doctype/appointment/appointment.py"
+      - "erpnext/crm/doctype/appointment_booking_settings/appointment_booking_settings.py"

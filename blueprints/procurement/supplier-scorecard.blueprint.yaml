@@ -1,0 +1,353 @@
+# ============================================================
+# SUPPLIER SCORECARD — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: supplier-scorecard
+version: "1.0.0"
+description: >
+  Supplier performance scorecard system with weighted criteria, formula-based
+  scoring, standing thresholds, automatic transaction blocking, and periodic
+  score recalculation.
+category: procurement
+tags:
+  - supplier-evaluation
+  - procurement
+  - performance-scoring
+  - vendor-management
+  - transaction-blocking
+
+actors:
+  - id: procurement_manager
+    name: Procurement Manager
+    type: human
+    description: Configures scorecard criteria, standings, and reviews supplier performance
+  - id: purchase_user
+    name: Purchase User
+    type: human
+    description: Creates RFQs and purchase orders, receives warnings or blocks based on scores
+  - id: system
+    name: System
+    type: system
+    description: Calculates scores, evaluates standings, enforces transaction restrictions
+
+fields:
+  # === Scorecard Template fields ===
+  - name: supplier
+    type: text
+    label: Supplier
+    required: true
+  - name: period
+    type: select
+    label: Evaluation Period
+    required: true
+    options:
+      - {value: "Per Week", label: "Per Week"}
+      - {value: "Per Month", label: "Per Month"}
+      - {value: "Per Year", label: "Per Year"}
+  - name: supplier_score
+    type: number
+    label: Supplier Score
+    required: false
+    validation:
+      - {type: "min", value: 0, message: "Score cannot be negative"}
+      - {type: "max", value: 100, message: "Score cannot exceed 100"}
+  # Standing name derived from score and standing thresholds
+  - name: status
+    type: text
+    label: Current Standing
+    required: false
+  - name: indicator_color
+    type: select
+    label: Indicator Color
+    required: false
+    options:
+      - {value: "Red", label: "Red"}
+      - {value: "Yellow", label: "Yellow"}
+      - {value: "Green", label: "Green"}
+      - {value: "Blue", label: "Blue"}
+  # Formula for weighting recent periods more heavily than older ones
+  - name: weighting_function
+    type: text
+    label: Weighting Function
+    required: false
+  # Array of criteria with criteria_name, weight (percentage), max_score,
+  # and formula (expression referencing scorecard variables)
+  - name: criteria
+    type: json
+    label: Scoring Criteria
+    required: true
+  # Array of standings with standing_name, min_grade, max_grade,
+  # indicator_color, prevent_rfqs, prevent_pos, warn_rfqs, warn_pos
+  - name: standings
+    type: json
+    label: Standing Thresholds
+    required: true
+  # Send notification to supplier when standing changes
+  - name: notify_supplier
+    type: boolean
+    label: Notify Supplier
+    required: false
+  # Employee to notify when standing changes
+  - name: notify_employee
+    type: text
+    label: Notify Employee
+    required: false
+  # === Period Scorecard fields ===
+  - name: start_date
+    type: date
+    label: Period Start Date
+    required: false
+  - name: end_date
+    type: date
+    label: Period End Date
+    required: false
+  # Computed variables available for formula evaluation (e.g., total_accepted_items,
+  # total_rejected_items, on_time_deliveries, total_deliveries)
+  - name: variables
+    type: json
+    label: Scorecard Variables
+    required: false
+  # Array of criteria with calculated score for this period
+  - name: period_criteria
+    type: json
+    label: Period Criteria Scores
+    required: false
+  - name: total_score
+    type: number
+    label: Total Period Score
+    required: false
+    validation:
+      - {type: "min", value: 0, message: "Total score cannot be negative"}
+      - {type: "max", value: 100, message: "Total score cannot exceed 100"}
+
+rules:
+  standings_must_cover_full_range:
+    description: >
+      Standing thresholds must cover the full 0-100 score range with no gaps.
+      Every possible score value must map to exactly one standing.
+  standings_no_overlap:
+    description: >
+      Standing grade ranges must not overlap. Each score maps to exactly one
+      standing. The min_grade of one standing must equal the max_grade of
+      the previous standing.
+  criteria_weights_sum_to_100:
+    description: >
+      The sum of all criteria weights must equal exactly 100%. Partial or
+      excess weights are rejected at save time.
+  formula_variables_must_exist:
+    description: >
+      Variables referenced in criteria formulas must exist in the scorecard
+      variable database. Unknown variables cause a formula evaluation error.
+  scoring_is_weighted_average:
+    description: >
+      The supplier score is calculated as a weighted average across all
+      evaluation periods, optionally weighted by the weighting function
+      to give more importance to recent periods.
+  auto_block_transactions:
+    description: >
+      When a supplier's standing has prevent_rfqs or prevent_pos enabled,
+      the system automatically blocks creation of new RFQs or purchase
+      orders for that supplier.
+  notifications_on_standing_change:
+    description: >
+      When a supplier's standing changes (e.g., from Green to Yellow),
+      notifications are sent to the configured employee and optionally
+      to the supplier.
+  scorecards_auto_created:
+    description: >
+      Period scorecards are automatically created based on the supplier's
+      creation date and the configured evaluation period (weekly, monthly,
+      or yearly).
+
+outcomes:
+  calculate_score:
+    priority: 1
+    given:
+      - "evaluation period has ended for a supplier"
+      - "scorecard template exists with valid criteria and standings"
+      - "all formula variables are available for the period"
+    then:
+      - action: create_record
+        type: period_scorecard
+        description: Create period scorecard with calculated criteria scores
+      - action: set_field
+        target: total_score
+        description: Weighted sum of all criteria scores for the period
+      - action: set_field
+        target: supplier_score
+        description: Weighted average across all periods using weighting function
+      - action: emit_event
+        event: scorecard.calculated
+        payload: [supplier, period, total_score, supplier_score]
+    result: "Period scorecard created with calculated scores, overall supplier score updated"
+
+  update_standing:
+    priority: 2
+    given:
+      - "supplier score has been recalculated"
+      - "new score falls in a different standing range than current standing"
+    then:
+      - action: set_field
+        target: status
+        description: Set to the standing name matching the new score range
+      - action: set_field
+        target: indicator_color
+        description: Set to the color of the new standing
+      - action: emit_event
+        event: scorecard.standing_changed
+        payload: [supplier, old_standing, new_standing, supplier_score]
+      - action: notify
+        channel: email
+        description: Notify configured employee and optionally the supplier
+        when: "notify_supplier == true or notify_employee is not null"
+    result: "Supplier standing updated, relevant parties notified of change"
+
+  block_rfq:
+    priority: 3
+    given:
+      - "purchase user attempts to create an RFQ for the supplier"
+      - "supplier's current standing has prevent_rfqs enabled"
+    then:
+      - action: notify
+        channel: ui
+        description: Display block message with supplier standing and score
+      - action: emit_event
+        event: scorecard.supplier_blocked
+        payload: [supplier, transaction_type, standing]
+    result: "RFQ creation blocked for supplier with poor performance standing"
+
+  block_purchase_order:
+    priority: 4
+    given:
+      - "purchase user attempts to create a purchase order for the supplier"
+      - "supplier's current standing has prevent_pos enabled"
+    then:
+      - action: notify
+        channel: ui
+        description: Display block message with supplier standing and score
+      - action: emit_event
+        event: scorecard.supplier_blocked
+        payload: [supplier, transaction_type, standing]
+    result: "Purchase order creation blocked for supplier with poor performance standing"
+
+  warn_on_transaction:
+    priority: 5
+    given:
+      - "purchase user creates an RFQ or purchase order for the supplier"
+      - "supplier's current standing has warn_rfqs or warn_pos enabled"
+    then:
+      - action: notify
+        channel: ui
+        description: Display warning with supplier score, standing, and recommendation
+      - action: emit_event
+        event: scorecard.supplier_warned
+        payload: [supplier, transaction_type, standing, supplier_score]
+    result: "Warning displayed but transaction is allowed to proceed"
+
+  generate_period_scorecard:
+    priority: 6
+    given:
+      - "new evaluation period begins based on supplier creation date"
+      - "scorecard template is configured for this supplier"
+    then:
+      - action: create_record
+        type: period_scorecard
+        description: Create new blank period scorecard for the upcoming period
+      - action: set_field
+        target: start_date
+        description: Set to period start based on supplier creation anniversary
+      - action: set_field
+        target: end_date
+        description: Set to period end based on evaluation frequency
+    result: "New period scorecard created and ready for score calculation at period end"
+
+  standing_overlap_rejected:
+    priority: 1
+    error: SCORECARD_STANDING_OVERLAP
+    given:
+      - "procurement manager saves scorecard template"
+      - "two or more standings have overlapping grade ranges"
+    then:
+      - action: notify
+        channel: ui
+        description: Highlight overlapping standing ranges
+    result: "Save blocked until standing grade ranges are corrected"
+
+  weights_invalid:
+    priority: 1
+    error: SCORECARD_WEIGHTS_INVALID
+    given:
+      - "procurement manager saves scorecard template"
+      - "criteria weights do not sum to exactly 100%"
+    then:
+      - action: notify
+        channel: ui
+        description: Show current weight total and difference from 100%
+    result: "Save blocked until criteria weights sum to 100%"
+
+  formula_error:
+    priority: 1
+    error: SCORECARD_FORMULA_ERROR
+    given:
+      - "system evaluates a criteria formula"
+      - "formula references a variable that does not exist"
+    then:
+      - action: notify
+        channel: ui
+        description: Show formula with unresolved variable highlighted
+    result: "Score calculation failed, formula must be corrected"
+
+  coverage_gap_rejected:
+    priority: 1
+    error: SCORECARD_COVERAGE_GAP
+    given:
+      - "procurement manager saves scorecard template"
+      - "standing ranges do not cover the full 0-100 score range"
+    then:
+      - action: notify
+        channel: ui
+        description: Show uncovered score ranges
+    result: "Save blocked until standings cover the entire 0-100 range"
+
+errors:
+  - code: SCORECARD_STANDING_OVERLAP
+    message: "Standing grade ranges overlap. Each score must map to exactly one standing."
+    status: 422
+  - code: SCORECARD_WEIGHTS_INVALID
+    message: "Criteria weights must sum to exactly 100%."
+    status: 422
+  - code: SCORECARD_FORMULA_ERROR
+    message: "Formula contains unknown variables. Check that all referenced variables exist."
+    status: 422
+  - code: SCORECARD_COVERAGE_GAP
+    message: "Standing ranges do not cover the full 0-100 score range. All scores must have a standing."
+    status: 422
+
+events:
+  - name: scorecard.calculated
+    description: Period scorecard scores have been calculated
+    payload: [supplier, period, total_score, supplier_score]
+  - name: scorecard.standing_changed
+    description: Supplier standing has changed based on recalculated score
+    payload: [supplier, old_standing, new_standing, supplier_score]
+  - name: scorecard.supplier_blocked
+    description: Transaction blocked due to supplier performance standing
+    payload: [supplier, transaction_type, standing]
+  - name: scorecard.supplier_warned
+    description: Warning issued for transaction with low-scoring supplier
+    payload: [supplier, transaction_type, standing, supplier_score]
+
+related:
+  - feature: customer-supplier-management
+    type: required
+    reason: Supplier master data and hold/block status management
+  - feature: purchase-order-lifecycle
+    type: recommended
+    reason: Purchase order lifecycle affected by scorecard blocking rules
+
+extensions:
+  source: "https://github.com/frappe/erpnext"

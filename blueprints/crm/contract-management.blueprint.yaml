@@ -1,0 +1,408 @@
+# ============================================================
+# CONTRACT MANAGEMENT — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: contract-management
+version: "1.0.0"
+description: >
+  Contract lifecycle management with signing workflow, date-driven status
+  transitions, fulfilment tracking, and template-based term generation.
+category: crm
+tags:
+  - contract
+  - agreement
+  - fulfilment
+  - signing
+  - compliance
+
+actors:
+  - id: contract_owner
+    name: Contract Owner
+    type: human
+    description: Creates, manages, and monitors contracts
+  - id: signee
+    name: Signee
+    type: human
+    description: Reviews and signs the contract on behalf of the counterparty
+  - id: system
+    name: System
+    type: system
+    description: Auto-updates contract status based on dates, tracks fulfilment deadlines
+
+# ─── FIELDS ───────────────────────────────────────────────
+
+fields:
+  - name: party_type
+    type: select
+    label: Party Type
+    required: true
+    options:
+      - {value: "Customer", label: "Customer"}
+      - {value: "Supplier", label: "Supplier"}
+      - {value: "Employee", label: "Employee"}
+  - name: party_name
+    type: text
+    label: Party Name
+    required: true
+  - name: contract_status
+    type: select
+    label: Contract Status
+    required: true
+    options:
+      - {value: "Unsigned", label: "Unsigned"}
+      - {value: "Active", label: "Active"}
+      - {value: "Inactive", label: "Inactive"}
+      - {value: "Cancelled", label: "Cancelled"}
+  - name: is_signed
+    type: boolean
+    label: Is Signed
+    required: false
+  - name: signed_on
+    type: datetime
+    label: Signed On
+    required: false
+  - name: signed_by_company
+    type: text
+    label: Signed By (Company Representative)
+    required: false
+  - name: signee
+    type: text
+    label: Signee (Counterparty)
+    required: false
+  - name: start_date
+    type: date
+    label: Start Date
+    required: true
+  - name: end_date
+    type: date
+    label: End Date
+    required: false
+    # Null means indefinite contract
+  - name: contract_template
+    type: text
+    label: Contract Template
+    required: false
+  - name: contract_terms
+    type: rich_text
+    label: Contract Terms
+    required: false
+    # Supports template rendering with party context variables
+  - name: requires_fulfilment
+    type: boolean
+    label: Requires Fulfilment
+    required: false
+  - name: fulfilment_status
+    type: select
+    label: Fulfilment Status
+    required: false
+    options:
+      - {value: "N/A", label: "N/A"}
+      - {value: "Unfulfilled", label: "Unfulfilled"}
+      - {value: "Partially Fulfilled", label: "Partially Fulfilled"}
+      - {value: "Fulfilled", label: "Fulfilled"}
+      - {value: "Lapsed", label: "Lapsed"}
+  - name: fulfilment_deadline
+    type: date
+    label: Fulfilment Deadline
+    required: false
+  - name: fulfilment_terms
+    type: json
+    label: Fulfilment Terms
+    required: false
+    # Array of { requirement, fulfilled (boolean), notes }
+  - name: document_type
+    type: select
+    label: Linked Document Type
+    required: false
+    options:
+      - {value: "Quotation", label: "Quotation"}
+      - {value: "Project", label: "Project"}
+      - {value: "Sales Order", label: "Sales Order"}
+      - {value: "Purchase Order", label: "Purchase Order"}
+      - {value: "Sales Invoice", label: "Sales Invoice"}
+      - {value: "Purchase Invoice", label: "Purchase Invoice"}
+  - name: document_name
+    type: text
+    label: Linked Document Name
+    required: false
+  - name: ip_address
+    type: text
+    label: IP Address
+    required: false
+    # Captured at signing time for audit trail
+
+# ─── STATES ──────────────────────────────────────────────
+
+states:
+  field: contract_status
+  values:
+    - name: Unsigned
+      description: Contract created but not yet signed by both parties
+      initial: true
+    - name: Active
+      description: Contract is signed and within its active date range
+    - name: Inactive
+      description: Contract is outside its active date range
+    - name: Cancelled
+      description: Contract has been cancelled
+      terminal: true
+  transitions:
+    - from: Unsigned
+      to: Active
+      actor: system
+      description: Contract signed and start_date reached
+      condition: "is_signed == true and start_date <= today"
+    - from: Unsigned
+      to: Inactive
+      actor: system
+      description: Contract signed but start_date is in the future
+      condition: "is_signed == true and start_date > today"
+    - from: Active
+      to: Inactive
+      actor: system
+      description: Contract end_date has passed
+      condition: "end_date is not null and end_date < today"
+    - from: Inactive
+      to: Active
+      actor: system
+      description: Contract re-enters active date range
+      condition: "start_date <= today and (end_date is null or end_date >= today)"
+    - from: [Unsigned, Active, Inactive]
+      to: Cancelled
+      actor: contract_owner
+      description: Contract owner cancels the contract
+
+# ─── RULES ───────────────────────────────────────────────
+
+rules:
+  end_date_after_start:
+    description: >
+      If an end date is provided, it must be on or after the start date.
+  unsigned_until_signed:
+    description: >
+      Contracts remain in Unsigned status until the is_signed flag is set to true.
+  active_status_date_driven:
+    description: >
+      Active status is automatically computed when start_date <= today and
+      (end_date is null or end_date >= today) and the contract is signed.
+  inactive_outside_range:
+    description: >
+      Contracts outside their active date range are automatically set to Inactive.
+  indefinite_contracts:
+    description: >
+      Contracts with no end_date remain active indefinitely until explicitly cancelled.
+  fulfilment_checklist:
+    description: >
+      Fulfilment is tracked via checklist items in fulfilment_terms. Each item
+      has a requirement, fulfilled flag, and optional notes.
+  lapsed_on_missed_deadline:
+    description: >
+      When the fulfilment deadline passes with incomplete fulfilment items,
+      the fulfilment status is set to Lapsed.
+  signed_by_auto_set:
+    description: >
+      The signed_by_company field is automatically set to the current user
+      when the contract is submitted/signed.
+  contract_terms_templating:
+    description: >
+      Contract terms support template rendering with party context variables
+      (party name, address, dates) for dynamic document generation.
+  daily_status_update_job:
+    description: >
+      A daily background job evaluates all contracts and updates their status
+      based on current date against start_date and end_date.
+
+# ─── OUTCOMES ────────────────────────────────────────────
+
+outcomes:
+  create_contract:
+    priority: 1
+    given:
+      - "contract owner provides party type, party name, and start date"
+      - field: party_name
+        source: input
+        operator: exists
+    then:
+      - action: create_record
+        type: contract
+        description: Contract created in Unsigned status
+      - action: set_field
+        target: contract_status
+        value: "Unsigned"
+    result: "New contract created and ready for review and signing"
+
+  sign_contract:
+    priority: 2
+    given:
+      - "contract is in Unsigned status"
+      - "signee reviews and agrees to terms"
+    then:
+      - action: set_field
+        target: is_signed
+        value: true
+      - action: set_field
+        target: signed_on
+        description: Set to current timestamp
+      - action: set_field
+        target: signed_by_company
+        description: Set to current user
+      - action: set_field
+        target: ip_address
+        description: Capture signee IP address for audit
+      - action: emit_event
+        event: contract.signed
+        payload: [contract_id, party_name, signed_on]
+    result: "Contract is signed and status will transition based on date range"
+
+  track_fulfilment:
+    priority: 3
+    given:
+      - "contract has requires_fulfilment set to true"
+      - "contract owner updates fulfilment term items"
+    then:
+      - action: set_field
+        target: fulfilment_status
+        description: Computed from fulfilment_terms (all fulfilled = Fulfilled, some = Partially Fulfilled)
+      - action: emit_event
+        event: contract.fulfilled
+        payload: [contract_id, fulfilment_status]
+        when: "fulfilment_status == \"Fulfilled\""
+    result: "Fulfilment status updated based on completed checklist items"
+
+  cancel_contract:
+    priority: 4
+    given:
+      - "contract is not already cancelled"
+      - "contract owner initiates cancellation"
+    then:
+      - action: transition_state
+        field: contract_status
+        to: Cancelled
+      - action: emit_event
+        event: contract.cancelled
+        payload: [contract_id, party_name]
+    result: "Contract is cancelled and no longer active"
+
+  lapse_contract:
+    priority: 5
+    given:
+      - "contract has requires_fulfilment set to true"
+      - field: fulfilment_deadline
+        source: db
+        operator: lt
+        value: "today"
+        description: "Fulfilment deadline has passed"
+      - "fulfilment_terms has incomplete items"
+    then:
+      - action: set_field
+        target: fulfilment_status
+        value: "Lapsed"
+      - action: emit_event
+        event: contract.lapsed
+        payload: [contract_id, fulfilment_deadline]
+    result: "Contract fulfilment has lapsed due to missed deadline"
+
+  renew_contract:
+    priority: 6
+    given:
+      - "contract is in Active or Inactive status"
+      - "contract owner creates a renewal"
+    then:
+      - action: create_record
+        type: contract
+        description: New contract created with updated dates, linked to original
+      - action: emit_event
+        event: contract.activated
+        payload: [contract_id, start_date, end_date]
+    result: "New contract created as a renewal of the original"
+
+  # ─── Error outcomes ────────────────────────────────────
+  end_before_start_rejected:
+    priority: 1
+    error: CONTRACT_END_BEFORE_START
+    given:
+      - field: end_date
+        source: input
+        operator: exists
+      - field: end_date
+        source: input
+        operator: lt
+        value: start_date
+        description: "End date is before start date"
+    then:
+      - action: notify
+        channel: ui
+        description: Show that end date must be on or after start date
+    result: "Contract rejected — end date cannot be before start date"
+
+  already_cancelled_rejected:
+    priority: 1
+    error: CONTRACT_ALREADY_CANCELLED
+    given:
+      - field: contract_status
+        source: db
+        operator: eq
+        value: "Cancelled"
+    then:
+      - action: notify
+        channel: ui
+        description: Inform that cancelled contracts cannot be modified
+    result: "Action rejected — contract is already cancelled"
+
+# ─── ERRORS ──────────────────────────────────────────────
+
+errors:
+  - code: CONTRACT_END_BEFORE_START
+    message: Contract end date cannot be before the start date.
+    status: 400
+  - code: CONTRACT_ALREADY_CANCELLED
+    message: This contract has already been cancelled and cannot be modified.
+    status: 409
+
+# ─── EVENTS ──────────────────────────────────────────────
+
+events:
+  - name: contract.signed
+    description: Contract signed by both parties
+    payload: [contract_id, party_name, signed_on]
+  - name: contract.activated
+    description: Contract entered active status
+    payload: [contract_id, start_date, end_date]
+  - name: contract.lapsed
+    description: Contract fulfilment deadline passed with incomplete items
+    payload: [contract_id, fulfilment_deadline]
+  - name: contract.fulfilled
+    description: All contract fulfilment requirements completed
+    payload: [contract_id, fulfilment_status]
+  - name: contract.cancelled
+    description: Contract cancelled by contract owner
+    payload: [contract_id, party_name]
+
+# ─── RELATED FEATURES ───────────────────────────────────
+
+related:
+  - feature: customer-supplier-management
+    type: required
+    reason: Contracts are linked to customer, supplier, or employee party records
+  - feature: sales-order-lifecycle
+    type: optional
+    reason: Contracts may be linked to sales orders or purchase orders
+  - feature: lead-opportunity-pipeline
+    type: optional
+    reason: Won opportunities may result in contract creation
+
+# ─── EXTENSIONS ──────────────────────────────────────────
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERPNext"
+    tech_stack: "Python/Frappe Framework"
+    files_traced: 6
+    entry_points:
+      - "erpnext/crm/doctype/contract/contract.py"
+      - "erpnext/crm/doctype/contract_template/contract_template.py"

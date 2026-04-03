@@ -1,0 +1,395 @@
+# ============================================================
+# SERIAL & BATCH TRACKING — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: serial-batch-tracking
+version: "1.0.0"
+description: >
+  Serial number and batch tracking with lifecycle management, batch-wise valuation, expiry tracking, and serial/batch bundles.
+category: inventory
+tags:
+  - serial-number
+  - batch-tracking
+  - traceability
+  - expiry
+  - inventory
+  - valuation
+
+fields:
+  # === Serial Number fields ===
+  - name: serial_no
+    type: text
+    label: Serial Number
+    required: true
+  - name: item_code
+    type: text
+    label: Item Code
+    required: true
+  - name: batch_no
+    type: text
+    label: Batch Number
+    required: false
+  - name: warehouse
+    type: text
+    label: Current Warehouse
+    required: false
+  - name: status
+    type: select
+    label: Serial Status
+    required: true
+    options:
+      - {value: "Active", label: "Active"}
+      - {value: "Inactive", label: "Inactive"}
+      - {value: "Consumed", label: "Consumed"}
+      - {value: "Delivered", label: "Delivered"}
+      - {value: "Expired", label: "Expired"}
+  - name: warranty_expiry_date
+    type: date
+    label: Warranty Expiry Date
+    required: false
+  - name: amc_expiry_date
+    type: date
+    label: AMC Expiry Date
+    required: false
+  - name: maintenance_status
+    type: select
+    label: Maintenance Status
+    required: false
+    options:
+      - {value: "Under Warranty", label: "Under Warranty"}
+      - {value: "Under AMC", label: "Under AMC"}
+      - {value: "Out of Warranty", label: "Out of Warranty"}
+      - {value: "Out of AMC", label: "Out of AMC"}
+  - name: purchase_rate
+    type: number
+    label: Purchase Rate
+    required: false
+  # === Batch fields ===
+  - name: batch_id
+    type: text
+    label: Batch ID
+    required: true
+  - name: batch_item
+    type: text
+    label: Batch Item Code
+    required: true
+  - name: expiry_date
+    type: date
+    label: Expiry Date
+    required: false
+  - name: manufacturing_date
+    type: date
+    label: Manufacturing Date
+    required: false
+  - name: batch_qty
+    type: number
+    label: Batch Quantity
+    required: false
+  - name: use_batchwise_valuation
+    type: boolean
+    label: Use Batch-wise Valuation
+    required: false
+  - name: batch_disabled
+    type: boolean
+    label: Batch Disabled
+    required: false
+  # === Serial and Batch Bundle fields ===
+  - name: bundle_item_code
+    type: text
+    label: Bundle Item Code
+    required: true
+  - name: bundle_warehouse
+    type: text
+    label: Bundle Warehouse
+    required: true
+  - name: type_of_transaction
+    type: select
+    label: Transaction Type
+    required: true
+    options:
+      - {value: "Inward", label: "Inward"}
+      - {value: "Outward", label: "Outward"}
+      - {value: "Maintenance", label: "Maintenance"}
+  - name: entries
+    type: json
+    label: Bundle Entries
+    required: true
+  - name: total_qty
+    type: number
+    label: Total Quantity
+    required: false
+  - name: total_amount
+    type: number
+    label: Total Amount
+    required: false
+  - name: avg_rate
+    type: number
+    label: Average Rate
+    required: false
+  - name: is_cancelled
+    type: boolean
+    label: Is Cancelled
+    required: false
+
+rules:
+  serial_uniqueness:
+    description: >
+      Serial numbers must be globally unique per item. The same serial
+      number cannot exist for two different items. Duplicate serial numbers
+      within the same item are rejected at creation time.
+  serial_warehouse_immutability:
+    description: >
+      A serial number's warehouse can only change through stock transactions
+      (stock entry, purchase receipt, delivery note). Direct modification of
+      the warehouse field is not permitted.
+  batch_expiry_validation:
+    description: >
+      For outgoing transactions (delivery, issue), the batch expiry date
+      must be on or after the current date. Expired batches cannot be used
+      for outgoing stock movements unless explicitly overridden.
+  batch_deletion_protection:
+    description: >
+      A batch cannot be deleted if it has been referenced in any stock
+      ledger entry. Historical traceability must be preserved.
+  bundle_no_duplicates:
+    description: >
+      A serial and batch bundle must not contain duplicate serial numbers
+      or duplicate batch entries. Each serial number or batch row must
+      appear exactly once in the bundle.
+  maintenance_status_auto_calculation:
+    description: >
+      Maintenance status is automatically derived from warranty_expiry_date
+      and amc_expiry_date. If warranty is active, status is "Under Warranty".
+      If warranty expired but AMC is active, status is "Under AMC". Otherwise
+      the corresponding "Out of" status applies.
+
+states:
+  field: status
+  values:
+    - id: Active
+      label: Active
+      initial: true
+    - id: Inactive
+      label: Inactive
+    - id: Consumed
+      label: Consumed
+      terminal: true
+    - id: Delivered
+      label: Delivered
+      terminal: true
+    - id: Expired
+      label: Expired
+      terminal: true
+  transitions:
+    - from: Active
+      to: Inactive
+      actor: stock_user
+      description: "Serial number deactivated (e.g., item removed from inventory)"
+    - from: Active
+      to: Consumed
+      actor: system
+      description: "Serial number consumed in manufacturing process"
+    - from: Active
+      to: Delivered
+      actor: system
+      description: "Serial number delivered to customer"
+    - from: Active
+      to: Expired
+      actor: system
+      description: "Serial number expired based on warranty/AMC dates"
+    - from: Inactive
+      to: Active
+      actor: stock_user
+      description: "Serial number reactivated"
+
+outcomes:
+  create_serial:
+    priority: 1
+    given:
+      - "item is configured for serial number tracking"
+      - "serial number is unique for the item"
+      - "incoming stock transaction provides the serial number"
+    then:
+      - action: create_record
+        type: serial_no
+        target: serial_no
+        description: "Serial number record created with item, warehouse, and purchase details"
+      - action: emit_event
+        event: serial.created
+        payload: [serial_no, item_code, warehouse]
+    result: "Serial number created and tracked in the specified warehouse"
+
+  consume_serial:
+    priority: 2
+    given:
+      - "serial number exists and is in Active status"
+      - "outgoing stock transaction references the serial number"
+      - "transaction type is manufacturing consumption"
+    then:
+      - action: transition_state
+        field: status
+        from: Active
+        to: Consumed
+      - action: set_field
+        target: warehouse
+        value: null
+        description: "Warehouse cleared as serial is no longer in stock"
+      - action: emit_event
+        event: serial.consumed
+        payload: [serial_no, item_code, consumed_in]
+    result: "Serial number marked as consumed and removed from warehouse"
+
+  deliver_serial:
+    priority: 3
+    given:
+      - "serial number exists and is in Active status"
+      - "outgoing delivery transaction references the serial number"
+    then:
+      - action: transition_state
+        field: status
+        from: Active
+        to: Delivered
+      - action: set_field
+        target: warehouse
+        value: null
+        description: "Warehouse cleared as serial is delivered to customer"
+      - action: emit_event
+        event: serial.delivered
+        payload: [serial_no, item_code, customer]
+    result: "Serial number marked as delivered to customer"
+
+  create_batch:
+    priority: 4
+    given:
+      - "item is configured for batch tracking"
+      - "batch ID is unique for the item"
+    then:
+      - action: create_record
+        type: batch
+        target: batch
+        description: "Batch record created with manufacturing date, expiry, and item reference"
+      - action: emit_event
+        event: batch.created
+        payload: [batch_id, item_code, expiry_date]
+    result: "Batch created and available for stock transactions"
+
+  track_expiry:
+    priority: 5
+    given:
+      - "batch has an expiry date"
+      - "current date is past the expiry date"
+    then:
+      - action: emit_event
+        event: batch.expired
+        payload: [batch_id, item_code, expiry_date]
+    result: "Batch flagged as expired and blocked from outgoing transactions"
+
+  create_bundle:
+    priority: 6
+    given:
+      - "stock transaction involves multiple serial numbers or batches"
+      - "bundle entries contain no duplicate serial numbers or batch rows"
+      - "total quantity matches the sum of entry quantities"
+    then:
+      - action: create_record
+        type: serial_and_batch_bundle
+        target: serial_batch_bundle
+        description: "Bundle created grouping all serial/batch entries for the transaction"
+      - action: emit_event
+        event: bundle.created
+        payload: [bundle_id, item_code, type_of_transaction, total_qty]
+    result: "Serial and batch bundle created for grouped transaction processing"
+
+  serial_duplicate_rejected:
+    priority: 1
+    error: SERIAL_DUPLICATE
+    given:
+      - "serial number already exists for the item"
+    then: []
+    result: "Serial number creation rejected due to duplicate"
+
+  serial_warehouse_mismatch:
+    priority: 1
+    error: SERIAL_WAREHOUSE_MISMATCH
+    given:
+      - "outgoing transaction references a serial number"
+      - "serial number is not in the specified source warehouse"
+    then: []
+    result: "Transaction rejected because serial is in a different warehouse"
+
+  batch_expired_rejection:
+    priority: 1
+    error: BATCH_EXPIRED
+    given:
+      - "outgoing transaction references a batch"
+      - field: expiry_date
+        source: db
+        operator: lt
+        value: "today"
+        description: "Batch expiry date is before today"
+    then: []
+    result: "Transaction rejected because batch has expired"
+
+errors:
+  - code: SERIAL_DUPLICATE
+    message: "Serial number already exists for this item."
+    status: 409
+  - code: SERIAL_WAREHOUSE_MISMATCH
+    message: "Serial number is not in the specified warehouse. Check the current location."
+    status: 400
+  - code: SERIAL_FUTURE_TRANSACTION
+    message: "Cannot process a serial number transaction with a future date."
+    status: 400
+  - code: BATCH_EXPIRED
+    message: "Batch has expired and cannot be used for outgoing transactions."
+    status: 400
+  - code: BATCH_NEGATIVE_STOCK
+    message: "Transaction would result in negative batch quantity."
+    status: 400
+  - code: BUNDLE_DUPLICATE_ENTRY
+    message: "Bundle contains duplicate serial numbers or batch entries."
+    status: 400
+
+events:
+  - name: serial.created
+    description: New serial number registered in the system
+    payload: [serial_no, item_code, warehouse]
+  - name: serial.consumed
+    description: Serial number consumed in a manufacturing process
+    payload: [serial_no, item_code, consumed_in]
+  - name: serial.delivered
+    description: Serial number delivered to a customer
+    payload: [serial_no, item_code, customer]
+  - name: batch.created
+    description: New batch created for an item
+    payload: [batch_id, item_code, expiry_date]
+  - name: batch.expired
+    description: Batch has passed its expiry date
+    payload: [batch_id, item_code, expiry_date]
+  - name: bundle.created
+    description: Serial and batch bundle created for a grouped transaction
+    payload: [bundle_id, item_code, type_of_transaction, total_qty]
+
+related:
+  - feature: stock-entry-movements
+    type: required
+    reason: "Stock entries are the primary mechanism for serial/batch movement"
+  - feature: warehouse-bin-management
+    type: required
+    reason: "Serial and batch quantities are tracked per warehouse bin"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"
+    files_traced: 22
+    entry_points:
+      - "erpnext/stock/doctype/serial_no/serial_no.py"
+      - "erpnext/stock/doctype/batch/batch.py"
+      - "erpnext/stock/doctype/serial_and_batch_bundle/serial_and_batch_bundle.py"
+      - "erpnext/stock/serial_batch_bundle.py"

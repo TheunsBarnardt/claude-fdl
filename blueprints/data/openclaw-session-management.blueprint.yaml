@@ -1,0 +1,428 @@
+# ============================================================
+# openclaw-session-management — Conversation Storage & Lifecycle
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: github.com/openclaw/openclaw
+# Files: config/sessions/store.ts, config/sessions/types.ts, sessions/transcript-events.ts
+# ============================================================
+
+feature: openclaw-session-management
+version: "1.0.0"
+description: "Persistent conversation storage with automatic disk budgeting, transcript rotation, and session lifecycle tracking across messaging channels"
+category: data
+tags:
+  - persistence
+  - conversation
+  - storage
+  - lifecycle
+  - maintenance
+
+actors:
+  - id: agent
+    name: "AI Agent"
+    type: system
+  - id: gateway
+    name: "OpenClaw Gateway"
+    type: system
+  - id: user
+    name: "End User"
+    type: human
+  - id: storage_engine
+    name: "File Storage System"
+    type: system
+
+fields:
+  - name: session_id
+    type: text
+    required: true
+    label: "Session ID"
+
+  - name: session_key
+    type: text
+    required: true
+    label: "Session Key"
+
+  - name: agent_id
+    type: text
+    required: true
+    label: "Agent ID"
+
+  - name: channel
+    type: text
+    required: false
+    label: "Channel"
+
+  - name: account_id
+    type: text
+    required: false
+    label: "Account ID"
+
+  - name: created_at
+    type: datetime
+    required: true
+    label: "Created At"
+
+  - name: updated_at
+    type: datetime
+    required: true
+    label: "Updated At"
+
+  - name: last_activity
+    type: datetime
+    required: false
+    label: "Last Activity"
+
+  - name: idle_minutes
+    type: number
+    required: false
+    label: "Idle Timeout Minutes"
+
+  - name: message_count
+    type: number
+    required: true
+    label: "Message Count"
+
+  - name: transcript_bytes
+    type: number
+    required: true
+    label: "Transcript Size (bytes)"
+
+  - name: model_override
+    type: text
+    required: false
+    label: "Model Override"
+
+  - name: provider_override
+    type: text
+    required: false
+    label: "Provider Override"
+
+  - name: thinking_level
+    type: select
+    required: false
+    label: "Thinking Level"
+    options:
+      - value: "off"
+        label: "Off"
+      - value: "minimal"
+        label: "Minimal (5-10K tokens)"
+      - value: "low"
+        label: "Low (10-50K tokens)"
+      - value: "medium"
+        label: "Medium (50-200K tokens)"
+      - value: "high"
+        label: "High (200K+ tokens)"
+      - value: "xhigh"
+        label: "XHigh (max available)"
+      - value: "adaptive"
+        label: "Adaptive"
+
+  - name: input_tokens
+    type: number
+    required: false
+    label: "Input Tokens"
+
+  - name: output_tokens
+    type: number
+    required: false
+    label: "Output Tokens"
+
+  - name: last_channel
+    type: text
+    required: false
+    label: "Last Delivery Channel"
+
+  - name: last_to
+    type: text
+    required: false
+    label: "Last Delivery Target"
+
+  - name: transcript_file
+    type: text
+    required: true
+    label: "Transcript File Path"
+
+rules:
+  session_lifecycle:
+    creation: |
+      Sessions created implicitly on first inbound message.
+      sessionKey derived from: agent_id + channel + account_id + peer.
+      Initial entry written with createdAt, updatedAt, sessionId, empty transcript.
+
+    updates: |
+      Every agent response updates session:
+      - Append messages to transcript
+      - Increment updatedAt
+      - Update last_activity, token counts
+      - Record model/provider overrides
+      Atomic write with file lock (acquireSessionWriteLock).
+      Max concurrent writers per session: 1.
+      Lock timeout: 30 seconds.
+
+    archival_on_reset: |
+      When reset trigger matches:
+      - Rotate transcript: <key>.json → <key>.reset.<timestamp>.json
+      - Start new transcript: <key>.json = []
+      - Retention: configurable (default 30 days)
+
+    idle_timeout: |
+      If idleMinutes > 0:
+      - Check: now - last_activity > idleMinutes * 60000
+      - If true: trigger session.reset (rotate, clear context)
+
+  transcript_management:
+    message_append: |
+      Messages appended as objects to transcript[]:
+      {
+        id: string; role: "user"|"assistant"; content: string;
+        createdAt: ISO8601; tokens?: { input, output };
+        metadata?: { channel, threadId, ... };
+      }
+
+    message_size_limits: |
+      Individual messages capped at 128KB.
+      Oversized: replaced with "[chat.history omitted: message too large]".
+      Total history display limit: 12K chars.
+
+    transcript_rotation: |
+      Reset triggers: cron-based or manual /reset command.
+      Old transcript archived to reset_archives.
+      Storage: sessions.json (index) + per-session files.
+
+  disk_budget_enforcement:
+    budget_limits: |
+      maxDiskBytes: total allowed storage (default 5GB).
+      highWaterBytes: cleanup threshold (default 80% of max).
+      Enforcement: check on every write.
+      Exceeds max: pruneStaleEntries() removes oldest archives (FIFO).
+
+    pruning_strategy: |
+      When totalBytes > maxDiskBytes:
+      1. Sort sessions by updatedAt (oldest first)
+      2. Delete oldest reset_archives per session
+      3. If still over budget: delete oldest sessions
+      Entries capped at max (default 500).
+
+    cache_invalidation: |
+      After disk budget enforcement:
+      - Clear memory cache
+      - Reload from disk on next access
+
+  concurrent_access:
+    write_locking: |
+      File-based locking via acquireSessionWriteLock():
+      - One writer per sessionKey at a time
+      - Queued writes wait (timeout: 30s)
+      - Automatic release on completion
+      Release: on write completion or timeout.
+
+    read_caching: |
+      Recent entries cached in memory.
+      Cache valid until session updated.
+      On write: clear cache for that sessionKey.
+
+    deadlock_prevention: |
+      Lock timeout: 30 seconds.
+      Stale lock detection: >1 minute assumed crashed.
+      Automatic cleanup: remove stale lock, retry.
+
+states:
+  session_state:
+    field: lifecycle_state
+    values:
+      - name: new
+        initial: true
+      - name: active
+      - name: idle
+      - name: reset
+      - name: archived
+      - name: deleted
+        terminal: true
+
+outcomes:
+  message_appended:
+    priority: 1
+    given:
+      - "session exists or will be created"
+      - field: session_key
+        source: input
+        operator: exists
+      - "new message content provided"
+    then:
+      - action: set_field
+        target: message_count
+        value: "existing + 1"
+      - action: set_field
+        target: updated_at
+        value: "now"
+      - action: set_field
+        target: transcript_bytes
+        value: "serialized size"
+      - action: emit_event
+        event: session.updated
+        payload:
+          - session_id
+          - message_count
+          - transcript_bytes
+    result: "Message persisted, session metadata updated"
+    transaction: true
+
+  transcript_rotated:
+    priority: 2
+    given:
+      - "reset trigger matched OR /reset command"
+      - "session has messages"
+    then:
+      - action: create_record
+        target: reset_archives
+        value: "archive entry with path, counts, bytes"
+      - action: set_field
+        target: message_count
+        value: "0"
+      - action: transition_state
+        field: lifecycle_state
+        from: active
+        to: reset
+      - action: emit_event
+        event: session.reset
+        payload:
+          - session_id
+          - reason
+    result: "Old transcript archived, new session started"
+    transaction: true
+
+  disk_budget_enforced:
+    priority: 3
+    given:
+      - field: total_bytes_used
+        source: computed
+        operator: gt
+        value: max_disk_bytes
+    then:
+      - action: call_service
+        service: pruneStaleEntries
+        params:
+          - maxDiskBytes
+          - highWaterBytes
+      - action: delete_record
+        target: "oldest reset_archives (FIFO)"
+      - action: emit_event
+        event: disk_budget.exceeded
+        payload:
+          - total_bytes_used
+          - sessions_pruned
+    result: "Old transcripts deleted, disk budget enforced"
+    error: DISK_CLEANUP_FAILED
+    transaction: true
+
+  idle_session_reset:
+    priority: 4
+    given:
+      - field: idle_minutes
+        source: config
+        operator: gt
+        value: 0
+      - field: elapsed_time
+        source: computed
+        operator: gt
+        value: "idle_minutes minutes"
+    then:
+      - action: transition_state
+        field: lifecycle_state
+        from: active
+        to: idle
+      - action: emit_event
+        event: session.reset
+        payload:
+          - session_id
+          - reason: "idle_timeout"
+    result: "Session marked idle, awaiting reset"
+
+events:
+  - name: session.created
+    payload:
+      - session_id
+      - session_key
+      - agent_id
+      - channel
+      - created_at
+
+  - name: session.updated
+    payload:
+      - session_id
+      - message_count
+      - transcript_bytes
+      - updated_at
+
+  - name: session.reset
+    payload:
+      - session_id
+      - reason
+      - previous_message_count
+
+  - name: session.archived
+    payload:
+      - session_id
+      - archived_reset_count
+
+  - name: session.deleted
+    payload:
+      - session_id
+      - reclaimed_bytes
+      - reason
+
+  - name: disk_budget.exceeded
+    payload:
+      - total_bytes_used
+      - max_bytes
+      - sessions_pruned
+      - bytes_freed
+
+errors:
+  - code: SESSION_NOT_FOUND
+    status: 404
+    message: "Session does not exist"
+
+  - code: DISK_QUOTA_EXCEEDED
+    status: 500
+    message: "Insufficient storage for new message"
+
+  - code: WRITE_LOCK_TIMEOUT
+    status: 503
+    message: "Session write lock timeout"
+
+  - code: TRANSCRIPT_CORRUPTION
+    status: 500
+    message: "Session transcript corrupted"
+
+  - code: INVALID_SESSION_KEY
+    status: 400
+    message: "Invalid session key format"
+
+related:
+  - feature: openclaw-message-routing
+    type: required
+    reason: "Route resolution provides session_key"
+  - feature: openclaw-gateway-authentication
+    type: required
+    reason: "User auth determines session isolation scope"
+  - feature: openclaw-llm-provider
+    type: required
+    reason: "Agent writes messages and token counts to session"
+
+sla:
+  write_latency:
+    max_duration: "500ms"
+  disk_budget_check:
+    max_duration: "1s"
+  concurrent_writers:
+    max: 1
+
+extensions:
+  tech_stack:
+    language: "TypeScript"
+    storage: "JSON5 file-based with atomic writes"
+    patterns:
+      - "File-based session isolation"
+      - "Write-lock queuing"
+      - "Disk budget LRU cleanup"

@@ -1,0 +1,318 @@
+# ============================================================
+# STOCK ENTRY & MOVEMENTS — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: stock-entry-movements
+version: "1.0.0"
+description: >
+  Stock entry and material movement system supporting issue, receipt, transfer, manufacture, repack, and subcontracting with stock ledger and GL entries.
+category: inventory
+tags:
+  - stock-entry
+  - material-movement
+  - stock-ledger
+  - valuation
+  - manufacturing
+  - inventory
+
+fields:
+  - name: company
+    type: text
+    label: Company
+    required: true
+  - name: purpose
+    type: select
+    label: Stock Entry Purpose
+    required: true
+    options:
+      - {value: "Material Issue", label: "Material Issue"}
+      - {value: "Material Receipt", label: "Material Receipt"}
+      - {value: "Material Transfer", label: "Material Transfer"}
+      - {value: "Material Transfer for Manufacture", label: "Material Transfer for Manufacture"}
+      - {value: "Material Consumption for Manufacture", label: "Material Consumption for Manufacture"}
+      - {value: "Manufacture", label: "Manufacture"}
+      - {value: "Repack", label: "Repack"}
+      - {value: "Send to Subcontractor", label: "Send to Subcontractor"}
+      - {value: "Send to Warehouse", label: "Send to Warehouse"}
+      - {value: "Receive at Warehouse", label: "Receive at Warehouse"}
+      - {value: "Material Issue (Opening)", label: "Material Issue (Opening)"}
+      - {value: "Material Receipt (Opening)", label: "Material Receipt (Opening)"}
+      - {value: "Customer Provided", label: "Customer Provided"}
+  - name: posting_date
+    type: date
+    label: Posting Date
+    required: true
+  - name: posting_time
+    type: text
+    label: Posting Time
+    required: true
+  - name: from_warehouse
+    type: text
+    label: Source Warehouse
+    required: false
+  - name: to_warehouse
+    type: text
+    label: Target Warehouse
+    required: false
+  - name: items
+    type: json
+    label: Stock Entry Items
+    required: true
+  - name: work_order
+    type: text
+    label: Work Order
+    required: false
+  - name: bom_no
+    type: text
+    label: Bill of Materials
+    required: false
+  - name: fg_completed_qty
+    type: number
+    label: Finished Goods Completed Qty
+    required: false
+  - name: process_loss_percentage
+    type: number
+    label: Process Loss Percentage
+    required: false
+  - name: inspection_required
+    type: boolean
+    label: Inspection Required
+    required: false
+  - name: is_return
+    type: boolean
+    label: Is Return
+    required: false
+
+rules:
+  purpose_warehouse_requirements:
+    description: >
+      Purpose determines which warehouse fields are required. Material Issue
+      requires a source warehouse only. Material Receipt requires a target
+      warehouse only. Material Transfer requires both source and target
+      warehouses. Manufacture requires a target warehouse for finished goods.
+  stock_ledger_on_submit:
+    description: >
+      On submission, stock ledger entries (SLE) are created for each item row
+      tracking actual_qty changes and valuation_rate. Incoming entries increase
+      actual_qty; outgoing entries decrease it. Valuation uses either FIFO or
+      moving average based on item configuration.
+  gl_entries_on_submit:
+    description: >
+      General ledger entries are created for accounting impact when perpetual
+      inventory is enabled. Debit/credit accounts are derived from warehouse
+      default accounts or item group defaults.
+  serial_batch_validation:
+    description: >
+      Items with serial number tracking require valid serial numbers matching
+      the quantity. Items with batch tracking require a valid batch number.
+      Serial numbers must exist in the source warehouse for outgoing transactions.
+  manufacture_qty_match:
+    description: >
+      For Manufacture purpose, the work order quantity must match the
+      fg_completed_qty. Raw material quantities are calculated from the BOM
+      based on fg_completed_qty and process_loss_percentage.
+  backdated_entry_reposting:
+    description: >
+      When a stock entry is backdated (posting_date/time before the latest
+      existing SLE), all future stock ledger entries and GL entries are
+      recalculated to maintain correct running balances and valuations.
+  stock_freeze:
+    description: >
+      Entries cannot be posted before the stock freeze date configured in
+      inventory settings. Only users with the stock freeze role can bypass
+      this restriction.
+
+states:
+  field: docstatus
+  values:
+    - id: draft
+      label: Draft
+      initial: true
+    - id: submitted
+      label: Submitted
+    - id: cancelled
+      label: Cancelled
+      terminal: true
+  transitions:
+    - from: draft
+      to: submitted
+      actor: stock_user
+      description: Submit stock entry to create ledger entries
+    - from: submitted
+      to: cancelled
+      actor: stock_manager
+      description: Cancel stock entry to reverse all ledger entries
+
+outcomes:
+  submit_stock_entry:
+    priority: 1
+    given:
+      - "stock entry is in draft state with all required fields populated"
+      - "purpose-specific warehouse requirements are satisfied"
+      - "all item quantities are greater than zero"
+      - "serial/batch numbers are valid for tracked items"
+    then:
+      - action: create_record
+        type: stock_ledger_entry
+        target: stock_ledger_entries
+        description: "SLE created per item row with actual_qty and valuation_rate"
+      - action: create_record
+        type: gl_entry
+        target: gl_entries
+        description: "GL entries created for perpetual inventory accounting"
+      - action: transition_state
+        field: docstatus
+        from: draft
+        to: submitted
+      - action: emit_event
+        event: stock.entry_submitted
+        payload: [entry_id, purpose, posting_date, item_count]
+    result: "Stock entry submitted with SLE and GL entries created"
+
+  cancel_stock_entry:
+    priority: 2
+    given:
+      - "stock entry is in submitted state"
+      - "no dependent transactions reference this entry"
+    then:
+      - action: create_record
+        type: stock_ledger_entry
+        target: stock_ledger_entries
+        description: "Reversal SLE created with negated actual_qty for each item"
+      - action: create_record
+        type: gl_entry
+        target: gl_entries
+        description: "Reversal GL entries created to undo accounting impact"
+      - action: transition_state
+        field: docstatus
+        from: submitted
+        to: cancelled
+      - action: emit_event
+        event: stock.entry_cancelled
+        payload: [entry_id, purpose, posting_date]
+    result: "Stock entry cancelled with all ledger entries reversed"
+
+  transfer_material:
+    priority: 3
+    given:
+      - "purpose is Material Transfer"
+      - "source warehouse has sufficient stock for all items"
+      - "source and target warehouses belong to the same company"
+    then:
+      - action: create_record
+        type: stock_ledger_entry
+        target: stock_ledger_entries
+        description: "Outgoing SLE from source warehouse and incoming SLE to target warehouse"
+      - action: emit_event
+        event: stock.entry_submitted
+        payload: [entry_id, purpose, from_warehouse, to_warehouse]
+    result: "Material transferred between warehouses with ledger updated"
+
+  manufacture_finished_goods:
+    priority: 4
+    given:
+      - "purpose is Manufacture"
+      - "work order and BOM are linked"
+      - "fg_completed_qty matches expected quantity"
+      - "raw material quantities satisfy BOM requirements"
+    then:
+      - action: create_record
+        type: stock_ledger_entry
+        target: stock_ledger_entries
+        description: "Outgoing SLE for raw materials, incoming SLE for finished goods"
+      - action: set_field
+        target: work_order_produced_qty
+        description: "Work order produced quantity updated"
+      - action: emit_event
+        event: stock.entry_submitted
+        payload: [entry_id, work_order, fg_completed_qty]
+    result: "Finished goods manufactured and work order progress updated"
+
+  negative_stock_detected:
+    priority: 1
+    error: STOCK_NEGATIVE_BALANCE
+    given:
+      - "outgoing transaction would cause negative stock balance in warehouse"
+      - "negative stock is not allowed in inventory settings"
+    then:
+      - action: emit_event
+        event: stock.negative_detected
+        payload: [item_code, warehouse, available_qty, requested_qty]
+    result: "Stock entry rejected due to insufficient stock"
+
+  stock_freeze_violated:
+    priority: 1
+    error: STOCK_FREEZE_VIOLATION
+    given:
+      - "posting_date is before the configured stock freeze date"
+      - "user does not have stock freeze bypass role"
+    then: []
+    result: "Stock entry rejected due to stock freeze restriction"
+
+  valuation_changed:
+    priority: 5
+    given:
+      - "stock entry submission changes the valuation rate of an item"
+    then:
+      - action: emit_event
+        event: stock.valuation_changed
+        payload: [item_code, warehouse, old_rate, new_rate]
+    result: "Item valuation rate updated in warehouse"
+
+errors:
+  - code: STOCK_NEGATIVE_BALANCE
+    message: "Insufficient stock: this transaction would result in a negative balance for the item in the specified warehouse."
+    status: 400
+  - code: STOCK_FREEZE_VIOLATION
+    message: "Stock transactions are frozen before the configured freeze date. Contact a stock manager to bypass."
+    status: 403
+  - code: STOCK_WAREHOUSE_MISMATCH
+    message: "Source and target warehouses must belong to the same company and match the stock entry purpose."
+    status: 400
+  - code: STOCK_BACKDATED_BLOCKED
+    message: "Backdated stock entries are not permitted by the current inventory policy."
+    status: 403
+  - code: STOCK_INSPECTION_REQUIRED
+    message: "Quality inspection must be completed before this stock entry can be submitted."
+    status: 400
+
+events:
+  - name: stock.entry_submitted
+    description: Stock entry submitted, ledger entries created
+    payload: [entry_id, purpose, posting_date, item_count]
+  - name: stock.entry_cancelled
+    description: Stock entry cancelled, ledger entries reversed
+    payload: [entry_id, purpose, posting_date]
+  - name: stock.valuation_changed
+    description: Item valuation rate changed due to stock transaction
+    payload: [item_code, warehouse, old_rate, new_rate]
+  - name: stock.negative_detected
+    description: Attempted transaction would cause negative stock balance
+    payload: [item_code, warehouse, available_qty, requested_qty]
+
+related:
+  - feature: warehouse-bin-management
+    type: required
+    reason: "Stock entries update bin quantities and require valid warehouse references"
+  - feature: serial-batch-tracking
+    type: recommended
+    reason: "Serial and batch numbers validated during stock transactions"
+  - feature: work-orders-job-cards
+    type: recommended
+    reason: "Manufacture entries linked to work orders and BOM"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"
+    files_traced: 25
+    entry_points:
+      - "erpnext/stock/doctype/stock_entry/stock_entry.py"
+      - "erpnext/stock/stock_ledger.py"
+      - "erpnext/stock/general_ledger.py"
+      - "erpnext/stock/doctype/stock_entry/stock_entry.js"

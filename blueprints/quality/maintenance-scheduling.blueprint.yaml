@@ -1,0 +1,267 @@
+# ============================================================
+# MAINTENANCE SCHEDULING — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: maintenance-scheduling
+version: "1.0.0"
+description: >
+  Maintenance scheduling and visit management with auto-generated
+  visit dates, holiday avoidance, calendar events, and warranty
+  status tracking for customer equipment.
+category: quality
+tags:
+  - maintenance-schedule
+  - maintenance-visit
+  - preventive-maintenance
+  - warranty
+  - calendar-events
+  - field-service
+
+fields:
+  - name: customer
+    type: text
+    label: Customer
+    required: true
+  - name: company
+    type: text
+    label: Company
+    required: true
+  - name: items
+    type: json
+    label: Schedule Items
+    required: true
+  - name: schedules
+    type: json
+    label: Generated Schedules
+    required: false
+  - name: visit_date
+    type: date
+    label: Visit Date
+    required: true
+  - name: visit_time
+    type: text
+    label: Visit Time
+    required: false
+  - name: visit_customer
+    type: text
+    label: Visit Customer
+    required: true
+  - name: visit_company
+    type: text
+    label: Visit Company
+    required: true
+  - name: maintenance_type
+    type: select
+    label: Maintenance Type
+    required: true
+    options:
+      - {value: "Scheduled", label: "Scheduled"}
+      - {value: "Unscheduled", label: "Unscheduled"}
+      - {value: "Breakdown", label: "Breakdown"}
+  - name: maintenance_schedule
+    type: text
+    label: Maintenance Schedule Reference
+    required: false
+  - name: completion_status
+    type: select
+    label: Completion Status
+    required: true
+    options:
+      - {value: "Partially Completed", label: "Partially Completed"}
+      - {value: "Fully Completed", label: "Fully Completed"}
+  - name: customer_feedback
+    type: text
+    label: Customer Feedback
+    required: false
+  - name: purposes
+    type: json
+    label: Visit Purposes
+    required: true
+
+rules:
+  visit_dates_auto_generated:
+    description: >
+      Visit dates are auto-generated based on the periodicity setting
+      (Weekly, Monthly, Quarterly, Half Yearly, Yearly, or Random).
+  holiday_avoidance:
+    description: >
+      Generated visit dates avoid company holidays. If a calculated
+      date falls on a holiday, it is shifted to the previous working day.
+  serial_number_validation:
+    description: >
+      Serial numbers specified in schedule items are validated against
+      the item and checked for warranty status.
+  calendar_events_per_visit:
+    description: >
+      Calendar events are created for each scheduled visit, assigned
+      to the designated sales person or service person.
+  visit_updates_schedule:
+    description: >
+      Completing a maintenance visit updates the corresponding schedule
+      detail record with the actual completion date and status.
+  warranty_status_update:
+    description: >
+      Warranty claim status and AMC expiry date are updated on the
+      serial number based on visit completion.
+  cannot_cancel_with_later_visits:
+    description: >
+      A maintenance visit cannot be cancelled if later visits in the
+      same schedule already exist and are completed.
+  amc_expiry_update:
+    description: >
+      AMC (Annual Maintenance Contract) expiry date is updated on the
+      serial number record upon schedule submission.
+
+states:
+  field: schedule_status
+  values:
+    - id: draft
+      label: Draft
+      initial: true
+    - id: submitted
+      label: Submitted
+    - id: cancelled
+      label: Cancelled
+      terminal: true
+  transitions:
+    - from: draft
+      to: submitted
+      description: "Schedule submitted, calendar events created"
+    - from: submitted
+      to: cancelled
+      description: "Schedule cancelled"
+
+outcomes:
+  generate_schedule:
+    given:
+      - "customer, company, and items with date ranges and periodicity are provided"
+      - "date range is sufficient for at least one visit"
+    then:
+      - action: set_field
+        target: schedules
+        description: "Visit dates generated based on periodicity and holiday calendar"
+      - action: emit_event
+        event: schedule.generated
+        payload: [customer, items, total_visits]
+    result: "Maintenance schedule generated with visit dates"
+    error: SCHEDULE_NO_VISITS_GENERATED
+
+  submit_schedule:
+    given:
+      - "schedule exists in Draft status"
+      - "at least one visit date is generated"
+    then:
+      - action: transition_state
+        field: schedule_status
+        from: draft
+        to: submitted
+      - action: emit_event
+        event: schedule.submitted
+        payload: [customer, company, items]
+    result: "Schedule submitted and locked for execution"
+    error: SCHEDULE_DATE_RANGE_TOO_SHORT
+
+  create_calendar_events:
+    given:
+      - "schedule is in Submitted status"
+      - "sales_person or service_person is assigned"
+    then:
+      - action: create_record
+        target: calendar_events
+        description: "Calendar events created for each scheduled visit"
+    result: "Calendar events created and assigned to service personnel"
+
+  record_visit:
+    given:
+      - "visit_date and visit_customer are provided"
+      - "purposes with service_person and work_done are provided"
+    then:
+      - action: create_record
+        target: maintenance_visit
+        description: "Maintenance visit recorded"
+    result: "Maintenance visit recorded with work details"
+    error: VISIT_DATE_OUT_OF_RANGE
+
+  complete_visit:
+    given:
+      - "maintenance visit exists"
+      - "all purposes have work_done recorded"
+    then:
+      - action: set_field
+        target: completion_status
+        value: "Fully Completed"
+      - action: set_field
+        target: schedule_detail_status
+        description: "Corresponding schedule detail updated"
+      - action: emit_event
+        event: visit.completed
+        payload: [visit_customer, visit_date, purposes]
+    result: "Visit marked complete and schedule updated"
+
+  update_warranty_status:
+    given:
+      - "visit is completed"
+      - "serial numbers are specified in visit purposes"
+    then:
+      - action: set_field
+        target: serial_warranty_status
+        description: "Warranty/AMC status updated on serial number"
+      - action: emit_event
+        event: warranty.status_updated
+        payload: [serial_no, warranty_status]
+    result: "Serial number warranty and AMC status updated"
+
+errors:
+  - code: SCHEDULE_NO_VISITS_GENERATED
+    message: "No visits could be generated for the specified date range and periodicity."
+    status: 400
+  - code: SCHEDULE_DATE_RANGE_TOO_SHORT
+    message: "The date range is too short to generate visits with the specified periodicity."
+    status: 400
+  - code: SCHEDULE_SERIAL_UNDER_WARRANTY
+    message: "The specified serial number is still under active warranty."
+    status: 400
+  - code: VISIT_LATER_EXISTS
+    message: "Cannot cancel this visit because later visits in the schedule are already completed."
+    status: 400
+  - code: VISIT_DATE_OUT_OF_RANGE
+    message: "The visit date falls outside the maintenance schedule date range."
+    status: 400
+
+events:
+  - name: schedule.generated
+    description: Fired when maintenance schedule visit dates are generated
+    payload: [customer, items, total_visits]
+  - name: schedule.submitted
+    description: Fired when a maintenance schedule is submitted
+    payload: [customer, company, items]
+  - name: visit.completed
+    description: Fired when a maintenance visit is completed
+    payload: [visit_customer, visit_date, purposes]
+  - name: visit.cancelled
+    description: Fired when a maintenance visit is cancelled
+    payload: [visit_customer, visit_date]
+  - name: warranty.status_updated
+    description: Fired when warranty status is updated from a visit
+    payload: [serial_no, warranty_status]
+
+related:
+  - feature: serial-batch-tracking
+    type: recommended
+    reason: "Serial numbers validated for warranty and AMC status"
+  - feature: customer-supplier-management
+    type: recommended
+    reason: "Customer data used for schedule and visit management"
+  - feature: support-tickets-sla
+    type: optional
+    reason: "Breakdown visits may link to support tickets"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"

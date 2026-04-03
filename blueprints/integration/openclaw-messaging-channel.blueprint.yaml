@@ -1,0 +1,471 @@
+# ============================================================
+# openclaw-messaging-channel — Multi-Platform Messaging Integration
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: github.com/openclaw/openclaw
+# Files: extensions/discord/src/channel.ts, extensions/telegram/src/channel.ts
+# ============================================================
+
+feature: openclaw-messaging-channel
+version: "1.0.0"
+description: "Platform-agnostic messaging channel integration supporting Discord, Telegram, Slack, and 85+ platforms with unified message routing and delivery"
+category: integration
+tags:
+  - messaging
+  - channels
+  - discord
+  - telegram
+  - multi-platform
+
+actors:
+  - id: user
+    name: "End User"
+    type: human
+  - id: platform
+    name: "Messaging Platform"
+    type: external
+  - id: channel_plugin
+    name: "Channel Plugin"
+    type: system
+  - id: gateway
+    name: "OpenClaw Gateway"
+    type: system
+
+fields:
+  - name: channel_id
+    type: text
+    required: true
+    label: "Channel ID"
+
+  - name: account_id
+    type: text
+    required: true
+    label: "Account ID"
+
+  - name: message_id
+    type: text
+    required: true
+    label: "Message ID"
+
+  - name: platform_user_id
+    type: text
+    required: true
+    label: "Platform User ID"
+
+  - name: platform_chat_id
+    type: text
+    required: false
+    label: "Chat/Channel ID"
+
+  - name: thread_id
+    type: text
+    required: false
+    label: "Thread ID"
+
+  - name: message_text
+    type: text
+    required: true
+    label: "Message Content"
+
+  - name: attachments
+    type: json
+    required: false
+    label: "Attachments"
+
+  - name: message_type
+    type: select
+    required: true
+    label: "Message Type"
+    options:
+      - value: "text"
+        label: "Text"
+      - value: "image"
+        label: "Image"
+      - value: "file"
+        label: "File"
+      - value: "audio"
+        label: "Audio"
+      - value: "video"
+        label: "Video"
+      - value: "command"
+        label: "Command"
+      - value: "button_click"
+        label: "Button Click"
+      - value: "emoji_reaction"
+        label: "Emoji Reaction"
+
+  - name: peer_kind
+    type: select
+    required: true
+    label: "Peer Type"
+    options:
+      - value: "direct"
+        label: "Direct Message (1:1)"
+      - value: "group"
+        label: "Group Chat"
+      - value: "channel"
+        label: "Channel"
+      - value: "thread"
+        label: "Thread"
+      - value: "topic"
+        label: "Topic"
+
+  - name: dm_policy
+    type: select
+    required: false
+    label: "DM Security Policy"
+    options:
+      - value: "pairing"
+        label: "Device Pairing Required"
+      - value: "allowlist"
+        label: "Allowlist Only"
+      - value: "open"
+        label: "Open (allowFrom=*)"
+      - value: "disabled"
+        label: "All DMs Blocked"
+
+  - name: response_text
+    type: text
+    required: false
+    label: "Response Text"
+
+  - name: response_components
+    type: json
+    required: false
+    label: "Response Components"
+
+  - name: message_action
+    type: select
+    required: false
+    label: "Message Action"
+    options:
+      - value: "send"
+        label: "Send"
+      - value: "reply"
+        label: "Reply"
+      - value: "edit"
+        label: "Edit"
+      - value: "delete"
+        label: "Delete"
+      - value: "reaction"
+        label: "Reaction"
+      - value: "pin"
+        label: "Pin"
+      - value: "kick"
+        label: "Kick (moderation)"
+      - value: "ban"
+        label: "Ban (moderation)"
+      - value: "timeout"
+        label: "Timeout (moderation)"
+
+  - name: text_chunk_limit
+    type: number
+    required: false
+    label: "Text Chunk Limit"
+
+rules:
+  inbound_message_handling:
+    message_reception: |
+      Inbound flow:
+      1. Platform sends webhook/event to gateway
+      2. Channel plugin parses platform format
+      3. Normalize to unified structure
+      4. Extract: message_id, sender, content, attachments, metadata
+      5. Route via message-routing system
+      6. Dispatch to target agent
+
+    message_normalization: |
+      Platform formats converted to unified:
+      - Discord: Message object → message_text + attachments
+      - Telegram: Update → message_text + media URLs
+      - Slack: event_callback → message_text + blocks
+      - Matrix: m.room.message → message_text + files
+      Platform differences abstracted from agent.
+
+    user_identification: |
+      Platform user IDs normalized:
+      - Discord: Snowflake ID (int64)
+      - Telegram: Integer ID
+      - Slack: U-prefixed string
+      - Matrix: @user:server.com
+      Stored with channel prefix for lookup.
+
+    attachment_handling: |
+      Supported types: image, file, audio, video.
+      Max size: platform-dependent (8-25MB typical).
+      Stored as: attachments[{ type, url, name, size }].
+      URL handling: some require auth, others public.
+
+  outbound_message_sending:
+    send_flow: |
+      Agent generates response:
+      1. Message tool called with { text, components, actions }
+      2. Message tool routes to channel plugin
+      3. Plugin transforms to platform format
+      4. Send via platform API
+      5. Track delivery status (sent, failed, rate-limited)
+      6. Update session.lastChannel/lastTo
+
+    message_splitting: |
+      For messages exceeding platform limits:
+      - Discord: split at 2000 chars
+      - Telegram: split at 4096 chars
+      - Slack: split at 4000 chars
+      Each chunk sent as separate message.
+
+    component_rendering: |
+      Components adapted per platform:
+      - Discord: Rich embeds, buttons, select menus, modals
+      - Telegram: Inline buttons (callback_data), keyboards
+      - Slack: Block Kit (buttons, select menus)
+      - WhatsApp: Template buttons (max 3)
+      Platform limitations: too many buttons → error or truncation.
+
+    rate_limiting: |
+      Platform rate limits handled:
+      - Discord: 50 messages/60 seconds per channel
+      - Telegram: 30 messages/second globally
+      - Slack: 1 message/second per channel
+      Queue strategy: queue excess, retry with backoff.
+      Max retries: 3 (configurable).
+      Backoff: exponential (300ms, 1s, 5s).
+
+  access_control:
+    dm_policy_enforcement: |
+      DM access controlled by dmPolicy:
+      - "pairing" — device pairing required (most secure)
+      - "allowlist" — allowFrom[] enforced
+      - "open" — allowFrom=["*"] required
+      - "disabled" — all DMs rejected
+      Check at message-routing, before agent dispatch.
+
+    guild_channel_allowlist: |
+      Guild-level (Discord/Slack):
+      - Require mention: @bot mention required (optional)
+      - User allowlist: guild.users[]
+      - Role allowlist: guild.roles[]
+      - Channel allowlist: guild.channels.<id>.allow
+      If allowlist configured: default deny (whitelist mode).
+
+    permission_checks: |
+      Agent execution permissions:
+      - requireMention: @mention required
+      - ignoreOtherMentions: drop if others mentioned
+      - dangerouslyAllowNameMatching: name match fallback (insecure)
+      Violations: message rejected or error sent.
+
+  message_types:
+    text_messages: |
+      Plain text or markdown (platform-dependent).
+      Discord: markdown (bold, italic, code blocks).
+      Telegram: HTML/Markdown (configurable).
+      Slack: mrkdwn format.
+
+    rich_components: |
+      Types: buttons, select menus, text input, modals.
+      Button: label, action, optional payload, style.
+      Select: placeholder, options[], onChange handler.
+      Modal: title, customId, fields (1-5).
+
+    reactions: |
+      Actions: add, remove, list.
+      Discord: emoji reactions (custom + unicode).
+      Telegram: emoji reactions (limited set).
+      Slack: emoji reactions (any Slack emoji).
+
+    threads: |
+      Thread support (if platform enables):
+      - Create thread: send initial message, create context
+      - Reply in thread: threadId provided
+      - Collapse threads: per session config
+      - Inherit from parent: thread inherits DM policy
+      Coverage: Discord threads, Telegram topics, Slack threads.
+
+  moderation_actions:
+    moderation_capabilities: |
+      Actions for trusted agents:
+      - kick: remove from guild/group
+      - ban: prevent re-joining (indefinite)
+      - timeout: temporary mute (duration configurable)
+      - role-add/role-remove: Discord role management
+      Permissions: bot must have moderation permissions.
+      Trust: admin agent or explicit approval.
+
+    action_validation: |
+      Moderation actions validated:
+      - Target must be guild/group member
+      - Bot must have permission
+      - Duration constraints: timeout max 28 days
+      - Reason logged for audit.
+
+events:
+  - name: message.received
+    payload:
+      - channel_id
+      - message_id
+      - platform_user_id
+      - message_type
+      - peer_kind
+
+  - name: message.sent
+    payload:
+      - channel_id
+      - message_id
+      - platform_message_id
+      - delivery_time_ms
+
+  - name: message.failed
+    payload:
+      - channel_id
+      - message_id
+      - error_code
+      - final_attempt
+
+  - name: platform.connected
+    payload:
+      - channel_id
+      - account_id
+
+  - name: platform.disconnected
+    payload:
+      - channel_id
+      - account_id
+      - reason
+
+errors:
+  - code: MESSAGE_NOT_SENT
+    status: 500
+    message: "Failed to send message to platform"
+
+  - code: PLATFORM_RATE_LIMITED
+    status: 429
+    message: "Platform rate limit exceeded"
+
+  - code: DM_NOT_ALLOWED
+    status: 403
+    message: "Direct message not allowed for this user"
+
+  - code: INVALID_MESSAGE_FORMAT
+    status: 400
+    message: "Message format invalid for platform"
+
+  - code: ACCOUNT_NOT_AUTHORIZED
+    status: 401
+    message: "Account token invalid or expired"
+
+  - code: MEMBER_NOT_FOUND
+    status: 404
+    message: "Member not found on platform"
+
+states:
+  message_state:
+    field: delivery_state
+    values:
+      - name: received
+        description: "Message received from platform"
+        initial: true
+      - name: routed
+        description: "Message routed to agent"
+      - name: processing
+        description: "Agent processing message"
+      - name: responding
+        description: "Agent response being sent"
+      - name: sent
+        description: "Response delivered to platform"
+        terminal: true
+      - name: failed
+        description: "Delivery failed"
+        terminal: true
+
+outcomes:
+  inbound_message_received:
+    priority: 1
+    given:
+      - "platform webhook received"
+      - field: message_text
+        source: input
+        operator: exists
+      - "sender verified via platform API"
+    then:
+      - action: set_field
+        target: message_id
+        value: "platform message ID"
+      - action: set_field
+        target: platform_user_id
+        value: "extracted from platform"
+      - action: set_field
+        target: message_type
+        value: "determined from content"
+      - action: transition_state
+        field: delivery_state
+        from: received
+        to: routed
+      - action: emit_event
+        event: message.received
+        payload:
+          - channel_id
+          - message_id
+          - peer_kind
+    result: "Message normalized and routed to agent"
+
+  message_sent:
+    priority: 1
+    given:
+      - "platform API accepted message"
+    then:
+      - action: set_field
+        target: delivery_state
+        value: "sent"
+      - action: emit_event
+        event: message.sent
+        payload:
+          - channel_id
+          - delivery_time_ms
+    result: "Message delivered to platform"
+    transaction: true
+
+  rate_limit_handling:
+    priority: 2
+    given:
+      - "platform returned 429 or rate limit header"
+    then:
+      - action: call_service
+        service: queueOutboundMessage
+        params:
+          - response_text
+          - retry_config
+      - action: emit_event
+        event: message.failed
+        payload:
+          - reason: "rate_limited"
+    result: "Message queued with exponential backoff, will retry"
+
+related:
+  - feature: openclaw-message-routing
+    type: required
+    reason: "Routes messages to agents"
+  - feature: openclaw-session-management
+    type: required
+    reason: "Stores conversation in persistent session"
+  - feature: openclaw-plugin-system
+    type: required
+    reason: "Channel adapters are plugins"
+  - feature: openclaw-gateway-authentication
+    type: required
+    reason: "Authenticates platform API calls"
+
+sla:
+  inbound_latency:
+    max_duration: "2s"
+  outbound_latency:
+    max_duration: "3s"
+  platform_availability:
+    target: "99.5%"
+
+extensions:
+  tech_stack:
+    language: "TypeScript"
+    patterns:
+      - "Adapter pattern"
+      - "Message normalization"
+      - "Retry with exponential backoff"

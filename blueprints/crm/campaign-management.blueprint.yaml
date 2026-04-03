@@ -1,0 +1,372 @@
+# ============================================================
+# CAMPAIGN MANAGEMENT — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: campaign-management
+version: "1.0.0"
+description: >
+  Marketing campaign definition and email drip campaign execution with
+  scheduled delivery, recipient tracking, and unsubscribe management.
+category: crm
+tags:
+  - campaign
+  - email-marketing
+  - drip-sequence
+  - marketing
+  - automation
+
+actors:
+  - id: marketing_user
+    name: Marketing User
+    type: human
+    description: Creates campaigns, defines schedules, and monitors delivery
+  - id: recipient
+    name: Recipient
+    type: human
+    description: Receives campaign emails, may unsubscribe
+  - id: email_system
+    name: Email System
+    type: system
+    description: Sends scheduled emails, tracks delivery status, and processes unsubscribes
+
+# ─── FIELDS ───────────────────────────────────────────────
+# Campaign definition fields
+
+fields:
+  - name: campaign_name
+    type: text
+    label: Campaign Name
+    required: true
+    validation:
+      - type: required
+        message: "Campaign name is required"
+      - type: maxLength
+        value: 140
+        message: "Campaign name is too long"
+  - name: campaign_description
+    type: rich_text
+    label: Description
+    required: false
+  - name: campaign_schedules
+    type: json
+    label: Campaign Schedules
+    required: true
+    # Each schedule entry: { email_template, send_after_days }
+
+  # ─── Email Campaign fields ──────────────────────────────
+  - name: email_campaign_name
+    type: text
+    label: Email Campaign Name
+    required: true
+  - name: email_campaign_for
+    type: select
+    label: Email Campaign For
+    required: true
+    options:
+      - {value: "Lead", label: "Lead"}
+      - {value: "Contact", label: "Contact"}
+      - {value: "Email Group", label: "Email Group"}
+  - name: recipient
+    type: text
+    label: Recipient
+    required: true
+  - name: sender
+    type: email
+    label: Sender Email
+    required: true
+  - name: start_date
+    type: date
+    label: Start Date
+    required: true
+  - name: end_date
+    type: date
+    label: End Date
+    required: false
+    # Auto-calculated from max send_after_days in campaign_schedules
+  - name: email_campaign_status
+    type: select
+    label: Email Campaign Status
+    required: true
+    options:
+      - {value: "Scheduled", label: "Scheduled"}
+      - {value: "In Progress", label: "In Progress"}
+      - {value: "Completed", label: "Completed"}
+      - {value: "Unsubscribed", label: "Unsubscribed"}
+
+# ─── STATES ──────────────────────────────────────────────
+
+states:
+  field: email_campaign_status
+  values:
+    - name: Scheduled
+      description: Campaign is scheduled but has not started sending
+      initial: true
+    - name: In Progress
+      description: Campaign is actively sending scheduled emails
+    - name: Completed
+      description: All scheduled emails have been sent
+      terminal: true
+    - name: Unsubscribed
+      description: Recipient unsubscribed, no further emails sent
+      terminal: true
+  transitions:
+    - from: Scheduled
+      to: In Progress
+      actor: email_system
+      description: First email in the drip sequence is sent
+      condition: "start_date <= today"
+    - from: In Progress
+      to: Completed
+      actor: email_system
+      description: All scheduled emails in the sequence have been delivered
+    - from: [Scheduled, In Progress]
+      to: Unsubscribed
+      actor: recipient
+      description: Recipient opts out of further campaign emails
+
+# ─── RULES ───────────────────────────────────────────────
+
+rules:
+  start_date_not_past:
+    description: >
+      Campaign start date cannot be before the current date at creation time.
+  end_date_auto_calculated:
+    description: >
+      End date is automatically computed from start_date plus the maximum
+      send_after_days value in the campaign schedule entries.
+  no_duplicate_active_campaigns:
+    description: >
+      A recipient cannot have more than one active (Scheduled or In Progress)
+      email campaign for the same campaign definition.
+  lead_must_have_email:
+    description: >
+      When email_campaign_for is Lead, the linked lead must have a valid
+      email address. Campaigns to leads without email are rejected.
+  drip_sequence_schedule:
+    description: >
+      Each schedule entry defines a send_after_days offset from the start date.
+      Emails are queued and sent on the computed date.
+  unsubscribe_terminal:
+    description: >
+      Unsubscribe is terminal for individual lead/contact recipients.
+      Email group members may be re-subscribed by the marketing user.
+  utm_campaign_sync:
+    description: >
+      Campaign name is synced to UTM Campaign fields on leads for
+      end-to-end attribution and analytics tracking.
+
+# ─── OUTCOMES ────────────────────────────────────────────
+
+outcomes:
+  create_campaign:
+    priority: 1
+    given:
+      - "marketing user provides campaign name and schedule entries"
+      - field: campaign_schedules
+        source: input
+        operator: exists
+        description: "At least one schedule entry with email template and send_after_days"
+    then:
+      - action: create_record
+        type: campaign
+        description: Campaign created with schedule definitions
+      - action: emit_event
+        event: campaign.created
+        payload: [campaign_id, campaign_name]
+    result: "Campaign is created with drip schedule ready for use"
+
+  launch_email_campaign:
+    priority: 2
+    given:
+      - "campaign exists with at least one schedule entry"
+      - "marketing user selects recipient type and recipient"
+      - field: start_date
+        source: input
+        operator: gte
+        value: "today"
+        description: "Start date is today or in the future"
+    then:
+      - action: create_record
+        type: email_campaign
+        description: Email campaign created and scheduled for the recipient
+      - action: set_field
+        target: end_date
+        description: Auto-calculated from start_date + max send_after_days
+      - action: set_field
+        target: email_campaign_status
+        value: "Scheduled"
+    result: "Email campaign is scheduled and will begin on the start date"
+
+  send_scheduled_email:
+    priority: 3
+    given:
+      - "email campaign is in Scheduled or In Progress status"
+      - "current date matches a scheduled send date (start_date + send_after_days)"
+    then:
+      - action: call_service
+        target: email_service
+        description: Send the scheduled email template to the recipient
+      - action: transition_state
+        field: email_campaign_status
+        from: Scheduled
+        to: In Progress
+      - action: emit_event
+        event: campaign.email_sent
+        payload: [campaign_id, recipient, email_template]
+    result: "Scheduled email is sent and campaign status updated to In Progress"
+
+  unsubscribe_recipient:
+    priority: 4
+    given:
+      - "recipient clicks unsubscribe link or requests removal"
+      - "email campaign is in Scheduled or In Progress status"
+    then:
+      - action: transition_state
+        field: email_campaign_status
+        to: Unsubscribed
+      - action: emit_event
+        event: campaign.recipient_unsubscribed
+        payload: [campaign_id, recipient]
+    result: "Recipient is unsubscribed and no further emails are sent"
+
+  complete_campaign:
+    priority: 5
+    given:
+      - "all scheduled emails in the drip sequence have been sent"
+      - "email campaign is in In Progress status"
+    then:
+      - action: transition_state
+        field: email_campaign_status
+        from: In Progress
+        to: Completed
+      - action: emit_event
+        event: campaign.completed
+        payload: [campaign_id, recipient]
+    result: "Email campaign is marked as completed"
+
+  # ─── Error outcomes ────────────────────────────────────
+  start_date_past_rejected:
+    priority: 1
+    error: CAMPAIGN_START_DATE_PAST
+    given:
+      - field: start_date
+        source: input
+        operator: lt
+        value: "today"
+        description: "Start date is in the past"
+    then:
+      - action: notify
+        channel: ui
+        description: Inform that start date cannot be in the past
+    result: "Campaign launch blocked due to past start date"
+
+  no_schedule_entries:
+    priority: 1
+    error: CAMPAIGN_NO_SCHEDULE
+    given:
+      - field: campaign_schedules
+        source: input
+        operator: not_exists
+    then:
+      - action: notify
+        channel: ui
+        description: Prompt to add at least one schedule entry
+    result: "Campaign creation blocked — at least one schedule is required"
+
+  lead_no_email_rejected:
+    priority: 1
+    error: CAMPAIGN_LEAD_NO_EMAIL
+    given:
+      - field: email_campaign_for
+        source: input
+        operator: eq
+        value: "Lead"
+      - "linked lead has no email address"
+    then:
+      - action: notify
+        channel: ui
+        description: Show that the target lead has no email address
+    result: "Campaign launch blocked — lead must have an email address"
+
+  duplicate_active_rejected:
+    priority: 1
+    error: CAMPAIGN_DUPLICATE_ACTIVE
+    given:
+      - "recipient already has an active email campaign for this campaign"
+    then:
+      - action: notify
+        channel: ui
+        description: Show existing active campaign for this recipient
+    result: "Duplicate active campaign prevented for the same recipient"
+
+  send_failed:
+    priority: 1
+    error: CAMPAIGN_SEND_FAILED
+    given:
+      - "email delivery fails for a scheduled send"
+    then:
+      - action: notify
+        channel: ui
+        description: Log delivery failure with error details
+    result: "Email delivery failure recorded for review"
+
+# ─── ERRORS ──────────────────────────────────────────────
+
+errors:
+  - code: CAMPAIGN_START_DATE_PAST
+    message: Campaign start date cannot be in the past.
+    status: 400
+  - code: CAMPAIGN_NO_SCHEDULE
+    message: Campaign must have at least one schedule entry with an email template.
+    status: 400
+  - code: CAMPAIGN_LEAD_NO_EMAIL
+    message: The selected lead does not have an email address. Add an email before launching the campaign.
+    status: 400
+  - code: CAMPAIGN_DUPLICATE_ACTIVE
+    message: This recipient already has an active campaign for the same campaign definition.
+    status: 409
+  - code: CAMPAIGN_SEND_FAILED
+    message: Failed to deliver the scheduled campaign email. Check email configuration and recipient address.
+    status: 500
+
+# ─── EVENTS ──────────────────────────────────────────────
+
+events:
+  - name: campaign.created
+    description: New campaign definition created
+    payload: [campaign_id, campaign_name]
+  - name: campaign.email_sent
+    description: Scheduled campaign email delivered to recipient
+    payload: [campaign_id, recipient, email_template]
+  - name: campaign.completed
+    description: All scheduled emails in the campaign have been sent
+    payload: [campaign_id, recipient]
+  - name: campaign.recipient_unsubscribed
+    description: Recipient opted out of the campaign
+    payload: [campaign_id, recipient]
+
+# ─── RELATED FEATURES ───────────────────────────────────
+
+related:
+  - feature: lead-opportunity-pipeline
+    type: recommended
+    reason: Campaigns target leads and track attribution via UTM fields
+  - feature: customer-supplier-management
+    type: optional
+    reason: Campaigns may target existing customers via contact records
+
+# ─── EXTENSIONS ──────────────────────────────────────────
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERPNext"
+    tech_stack: "Python/Frappe Framework"
+    files_traced: 8
+    entry_points:
+      - "erpnext/crm/doctype/campaign/campaign.py"
+      - "erpnext/crm/doctype/email_campaign/email_campaign.py"

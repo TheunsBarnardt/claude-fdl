@@ -1,0 +1,274 @@
+# ============================================================
+# ASSET MAINTENANCE & REPAIRS — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: asset-maintenance-repairs
+version: "1.0.0"
+description: >
+  Asset maintenance scheduling and repair management with preventive
+  and corrective tasks, repair cost capitalization, and stock
+  consumption tracking for parts used during repairs.
+category: asset
+tags:
+  - asset-maintenance
+  - preventive-maintenance
+  - corrective-maintenance
+  - repair
+  - maintenance-log
+  - asset-lifecycle
+
+fields:
+  - name: asset_name
+    type: text
+    label: Asset Name
+    required: true
+  - name: maintenance_tasks
+    type: json
+    label: Maintenance Tasks
+    required: true
+  - name: maintenance_status
+    type: select
+    label: Maintenance Status
+    required: true
+    options:
+      - {value: "Planned", label: "Planned"}
+      - {value: "Overdue", label: "Overdue"}
+      - {value: "Cancelled", label: "Cancelled"}
+    default: "Planned"
+  - name: task
+    type: text
+    label: Task Name
+    required: false
+  - name: maintenance_type
+    type: select
+    label: Maintenance Type
+    required: false
+    options:
+      - {value: "Preventive", label: "Preventive"}
+      - {value: "Corrective", label: "Corrective"}
+  - name: log_status
+    type: select
+    label: Log Status
+    required: false
+    options:
+      - {value: "Planned", label: "Planned"}
+      - {value: "Completed", label: "Completed"}
+      - {value: "Cancelled", label: "Cancelled"}
+  - name: has_certificate
+    type: boolean
+    label: Has Certificate
+    required: false
+    default: false
+  - name: certificate_attachments
+    type: file
+    label: Certificate Attachments
+    required: false
+  - name: completion_date
+    type: date
+    label: Completion Date
+    required: false
+  - name: actions_performed
+    type: text
+    label: Actions Performed
+    required: false
+  - name: description
+    type: rich_text
+    label: Description
+    required: false
+  - name: failure_date
+    type: date
+    label: Failure Date
+    required: false
+  - name: assign_to
+    type: text
+    label: Assigned To
+    required: false
+  - name: repair_status
+    type: select
+    label: Repair Status
+    required: false
+    options:
+      - {value: "Pending", label: "Pending"}
+      - {value: "Completed", label: "Completed"}
+      - {value: "Cancelled", label: "Cancelled"}
+  - name: repair_cost
+    type: number
+    label: Repair Cost
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Repair cost must be non-negative"
+  - name: stock_items
+    type: json
+    label: Stock Items Consumed
+    required: false
+  - name: capitalize_repair_cost
+    type: boolean
+    label: Capitalize Repair Cost
+    required: false
+    default: false
+  - name: increase_in_asset_life
+    type: number
+    label: Increase in Asset Life (Months)
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Life extension must be non-negative"
+
+rules:
+  calendar_events_per_schedule:
+    description: >
+      Maintenance tasks generate calendar events based on their configured
+      periodicity, assigned to the responsible person.
+  next_due_date_auto_calculated:
+    description: >
+      Next due date is auto-calculated from the periodicity setting
+      when a maintenance task is completed.
+  overdue_status_auto_set:
+    description: >
+      Maintenance status is automatically set to Overdue when
+      next_due_date is earlier than today.
+  repair_cost_capitalization:
+    description: >
+      Repair cost can be capitalized (added to asset gross value),
+      which creates a corresponding GL entry for the value increase.
+  repair_extends_useful_life:
+    description: >
+      A repair can extend the asset useful life by a specified number
+      of months, recalculating the remaining depreciation schedule.
+  stock_items_create_entries:
+    description: >
+      Stock items consumed during repair create stock entries
+      (Material Issue) from the specified warehouse.
+  completion_triggers_next_cycle:
+    description: >
+      Completing a maintenance task triggers calculation of the next
+      due date and creates the next calendar event.
+
+outcomes:
+  schedule_maintenance:
+    given:
+      - "asset exists and is not in Draft status"
+      - "maintenance tasks with periodicity and assignment are provided"
+    then:
+      - action: create_record
+        type: maintenance_schedule
+        target: maintenance_schedule
+        description: "Maintenance schedule created for the asset"
+      - action: emit_event
+        event: maintenance.scheduled
+        payload: [asset_name, tasks, next_due_dates]
+    result: "Maintenance schedule created with calendar events for each task"
+
+  complete_maintenance_task:
+    given:
+      - "maintenance task exists and is in Planned status"
+      - "actions performed and completion date are provided"
+    then:
+      - action: set_field
+        target: log_status
+        value: "Completed"
+      - action: set_field
+        target: next_due_date
+        description: "Recalculated based on periodicity"
+      - action: emit_event
+        event: maintenance.completed
+        payload: [asset_name, task, completion_date]
+    result: "Task marked complete, next cycle scheduled"
+
+  log_repair:
+    given:
+      - "asset exists"
+      - "failure_date and description are provided"
+    then:
+      - action: create_record
+        type: asset_repair
+        target: asset_repair
+        description: "Repair record created with Pending status"
+      - action: emit_event
+        event: repair.started
+        payload: [asset_name, failure_date, description]
+    result: "Repair logged and assigned for resolution"
+
+  capitalize_repair_cost:
+    given:
+      - "repair is in Completed status"
+      - "capitalize_repair_cost is true"
+      - "repair_cost is greater than zero"
+    then:
+      - action: set_field
+        target: asset_value
+        description: "Asset gross value increased by repair cost"
+      - action: create_record
+        type: journal_entry
+        target: journal_entry
+        description: "GL entry for capitalized repair cost"
+      - action: emit_event
+        event: repair.cost_capitalized
+        payload: [asset_name, repair_cost, new_asset_value]
+    result: "Repair cost added to asset value with GL entries"
+    error: REPAIR_CAPITALIZE_INVALID
+
+  extend_asset_life:
+    given:
+      - "repair is in Completed status"
+      - "increase_in_asset_life is greater than zero"
+    then:
+      - action: set_field
+        target: total_number_of_depreciations
+        description: "Depreciation count increased to reflect extended life"
+      - action: emit_event
+        event: repair.completed
+        payload: [asset_name, increase_in_asset_life]
+    result: "Asset useful life extended and depreciation schedule recalculated"
+
+errors:
+  - code: MAINTENANCE_ASSET_NOT_FOUND
+    message: "The specified asset does not exist or is not active."
+    status: 404
+  - code: REPAIR_ALREADY_COMPLETED
+    message: "This repair has already been completed and cannot be modified."
+    status: 400
+  - code: REPAIR_CAPITALIZE_INVALID
+    message: "Cannot capitalize repair cost. Repair must be completed with a cost greater than zero."
+    status: 400
+
+events:
+  - name: maintenance.scheduled
+    description: Fired when a maintenance schedule is created or updated
+    payload: [asset_name, tasks, next_due_dates]
+  - name: maintenance.completed
+    description: Fired when a maintenance task is completed
+    payload: [asset_name, task, completion_date]
+  - name: maintenance.overdue
+    description: Fired when a maintenance task becomes overdue
+    payload: [asset_name, task, due_date]
+  - name: repair.started
+    description: Fired when a repair is logged
+    payload: [asset_name, failure_date, description]
+  - name: repair.completed
+    description: Fired when a repair is marked complete
+    payload: [asset_name, repair_cost, increase_in_asset_life]
+  - name: repair.cost_capitalized
+    description: Fired when repair cost is capitalized to asset value
+    payload: [asset_name, repair_cost, new_asset_value]
+
+related:
+  - feature: fixed-asset-lifecycle
+    type: required
+    reason: "Maintenance and repairs operate on registered fixed assets"
+  - feature: stock-entry-movements
+    type: optional
+    reason: "Stock items consumed during repair create material issue entries"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"

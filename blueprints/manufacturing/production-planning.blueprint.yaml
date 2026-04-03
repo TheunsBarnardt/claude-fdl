@@ -1,0 +1,350 @@
+# ============================================================
+# PRODUCTION PLANNING — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: production-planning
+version: "1.0.0"
+description: >
+  Production planning tool that consolidates demand from sales orders and
+  material requests, explodes multi-level BOMs, and generates work orders
+  and procurement requests for manufacturing.
+category: manufacturing
+tags:
+  - production-planning
+  - mrp
+  - demand-planning
+  - manufacturing
+  - material-requirements
+
+fields:
+  - name: company
+    type: text
+    label: Company
+    required: true
+  - name: posting_date
+    type: date
+    label: Posting Date
+    required: true
+  - name: get_items_from
+    type: select
+    label: Get Items From
+    required: true
+    options:
+      - {value: "sales_order", label: "Sales Order"}
+      - {value: "material_request", label: "Material Request"}
+  - name: pp_status
+    type: select
+    label: Status
+    required: true
+    options:
+      - {value: "draft", label: "Draft"}
+      - {value: "not_started", label: "Not Started"}
+      - {value: "in_process", label: "In Process"}
+      - {value: "completed", label: "Completed"}
+      - {value: "closed", label: "Closed"}
+      - {value: "cancelled", label: "Cancelled"}
+      - {value: "material_requested", label: "Material Requested"}
+  - name: sales_orders
+    type: json
+    label: Sales Orders
+    required: false
+  - name: material_requests
+    type: json
+    label: Material Requests
+    required: false
+  - name: po_items
+    type: json
+    label: Items to Manufacture
+    required: false
+  - name: sub_assembly_items
+    type: json
+    label: Sub-Assembly Items
+    required: false
+  - name: mr_items
+    type: json
+    label: Items to Procure
+    required: false
+  - name: combine_items
+    type: boolean
+    label: Combine Items
+    required: false
+    default: true
+  - name: combine_sub_items
+    type: boolean
+    label: Combine Sub-Assembly Items
+    required: false
+    default: true
+  - name: include_non_stock_items
+    type: boolean
+    label: Include Non-Stock Items
+    required: false
+    default: false
+  - name: consider_minimum_order_qty
+    type: boolean
+    label: Consider Minimum Order Quantity
+    required: false
+    default: false
+  - name: include_safety_stock
+    type: boolean
+    label: Include Safety Stock
+    required: false
+    default: false
+  - name: total_planned_qty
+    type: number
+    label: Total Planned Quantity
+    required: false
+    default: 0
+  - name: total_produced_qty
+    type: number
+    label: Total Produced Quantity
+    required: false
+    default: 0
+  - name: reserve_stock
+    type: boolean
+    label: Reserve Stock
+    required: false
+    default: false
+
+states:
+  field: pp_status
+  values:
+    - name: draft
+      description: Production plan being prepared with demand sources
+      initial: true
+    - name: not_started
+      description: Plan submitted, work orders not yet created
+    - name: in_process
+      description: Work orders or material requests partially created
+    - name: material_requested
+      description: Material requests created for procurement items
+    - name: completed
+      description: All work orders and material requests created
+      terminal: true
+    - name: closed
+      description: Plan closed before full completion
+      terminal: true
+    - name: cancelled
+      description: Plan cancelled
+      terminal: true
+  transitions:
+    - from: draft
+      to: not_started
+      actor: production_planner
+      description: Submit production plan for execution
+    - from: not_started
+      to: in_process
+      actor: production_planner
+      description: Begin creating work orders from planned items
+    - from: in_process
+      to: material_requested
+      actor: production_planner
+      description: Create material requests for procurement items
+    - from: in_process
+      to: completed
+      actor: system
+      description: All work orders and material requests created
+    - from: material_requested
+      to: completed
+      actor: system
+      description: All procurement and manufacturing documents created
+    - from: not_started
+      to: closed
+      actor: production_planner
+      description: Close plan before execution
+    - from: not_started
+      to: cancelled
+      actor: production_planner
+      description: Cancel plan
+
+rules:
+  fetch_demand_sources:
+    description: >
+      Items are fetched from either sales orders or material requests based
+      on user selection, with configurable filters for date range, item
+      group, customer, and warehouse.
+  combine_duplicate_items:
+    description: >
+      When combine_items is enabled, duplicate items across multiple demand
+      sources are consolidated by item code, summing their quantities into
+      a single planned row.
+  multi_level_bom_explosion:
+    description: >
+      The system explodes multi-level BOMs to identify sub-assembly items
+      that must be manufactured before the final product. Each sub-assembly
+      is listed with its own BOM and required quantity.
+  sub_assembly_sourcing:
+    description: >
+      Sub-assemblies can be sourced via in-house manufacturing (creating
+      work orders) or subcontracting (creating purchase orders to external
+      suppliers), configured per sub-assembly item.
+  material_request_planning:
+    description: >
+      For items that need procurement, the system calculates required
+      quantities considering existing stock, ordered quantities, and
+      reserved quantities, unless the user overrides with actual quantities.
+  safety_stock_inclusion:
+    description: >
+      When include_safety_stock is enabled, the safety stock quantity
+      defined on each item is added to the procurement requirement to
+      maintain minimum inventory levels.
+  work_order_creation:
+    description: >
+      Work orders are created from planned items with BOM, warehouse, and
+      quantity populated automatically. One work order per planned item row.
+
+outcomes:
+  fetch_sales_orders:
+    priority: 1
+    given:
+      - field: get_items_from
+        source: input
+        operator: eq
+        value: sales_order
+      - "user applies filters for date range, customer, or item group"
+    then:
+      - action: set_field
+        target: sales_orders
+        description: "Populate sales orders table with matching pending orders"
+    result: "Sales orders matching the filter criteria are loaded into the plan"
+
+  fetch_material_requests:
+    priority: 2
+    given:
+      - field: get_items_from
+        source: input
+        operator: eq
+        value: material_request
+      - "user applies filters for date range or item group"
+    then:
+      - action: set_field
+        target: material_requests
+        description: "Populate material requests table with matching pending requests"
+    result: "Material requests matching the filter criteria are loaded into the plan"
+
+  get_items_to_manufacture:
+    priority: 3
+    given:
+      - "demand sources (sales orders or material requests) are populated"
+    then:
+      - action: set_field
+        target: po_items
+        description: "Extract finished goods with BOM, quantity, and warehouse from demand sources"
+      - action: set_field
+        target: total_planned_qty
+        description: "Sum of all planned quantities"
+    result: "Items to manufacture are extracted and consolidated from demand sources"
+    error: PP_NO_BOM_FOR_ITEM
+
+  get_sub_assembly_items:
+    priority: 4
+    given:
+      - "items to manufacture are populated"
+      - "at least one item has a multi-level BOM"
+    then:
+      - action: set_field
+        target: sub_assembly_items
+        description: "Explode BOMs to identify sub-assemblies with sourcing type"
+    result: "Sub-assembly items identified with manufacturing or subcontracting sourcing"
+
+  create_work_orders:
+    priority: 5
+    given:
+      - field: pp_status
+        source: db
+        operator: in
+        value: [not_started, in_process]
+      - "po_items table has at least one row"
+    then:
+      - action: create_record
+        type: work_order
+        description: "Create one work order per planned item with BOM and warehouse"
+      - action: transition_state
+        field: pp_status
+        from: not_started
+        to: in_process
+      - action: emit_event
+        event: work_orders.created
+        payload: [production_plan_id, work_order_ids, total_planned_qty]
+    result: "Work orders created for all planned manufacturing items"
+
+  create_material_requests:
+    priority: 6
+    given:
+      - field: pp_status
+        source: db
+        operator: in
+        value: [not_started, in_process]
+      - "mr_items table has at least one row"
+    then:
+      - action: create_record
+        type: material_request
+        description: "Create material requests grouped by warehouse for procurement items"
+      - action: emit_event
+        event: material_requests.created
+        payload: [production_plan_id, material_request_ids, items]
+    result: "Material requests created per warehouse for all procurement items"
+
+  create_subcontracted_purchase_orders:
+    priority: 7
+    given:
+      - "sub_assembly_items has items with subcontracting sourcing type"
+    then:
+      - action: create_record
+        type: purchase_order
+        description: "Create subcontracted purchase orders for outsourced sub-assemblies"
+      - action: emit_event
+        event: production_plan.submitted
+        payload: [production_plan_id, company, total_planned_qty]
+    result: "Subcontracted purchase orders created for outsourced sub-assemblies"
+
+errors:
+  - code: PP_NO_BOM_FOR_ITEM
+    status: 422
+    message: "No active BOM found for one or more items. Create and submit a BOM before planning production."
+    retry: true
+  - code: PP_INVALID_SALES_ORDER
+    status: 422
+    message: "One or more selected sales orders are not in a valid state for production planning."
+    retry: true
+  - code: PP_NO_PENDING_ITEMS
+    status: 422
+    message: "No pending items found matching the selected filters. Adjust filters and try again."
+    retry: true
+
+events:
+  - name: production_plan.submitted
+    payload: [production_plan_id, company, total_planned_qty]
+    description: "Fired when a production plan is submitted and ready for execution"
+  - name: work_orders.created
+    payload: [production_plan_id, work_order_ids, total_planned_qty]
+    description: "Fired when work orders are bulk-created from a production plan"
+  - name: material_requests.created
+    payload: [production_plan_id, material_request_ids, items]
+    description: "Fired when material requests are created for procurement items"
+  - name: production_plan.completed
+    payload: [production_plan_id, total_planned_qty, total_produced_qty]
+    description: "Fired when all work orders and material requests from the plan are fulfilled"
+
+related:
+  - feature: bill-of-materials
+    type: required
+    reason: "Production planning requires BOMs to explode material requirements"
+  - feature: work-orders-job-cards
+    type: required
+    reason: "Work orders are the primary output of production planning"
+  - feature: sales-order-lifecycle
+    type: recommended
+    reason: "Sales orders are a primary demand source for production planning"
+  - feature: purchase-order-lifecycle
+    type: recommended
+    reason: "Purchase orders are created for procurement items and subcontracting"
+  - feature: subcontracting
+    type: optional
+    reason: "Sub-assemblies can be outsourced via subcontracting orders"
+
+extensions:
+  source: "https://github.com/frappe/erpnext"

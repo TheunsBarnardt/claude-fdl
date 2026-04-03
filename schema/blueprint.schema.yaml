@@ -42,6 +42,17 @@ required:
       - notification  # Email, push, in-app
       - payment       # Billing, checkout, subscriptions
       - workflow       # Business processes, approvals, pipelines
+      - inventory     # Stock, warehouse, shipping, logistics
+      - manufacturing # Production, BOM, work orders, planning
+      - crm           # Leads, opportunities, campaigns, contracts
+      - asset         # Fixed assets, depreciation, maintenance
+      - project       # Projects, tasks, timesheets
+      - quality       # Quality control, inspections, compliance
+      - procurement   # Purchasing, supplier management, RFQs
+      - ai            # ML frameworks, LLM providers, model training/inference
+      - trading       # Financial markets, order execution, FIX protocol
+      - infrastructure # Container orchestration, IaC, caching, storage
+      - observability # Monitoring, tracing, metrics, alerting
 
   fields:
     type: array

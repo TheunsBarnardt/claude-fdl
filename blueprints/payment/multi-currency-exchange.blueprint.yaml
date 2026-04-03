@@ -1,0 +1,237 @@
+# ============================================================
+# Multi-Currency & Exchange Rates — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+# This blueprint describes BEHAVIOR, not implementation.
+# It can be used to generate this feature for any framework.
+# ============================================================
+
+feature: multi-currency-exchange
+version: "1.0.0"
+description: "Manage exchange rates, perform multi-currency transactions, and revalue accounts for unrealized foreign exchange gains and losses"
+category: payment
+
+tags:
+  - multi-currency
+  - exchange-rates
+  - revaluation
+  - forex
+  - erp
+  - accounting
+
+fields:
+  - name: from_currency
+    type: text
+    required: true
+    validation:
+      - type: pattern
+        value: "^[A-Z]{3}$"
+        message: "Source currency must be a valid 3-letter ISO code"
+
+  - name: to_currency
+    type: text
+    required: true
+    validation:
+      - type: pattern
+        value: "^[A-Z]{3}$"
+        message: "Target currency must be a valid 3-letter ISO code"
+
+  - name: exchange_rate
+    type: number
+    required: true
+    validation:
+      - type: min
+        value: 0
+        message: "Exchange rate must be greater than zero"
+
+  - name: date
+    type: date
+    required: true
+
+  - name: for_buying
+    type: boolean
+    required: false
+
+  - name: for_selling
+    type: boolean
+    required: false
+
+  - name: rounding_loss_allowance
+    type: number
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Rounding loss allowance must be zero or greater"
+      - type: max
+        value: 1
+        message: "Rounding loss allowance cannot exceed 1"
+
+  - name: company
+    type: text
+    required: true
+    validation:
+      - type: minLength
+        value: 1
+        message: "Company must be specified"
+
+  - name: posting_date
+    type: date
+    required: true
+
+  - name: accounts
+    type: json
+    required: false
+
+  - name: gain_loss_booked
+    type: number
+    required: false
+
+  - name: gain_loss_unbooked
+    type: number
+    required: false
+
+rules:
+  same_currency_rejected:
+    description: >
+      From currency and to currency cannot be the same. Same-currency
+      exchange rate entries are rejected.
+  date_based_lookup:
+    description: >
+      Exchange rates are fetched by date and currency pair. The most
+      recent rate for the requested date is used.
+  revaluation_journal:
+    description: >
+      Revaluation creates journal entries for unrealized gain or loss
+      on open foreign currency balances.
+  zero_balance_exclusion:
+    description: >
+      Zero-balance accounts in foreign currency are excluded from
+      revaluation processing.
+  rounding_loss:
+    description: >
+      Rounding loss allowance must be between 0 and 1. Amounts within
+      this threshold are written off automatically as rounding loss.
+  direction_flags:
+    description: >
+      Exchange rates can be flagged for buying, selling, or both
+      directions. Separate rates may exist for each direction.
+  fallback_rate:
+    description: >
+      When no rate exists for the exact date, the most recent prior
+      rate is used as a fallback.
+  gain_loss_account:
+    description: >
+      Revaluation gain or loss is posted to a designated exchange
+      gain/loss account in the general ledger.
+  reversal_on_rerun:
+    description: >
+      Subsequent revaluations reverse previous unrealized entries
+      before posting new ones to avoid double counting.
+
+outcomes:
+  fetch_exchange_rate:
+    given:
+      - field: from_currency
+        operator: exists
+        description: "Source currency is specified"
+      - field: to_currency
+        operator: exists
+        description: "Target currency is specified"
+      - field: date
+        operator: exists
+        description: "Date for rate lookup is specified"
+    then:
+      - action: call_service
+        target: exchange_rate_provider
+        description: "Fetch exchange rate for the currency pair on the specified date"
+      - action: emit_event
+        event: exchange_rate.updated
+        payload: [from_currency, to_currency, exchange_rate, date]
+    result: "Exchange rate is returned for the specified currency pair and date"
+    error: EXCHANGE_RATE_NOT_FOUND
+
+  revalue_accounts:
+    given:
+      - field: company
+        operator: exists
+        description: "Company is specified"
+      - field: posting_date
+        operator: exists
+        description: "Revaluation posting date is specified"
+      - "at least one foreign currency account has a non-zero balance"
+    then:
+      - action: call_service
+        target: account_revaluation_engine
+        description: "Calculate unrealized gain/loss for each open foreign currency account"
+      - action: set_field
+        target: accounts
+        description: "Populated with account balances and calculated gain/loss per account"
+      - action: emit_event
+        event: revaluation.completed
+        payload: [company, posting_date, total_gain_loss, account_count]
+    result: "All open foreign currency accounts are revalued and gain/loss amounts calculated"
+    error: REVALUATION_NO_ACCOUNTS
+
+  create_gain_loss_journal:
+    given:
+      - "revaluation has been completed with non-zero gain/loss amounts"
+      - field: accounts
+        operator: exists
+        description: "Revaluation account details are available"
+    then:
+      - action: create_record
+        type: journal_entry
+        target: journal_entry
+        description: "Create journal entry posting unrealized exchange gain or loss"
+      - action: set_field
+        target: gain_loss_booked
+        description: "Set to total gain/loss from revaluation"
+      - action: emit_event
+        event: gain_loss.booked
+        payload: [journal_entry_id, company, posting_date, gain_loss_booked]
+    result: "Journal entry is created for the unrealized exchange gain or loss and posted to the general ledger"
+    transaction: true
+
+errors:
+  - code: EXCHANGE_SAME_CURRENCY
+    message: "Source and target currencies cannot be the same."
+    status: 400
+
+  - code: EXCHANGE_RATE_NOT_FOUND
+    message: "No exchange rate found for the specified currency pair and date."
+    status: 404
+
+  - code: REVALUATION_NO_ACCOUNTS
+    message: "No foreign currency accounts with open balances found for revaluation."
+    status: 404
+
+events:
+  - name: exchange_rate.updated
+    description: "Exchange rate is fetched or manually updated for a currency pair"
+    payload: [from_currency, to_currency, exchange_rate, date]
+
+  - name: revaluation.completed
+    description: "Account revaluation run completes for a company"
+    payload: [company, posting_date, total_gain_loss, account_count]
+
+  - name: gain_loss.booked
+    description: "Journal entry for unrealized exchange gain/loss is posted"
+    payload: [journal_entry_id, company, posting_date, gain_loss_booked]
+
+related:
+  - feature: general-ledger
+    type: required
+    reason: "Revaluation posts journal entries to the general ledger"
+  - feature: sales-purchase-invoicing
+    type: recommended
+    reason: "Multi-currency invoices require exchange rate conversion"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERPNext"
+    tech_stack: "Python, Frappe Framework, MariaDB/PostgreSQL"

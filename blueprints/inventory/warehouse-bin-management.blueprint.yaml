@@ -1,0 +1,302 @@
+# ============================================================
+# WAREHOUSE & BIN MANAGEMENT — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: warehouse-bin-management
+version: "1.0.0"
+description: >
+  Warehouse hierarchy and bin management with nested trees, quantity tracking, putaway rules, and perpetual inventory GL integration.
+category: inventory
+tags:
+  - warehouse
+  - bin-management
+  - putaway
+  - inventory
+  - stock-balance
+  - projected-qty
+
+fields:
+  # === Warehouse fields ===
+  - name: warehouse_name
+    type: text
+    label: Warehouse Name
+    required: true
+  - name: company
+    type: text
+    label: Company
+    required: true
+  - name: parent_warehouse
+    type: text
+    label: Parent Warehouse
+    required: false
+  - name: warehouse_type
+    type: text
+    label: Warehouse Type
+    required: false
+  - name: disabled
+    type: boolean
+    label: Disabled
+    required: false
+  - name: is_group
+    type: boolean
+    label: Is Group
+    required: false
+  - name: is_rejected_warehouse
+    type: boolean
+    label: Is Rejected Warehouse
+    required: false
+  - name: default_in_transit_warehouse
+    type: text
+    label: Default In-Transit Warehouse
+    required: false
+  - name: account
+    type: text
+    label: Warehouse Account
+    required: false
+  # === Bin fields ===
+  - name: item_code
+    type: text
+    label: Item Code
+    required: true
+  - name: warehouse
+    type: text
+    label: Warehouse
+    required: true
+  - name: actual_qty
+    type: number
+    label: Actual Quantity
+    required: false
+  - name: ordered_qty
+    type: number
+    label: Ordered Quantity
+    required: false
+  - name: reserved_qty
+    type: number
+    label: Reserved Quantity
+    required: false
+  - name: reserved_qty_for_production
+    type: number
+    label: Reserved for Production
+    required: false
+  - name: projected_qty
+    type: number
+    label: Projected Quantity
+    required: false
+  - name: planned_qty
+    type: number
+    label: Planned Quantity
+    required: false
+  - name: stock_value
+    type: number
+    label: Stock Value
+    required: false
+  - name: valuation_rate
+    type: number
+    label: Valuation Rate
+    required: false
+  # === Putaway Rule fields ===
+  - name: putaway_item_code
+    type: text
+    label: Putaway Item Code
+    required: true
+  - name: putaway_warehouse
+    type: text
+    label: Putaway Warehouse
+    required: true
+  - name: capacity
+    type: number
+    label: Warehouse Capacity
+    required: true
+  - name: priority
+    type: number
+    label: Putaway Priority
+    required: true
+  - name: stock_capacity
+    type: number
+    label: Available Stock Capacity
+    required: false
+
+rules:
+  warehouse_tree_hierarchy:
+    description: >
+      Warehouses form a nested tree structure via parent_warehouse references.
+      Group warehouses (is_group = true) can contain child warehouses but
+      cannot hold stock directly. Leaf warehouses hold actual stock.
+  warehouse_deletion_protection:
+    description: >
+      A warehouse cannot be deleted if it has any stock ledger entries, bin
+      records with non-zero quantities, or child warehouses. The system must
+      verify all dependencies before allowing deletion.
+  bin_projected_qty_formula:
+    description: >
+      Projected quantity is computed as: actual_qty + ordered_qty +
+      indented_qty + planned_qty - reserved_qty -
+      reserved_qty_for_production - reserved_qty_for_sub_contract.
+      This formula provides a forward-looking availability estimate.
+  putaway_uniqueness:
+    description: >
+      Putaway rules must be unique per item-warehouse combination. Duplicate
+      rules for the same item and warehouse are rejected.
+  putaway_capacity_validation:
+    description: >
+      Putaway rule capacity must exceed the current stock quantity in the
+      warehouse. The system validates that the defined capacity is achievable.
+  putaway_allocation_logic:
+    description: >
+      When applying putaway rules, stock is distributed to warehouses by
+      priority (lowest number first), then by available capacity. If the
+      highest-priority warehouse is full, overflow goes to the next.
+  perpetual_inventory_gl_link:
+    description: >
+      Each warehouse is linked to a GL account for perpetual inventory. Stock
+      value changes in the bin are reflected as GL entries in the linked account.
+
+outcomes:
+  create_warehouse:
+    priority: 1
+    given:
+      - "user provides a warehouse name and company"
+      - "parent warehouse exists if specified"
+      - "warehouse name is unique within the company"
+    then:
+      - action: create_record
+        type: warehouse
+        target: warehouse
+        description: "New warehouse created in the hierarchy"
+      - action: emit_event
+        event: warehouse.created
+        payload: [warehouse_id, warehouse_name, company, parent_warehouse]
+    result: "Warehouse created and available for stock transactions"
+
+  update_bin_quantities:
+    priority: 2
+    given:
+      - "a stock transaction is processed affecting an item-warehouse combination"
+    then:
+      - action: set_field
+        target: actual_qty
+        description: "Actual quantity updated from stock ledger aggregation"
+      - action: set_field
+        target: projected_qty
+        description: "Projected quantity recalculated using the formula"
+      - action: set_field
+        target: stock_value
+        description: "Stock value updated based on new quantity and valuation rate"
+      - action: emit_event
+        event: bin.qty_changed
+        payload: [item_code, warehouse, actual_qty, projected_qty, stock_value]
+    result: "Bin quantities and values reflect the latest stock position"
+
+  apply_putaway_rule:
+    priority: 3
+    given:
+      - "incoming stock receipt has putaway rules defined for the item"
+      - "at least one target warehouse has available capacity"
+    then:
+      - action: set_field
+        target: putaway_warehouse_allocations
+        description: "Stock distributed across warehouses by priority and capacity"
+      - action: emit_event
+        event: putaway.applied
+        payload: [item_code, allocations]
+    result: "Incoming stock automatically distributed to warehouses per putaway rules"
+
+  delete_warehouse:
+    priority: 4
+    given:
+      - "warehouse has no stock ledger entries"
+      - "warehouse has no child warehouses"
+      - "all bin quantities are zero"
+    then:
+      - action: delete_record
+        type: warehouse
+        target: warehouse
+        description: "Warehouse removed from hierarchy"
+    result: "Warehouse deleted from the system"
+
+  warehouse_has_stock:
+    priority: 1
+    error: WAREHOUSE_HAS_STOCK
+    given:
+      - "user attempts to delete or disable a warehouse"
+      - "warehouse has non-zero bin quantities or stock ledger entries"
+    then: []
+    result: "Deletion blocked because warehouse still contains stock"
+
+  warehouse_has_children:
+    priority: 1
+    error: WAREHOUSE_HAS_CHILDREN
+    given:
+      - "user attempts to delete a group warehouse"
+      - "warehouse has child warehouses"
+    then: []
+    result: "Deletion blocked because warehouse has child nodes"
+
+  disable_warehouse:
+    priority: 5
+    given:
+      - "user disables a warehouse"
+      - "warehouse has no pending transactions"
+    then:
+      - action: set_field
+        target: disabled
+        value: true
+      - action: emit_event
+        event: warehouse.disabled
+        payload: [warehouse_id, warehouse_name]
+    result: "Warehouse disabled and excluded from future transactions"
+
+errors:
+  - code: WAREHOUSE_HAS_STOCK
+    message: "Cannot delete warehouse: it contains stock or has ledger entries."
+    status: 400
+  - code: WAREHOUSE_HAS_CHILDREN
+    message: "Cannot delete warehouse: it has child warehouses in the hierarchy."
+    status: 400
+  - code: WAREHOUSE_WRONG_COMPANY
+    message: "Warehouse does not belong to the specified company."
+    status: 400
+  - code: PUTAWAY_DUPLICATE_RULE
+    message: "A putaway rule already exists for this item-warehouse combination."
+    status: 409
+  - code: PUTAWAY_INSUFFICIENT_CAPACITY
+    message: "Putaway capacity must be greater than the current stock in the warehouse."
+    status: 400
+
+events:
+  - name: warehouse.created
+    description: New warehouse created in the hierarchy
+    payload: [warehouse_id, warehouse_name, company, parent_warehouse]
+  - name: warehouse.disabled
+    description: Warehouse disabled and excluded from transactions
+    payload: [warehouse_id, warehouse_name]
+  - name: bin.qty_changed
+    description: Bin quantities updated after a stock transaction
+    payload: [item_code, warehouse, actual_qty, projected_qty, stock_value]
+  - name: putaway.applied
+    description: Putaway rules applied to distribute incoming stock
+    payload: [item_code, allocations]
+
+related:
+  - feature: stock-entry-movements
+    type: required
+    reason: "Stock entries are the primary source of bin quantity changes"
+  - feature: serial-batch-tracking
+    type: recommended
+    reason: "Serial and batch tracking integrates with warehouse stock positions"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"
+    files_traced: 18
+    entry_points:
+      - "erpnext/stock/doctype/warehouse/warehouse.py"
+      - "erpnext/stock/doctype/bin/bin.py"
+      - "erpnext/stock/doctype/putaway_rule/putaway_rule.py"
+      - "erpnext/stock/utils.py"

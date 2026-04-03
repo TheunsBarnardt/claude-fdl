@@ -1,0 +1,423 @@
+# ============================================================
+# PROJECT & TASK MANAGEMENT — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: project-task-management
+version: "1.0.0"
+description: >
+  Project and task management with hierarchical tasks, dependency
+  tracking, milestones, templates, and timesheet-based billable
+  time tracking. Progress auto-calculated from tasks.
+category: project
+tags:
+  - project
+  - task
+  - timesheet
+  - milestone
+  - dependency
+  - billing
+  - time-tracking
+
+fields:
+  - name: project_name
+    type: text
+    label: Project Name
+    required: true
+  - name: company
+    type: text
+    label: Company
+    required: true
+  - name: project_status
+    type: select
+    label: Project Status
+    required: true
+    options:
+      - {value: "Open", label: "Open"}
+      - {value: "Completed", label: "Completed"}
+      - {value: "Cancelled", label: "Cancelled"}
+    default: "Open"
+  - name: is_active
+    type: select
+    label: Is Active
+    required: true
+    options:
+      - {value: "Yes", label: "Yes"}
+      - {value: "No", label: "No"}
+    default: "Yes"
+  - name: percent_complete
+    type: number
+    label: Percent Complete
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Progress cannot be negative"
+      - type: max
+        value: 100
+        message: "Progress cannot exceed 100"
+  - name: expected_start_date
+    type: date
+    label: Expected Start Date
+    required: false
+  - name: expected_end_date
+    type: date
+    label: Expected End Date
+    required: false
+  - name: actual_start_date
+    type: date
+    label: Actual Start Date
+    required: false
+  - name: actual_end_date
+    type: date
+    label: Actual End Date
+    required: false
+  - name: estimated_costing
+    type: number
+    label: Estimated Costing
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Costing must be non-negative"
+  - name: total_costing_amount
+    type: number
+    label: Total Costing Amount
+    required: false
+  - name: total_billing_amount
+    type: number
+    label: Total Billing Amount
+    required: false
+  - name: project_template
+    type: text
+    label: Project Template
+    required: false
+  - name: cost_center
+    type: text
+    label: Cost Center
+    required: false
+  - name: subject
+    type: text
+    label: Task Subject
+    required: true
+  - name: project
+    type: text
+    label: Project
+    required: false
+  - name: task_status
+    type: select
+    label: Task Status
+    required: true
+    options:
+      - {value: "Open", label: "Open"}
+      - {value: "Working", label: "Working"}
+      - {value: "Pending Review", label: "Pending Review"}
+      - {value: "Overdue", label: "Overdue"}
+      - {value: "Template", label: "Template"}
+      - {value: "Completed", label: "Completed"}
+      - {value: "Cancelled", label: "Cancelled"}
+    default: "Open"
+  - name: priority
+    type: select
+    label: Priority
+    required: false
+    options:
+      - {value: "Low", label: "Low"}
+      - {value: "Medium", label: "Medium"}
+      - {value: "High", label: "High"}
+      - {value: "Urgent", label: "Urgent"}
+    default: "Medium"
+  - name: task_expected_start_date
+    type: date
+    label: Task Expected Start Date
+    required: false
+  - name: task_expected_end_date
+    type: date
+    label: Task Expected End Date
+    required: false
+  - name: progress
+    type: number
+    label: Task Progress
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Progress cannot be negative"
+      - type: max
+        value: 100
+        message: "Progress cannot exceed 100"
+  - name: depends_on
+    type: json
+    label: Task Dependencies
+    required: false
+  - name: is_milestone
+    type: boolean
+    label: Is Milestone
+    required: false
+    default: false
+  - name: is_group
+    type: boolean
+    label: Is Group
+    required: false
+    default: false
+  - name: parent_task
+    type: text
+    label: Parent Task
+    required: false
+  - name: assigned_to
+    type: text
+    label: Assigned To
+    required: false
+  - name: task_description
+    type: rich_text
+    label: Task Description
+    required: false
+  - name: employee
+    type: text
+    label: Employee
+    required: true
+  - name: total_hours
+    type: number
+    label: Total Hours
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Hours must be non-negative"
+  - name: total_billable_hours
+    type: number
+    label: Total Billable Hours
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Billable hours must be non-negative"
+  - name: total_billed_hours
+    type: number
+    label: Total Billed Hours
+    required: false
+  - name: total_costing_amount_timesheet
+    type: number
+    label: Timesheet Costing Amount
+    required: false
+  - name: total_billable_amount
+    type: number
+    label: Total Billable Amount
+    required: false
+  - name: time_logs
+    type: json
+    label: Time Logs
+    required: false
+
+rules:
+  task_dependency_enforcement:
+    description: >
+      Task dependencies enforce sequential completion. A task cannot
+      be marked Completed until all tasks in its depends_on list
+      are Completed.
+  overdue_auto_set:
+    description: >
+      Task status is automatically set to Overdue when the
+      task_expected_end_date is earlier than today and the task
+      is not yet Completed or Cancelled.
+  project_percent_from_tasks:
+    description: >
+      Project percent_complete is auto-calculated as the weighted
+      average of progress across all child tasks.
+  template_creates_tasks:
+    description: >
+      Selecting a project template auto-creates tasks from the
+      predefined template structure with relative dates.
+  timesheet_billable_tracking:
+    description: >
+      Timesheets track billable vs non-billable hours separately.
+      Billing and costing rates are applied per activity type.
+  activity_costing_rates:
+    description: >
+      Activity costing assigns rates per activity type, allowing
+      different billing and costing rates for different work types.
+  task_hierarchy:
+    description: >
+      Tasks form a hierarchy via parent_task. Group tasks aggregate
+      progress from their children.
+  milestone_deliverables:
+    description: >
+      Milestone tasks mark key deliverables in the project timeline
+      and are highlighted in project views.
+
+states:
+  field: project_status
+  values:
+    - id: open
+      label: Open
+      initial: true
+    - id: completed
+      label: Completed
+      terminal: true
+    - id: cancelled
+      label: Cancelled
+      terminal: true
+  transitions:
+    - from: open
+      to: completed
+      description: "All tasks completed or project manually closed"
+    - from: open
+      to: cancelled
+      description: "Project cancelled"
+
+outcomes:
+  create_project:
+    given:
+      - "project_name and company are provided"
+    then:
+      - action: create_record
+        type: project
+        target: project
+        description: "Project created with Open status"
+      - action: emit_event
+        event: project.created
+        payload: [project_name, company, expected_start_date, expected_end_date]
+    result: "New project created and ready for task assignment"
+
+  create_from_template:
+    given:
+      - "project_name and company are provided"
+      - "project_template exists and is valid"
+    then:
+      - action: create_record
+        type: project
+        target: project
+        description: "Project created from template"
+      - action: create_record
+        type: task
+        target: tasks
+        description: "Tasks auto-created from template structure"
+      - action: emit_event
+        event: project.created
+        payload: [project_name, company, project_template]
+    result: "Project created with pre-defined tasks from template"
+    error: PROJECT_TEMPLATE_NOT_FOUND
+
+  create_task:
+    given:
+      - "subject is provided"
+      - "project exists if specified"
+    then:
+      - action: create_record
+        type: task
+        target: task
+        description: "Task created with Open status"
+      - action: emit_event
+        event: task.created
+        payload: [subject, project, assigned_to, priority]
+    result: "Task created and linked to project"
+
+  assign_task:
+    given:
+      - "task exists and is not Completed or Cancelled"
+      - "assigned_to is provided"
+    then:
+      - action: set_field
+        target: assigned_to
+        description: "Task assigned to specified person"
+    result: "Task assigned to team member"
+
+  log_time:
+    given:
+      - "employee and time_logs with from_time and to_time are provided"
+      - "time log entries do not overlap with existing timesheets"
+    then:
+      - action: create_record
+        type: timesheet
+        target: timesheet
+        description: "Timesheet created with calculated hours and amounts"
+      - action: emit_event
+        event: timesheet.submitted
+        payload: [employee, total_hours, total_billable_hours, project]
+    result: "Time logged against project and task"
+    error: TIMESHEET_OVERLAP
+
+  complete_task:
+    given:
+      - "task exists and is in Open, Working, or Pending Review status"
+      - "all tasks in depends_on are Completed"
+    then:
+      - action: set_field
+        target: task_status
+        value: "Completed"
+      - action: set_field
+        target: progress
+        value: 100
+      - action: emit_event
+        event: task.completed
+        payload: [subject, project]
+    result: "Task marked as Completed and project progress updated"
+    error: TASK_DEPENDENCY_INCOMPLETE
+
+  complete_project:
+    given:
+      - "project exists and is in Open status"
+      - "all tasks are Completed or Cancelled"
+    then:
+      - action: transition_state
+        field: project_status
+        from: open
+        to: completed
+      - action: set_field
+        target: percent_complete
+        value: 100
+      - action: emit_event
+        event: project.completed
+        payload: [project_name, total_costing_amount, total_billing_amount]
+    result: "Project marked as Completed"
+
+errors:
+  - code: TASK_DEPENDENCY_INCOMPLETE
+    message: "Cannot complete this task. One or more dependent tasks are not yet completed."
+    status: 400
+  - code: TASK_CIRCULAR_DEPENDENCY
+    message: "Circular dependency detected. A task cannot depend on itself or create a dependency loop."
+    status: 400
+  - code: TIMESHEET_OVERLAP
+    message: "Time log entries overlap with an existing timesheet for this employee."
+    status: 409
+  - code: PROJECT_TEMPLATE_NOT_FOUND
+    message: "The specified project template does not exist."
+    status: 404
+
+events:
+  - name: project.created
+    description: Fired when a new project is created
+    payload: [project_name, company, expected_start_date, expected_end_date]
+  - name: project.completed
+    description: Fired when a project is marked as completed
+    payload: [project_name, total_costing_amount, total_billing_amount]
+  - name: task.created
+    description: Fired when a new task is created
+    payload: [subject, project, assigned_to, priority]
+  - name: task.completed
+    description: Fired when a task is completed
+    payload: [subject, project]
+  - name: task.overdue
+    description: Fired when a task becomes overdue
+    payload: [subject, project, expected_end_date]
+  - name: timesheet.submitted
+    description: Fired when a timesheet is submitted
+    payload: [employee, total_hours, total_billable_hours, project]
+
+related:
+  - feature: sales-order-lifecycle
+    type: optional
+    reason: "Projects can be linked to sales orders for billing"
+  - feature: sales-purchase-invoicing
+    type: optional
+    reason: "Timesheets can be billed via sales invoices"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"

@@ -1,0 +1,385 @@
+# ============================================================
+# BILL OF MATERIALS — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: bill-of-materials
+version: "1.0.0"
+description: >
+  Hierarchical bill of materials defining raw materials, operations, and costs
+  required to manufacture a finished good, with multi-level explosion and cost
+  propagation.
+category: manufacturing
+tags:
+  - bom
+  - manufacturing
+  - raw-materials
+  - cost-estimation
+  - production
+
+fields:
+  - name: item
+    type: text
+    label: Finished Good
+    required: true
+    validation:
+      - {type: required, message: "Finished good item is required"}
+  - name: quantity
+    type: number
+    label: Quantity
+    required: true
+    default: 1
+    validation:
+      - {type: min, value: 0.001, message: "Quantity must be greater than zero"}
+  - name: company
+    type: text
+    label: Company
+    required: true
+  - name: items
+    type: json
+    label: Raw Materials
+    required: true
+    validation:
+      - {type: required, message: "At least one raw material is required"}
+  - name: operations
+    type: json
+    label: Manufacturing Operations
+    required: false
+  - name: exploded_items
+    type: json
+    label: Exploded Items
+    required: false
+  - name: is_active
+    type: boolean
+    label: Active
+    required: true
+    default: true
+  - name: is_default
+    type: boolean
+    label: Default BOM
+    required: false
+    default: false
+  - name: with_operations
+    type: boolean
+    label: With Operations
+    required: false
+    default: false
+  - name: rm_cost_as_per
+    type: select
+    label: Rate of Materials Based On
+    required: true
+    default: "valuation_rate"
+    options:
+      - {value: "valuation_rate", label: "Valuation Rate"}
+      - {value: "last_purchase_rate", label: "Last Purchase Rate"}
+      - {value: "price_list", label: "Price List"}
+  - name: raw_material_cost
+    type: number
+    label: Raw Material Cost
+    required: false
+    default: 0
+  - name: operating_cost
+    type: number
+    label: Operating Cost
+    required: false
+    default: 0
+  - name: total_cost
+    type: number
+    label: Total Cost
+    required: false
+    default: 0
+  - name: process_loss_percentage
+    type: number
+    label: Process Loss Percentage
+    required: false
+    default: 0
+    validation:
+      - {type: min, value: 0, message: "Process loss cannot be negative"}
+      - {type: max, value: 100, message: "Process loss cannot exceed 100%"}
+  - name: process_loss_qty
+    type: number
+    label: Process Loss Quantity
+    required: false
+    default: 0
+  - name: transfer_material_against
+    type: select
+    label: Transfer Material Against
+    required: false
+    options:
+      - {value: "work_order", label: "Work Order"}
+      - {value: "job_card", label: "Job Card"}
+  - name: track_semi_finished_goods
+    type: boolean
+    label: Track Semi-Finished Goods
+    required: false
+    default: false
+  - name: allow_alternative_item
+    type: boolean
+    label: Allow Alternative Item
+    required: false
+    default: false
+  - name: inspection_required
+    type: boolean
+    label: Quality Inspection Required
+    required: false
+    default: false
+  - name: currency
+    type: text
+    label: Currency
+    required: true
+  - name: conversion_rate
+    type: number
+    label: Conversion Rate
+    required: false
+    default: 1
+    validation:
+      - {type: min, value: 0.001, message: "Conversion rate must be greater than zero"}
+  - name: status
+    type: select
+    label: Status
+    required: true
+    options:
+      - {value: "draft", label: "Draft"}
+      - {value: "submitted", label: "Submitted"}
+      - {value: "cancelled", label: "Cancelled"}
+
+states:
+  field: status
+  values:
+    - name: draft
+      description: BOM being prepared, fully editable
+      initial: true
+    - name: submitted
+      description: BOM submitted and active for use in work orders
+    - name: cancelled
+      description: BOM cancelled and no longer usable
+      terminal: true
+  transitions:
+    - from: draft
+      to: submitted
+      actor: production_manager
+      description: Submit BOM for active use in manufacturing
+      condition: "Items table must not be empty and all validations pass"
+    - from: submitted
+      to: cancelled
+      actor: production_manager
+      description: Cancel BOM to remove it from active use
+      condition: "No active work orders reference this BOM"
+
+rules:
+  no_circular_references:
+    description: >
+      BOM hierarchy must not contain circular references. System performs
+      recursive tree traversal during validation to detect cycles where a
+      child BOM directly or indirectly references the parent BOM.
+  items_table_not_empty:
+    description: >
+      The raw materials (items) table must contain at least one row. A BOM
+      without materials cannot be submitted.
+  material_qty_positive:
+    description: >
+      Each raw material row must have a quantity greater than zero. Zero or
+      negative quantities are rejected on save.
+  fixed_asset_not_allowed:
+    description: >
+      Fixed asset items cannot be added as raw materials in a BOM. Only
+      stock and non-stock items are permitted.
+  operations_require_workstation:
+    description: >
+      Each operation row must specify a workstation and a time greater than
+      zero minutes. Operations without workstation or time are invalid.
+  cost_propagation:
+    description: >
+      When a child BOM cost changes, the system propagates the updated cost
+      upward to all parent BOMs that reference it, recalculating total cost
+      at each level.
+  exploded_items_flatten:
+    description: >
+      Exploded items table flattens the entire multi-level BOM hierarchy
+      into a single list of leaf-level raw materials with aggregated
+      quantities, accounting for sub-assembly BOMs.
+  process_loss_cap:
+    description: >
+      Process loss percentage must be between 0 and 100 inclusive. The
+      process loss quantity is computed as quantity times process loss
+      percentage divided by 100.
+  cost_allocation_sum:
+    description: >
+      When secondary items (scrap or by-products) are defined, the cost
+      allocation percentages between the finished good and all secondary
+      items must sum to exactly 100%.
+  inactive_bom_linking:
+    description: >
+      An inactive BOM cannot be referenced by any active BOM or work order.
+      Deactivating a BOM triggers validation of all dependent documents.
+
+outcomes:
+  create_bom:
+    priority: 1
+    given:
+      - "user provides a finished good item, quantity, and at least one raw material"
+    then:
+      - action: create_record
+        type: bom
+        description: "Create new BOM record in draft status"
+      - action: set_field
+        target: status
+        value: draft
+      - action: set_field
+        target: raw_material_cost
+        value: 0
+    result: "BOM is created in draft status with calculated material costs"
+
+  submit_bom:
+    priority: 2
+    given:
+      - field: status
+        source: db
+        operator: eq
+        value: draft
+      - "items table has at least one row"
+      - "no circular references detected in BOM hierarchy"
+    then:
+      - action: transition_state
+        field: status
+        from: draft
+        to: submitted
+      - action: set_field
+        target: is_active
+        value: true
+      - action: emit_event
+        event: bom.submitted
+        payload: [bom_id, item, quantity, total_cost]
+    result: "BOM is submitted and available for use in work orders and production planning"
+
+  calculate_cost:
+    priority: 3
+    given:
+      - "BOM exists with materials and optionally operations"
+    then:
+      - action: set_field
+        target: raw_material_cost
+        description: "Sum of (qty * rate) for each raw material row"
+      - action: set_field
+        target: operating_cost
+        description: "Sum of (time_in_mins * hour_rate / 60) for each operation"
+      - action: set_field
+        target: total_cost
+        description: "raw_material_cost + operating_cost"
+    result: "BOM costs are recalculated from current material rates and operation costs"
+
+  explode_items:
+    priority: 4
+    given:
+      - "BOM contains sub-assembly items that have their own BOMs"
+    then:
+      - action: set_field
+        target: exploded_items
+        description: "Flatten multi-level hierarchy into leaf-level materials with aggregated quantities"
+    result: "Exploded items table shows all leaf-level raw materials across the full BOM tree"
+
+  update_cost_propagation:
+    priority: 5
+    given:
+      - "a child BOM cost has been updated"
+      - "parent BOMs reference the updated child BOM"
+    then:
+      - action: call_service
+        target: bom_cost_propagation
+        description: "Recursively update costs in all parent BOMs"
+      - action: emit_event
+        event: bom.cost_updated
+        payload: [bom_id, item, old_cost, new_cost]
+    result: "All parent BOMs reflect the updated child BOM cost"
+
+  deactivate_bom:
+    priority: 6
+    given:
+      - field: status
+        source: db
+        operator: eq
+        value: submitted
+      - "no active work orders reference this BOM"
+    then:
+      - action: set_field
+        target: is_active
+        value: false
+      - action: emit_event
+        event: bom.deactivated
+        payload: [bom_id, item]
+    result: "BOM is deactivated and cannot be used for new work orders"
+    error: BOM_INACTIVE_LINKED
+
+  replace_bom:
+    priority: 7
+    given:
+      - "old BOM exists and new BOM is submitted for the same item"
+    then:
+      - action: set_field
+        target: is_default
+        value: true
+        description: "Set new BOM as default"
+      - action: call_service
+        target: bom_replacement
+        description: "Update all pending work orders to reference new BOM"
+      - action: emit_event
+        event: bom.replaced
+        payload: [old_bom_id, new_bom_id, item]
+    result: "Old BOM is replaced by new BOM across all pending documents"
+
+errors:
+  - code: BOM_RECURSION_DETECTED
+    status: 422
+    message: "Circular reference detected in BOM hierarchy. A BOM cannot reference itself directly or indirectly."
+    retry: false
+  - code: BOM_NO_MATERIALS
+    status: 422
+    message: "BOM must contain at least one raw material before submission."
+    retry: true
+  - code: BOM_QTY_ZERO
+    status: 422
+    message: "Each raw material must have a quantity greater than zero."
+    retry: true
+  - code: BOM_OPERATION_TIME_ZERO
+    status: 422
+    message: "Each operation must have a time greater than zero minutes."
+    retry: true
+  - code: BOM_COST_ALLOCATION_MISMATCH
+    status: 422
+    message: "Cost allocation between finished good and secondary items must sum to 100%."
+    retry: true
+  - code: BOM_INACTIVE_LINKED
+    status: 409
+    message: "Cannot deactivate BOM while active BOMs or work orders reference it."
+    retry: false
+
+events:
+  - name: bom.submitted
+    payload: [bom_id, item, quantity, total_cost]
+    description: "Fired when a BOM is submitted and becomes active for production use"
+  - name: bom.cost_updated
+    payload: [bom_id, item, old_cost, new_cost]
+    description: "Fired when BOM cost changes due to material rate updates or cost propagation"
+  - name: bom.deactivated
+    payload: [bom_id, item]
+    description: "Fired when a BOM is deactivated and removed from active use"
+  - name: bom.replaced
+    payload: [old_bom_id, new_bom_id, item]
+    description: "Fired when a BOM is replaced by a newer version for the same item"
+
+related:
+  - feature: work-orders-job-cards
+    type: required
+    reason: "Work orders consume BOMs to plan and execute manufacturing"
+  - feature: production-planning
+    type: recommended
+    reason: "Production planning uses BOMs to calculate material requirements"
+  - feature: stock-entry-movements
+    type: recommended
+    reason: "Stock entries transfer materials based on BOM quantities"
+
+extensions:
+  source: "https://github.com/frappe/erpnext"

@@ -1,0 +1,318 @@
+# ============================================================
+# General Ledger & Chart of Accounts — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+# This blueprint describes BEHAVIOR, not implementation.
+# It can be used to generate this feature for any framework.
+# ============================================================
+
+feature: general-ledger
+version: "1.0.0"
+description: "Manage hierarchical chart of accounts and post double-entry general ledger entries with period controls, cost center tracking, and party-level accounting"
+category: data
+
+tags:
+  - accounting
+  - general-ledger
+  - chart-of-accounts
+  - double-entry
+  - erp
+  - cost-center
+
+fields:
+  - name: account_name
+    type: text
+    required: true
+    validation:
+      - type: minLength
+        value: 1
+        message: "Account name is required"
+      - type: maxLength
+        value: 140
+        message: "Account name cannot exceed 140 characters"
+
+  - name: account_number
+    type: text
+    required: false
+    validation:
+      - type: pattern
+        value: "^[0-9A-Za-z\\-\\.]+$"
+        message: "Account number must contain only alphanumeric characters, hyphens, and dots"
+
+  - name: parent_account
+    type: text
+    required: false
+
+  - name: is_group
+    type: boolean
+    required: true
+
+  - name: account_type
+    type: select
+    required: false
+    options:
+      - {value: "bank", label: "Bank"}
+      - {value: "cash", label: "Cash"}
+      - {value: "receivable", label: "Receivable"}
+      - {value: "payable", label: "Payable"}
+      - {value: "stock", label: "Stock"}
+      - {value: "tax", label: "Tax"}
+      - {value: "fixed_asset", label: "Fixed Asset"}
+      - {value: "depreciation", label: "Depreciation"}
+      - {value: "equity", label: "Equity"}
+      - {value: "cost_of_goods_sold", label: "Cost of Goods Sold"}
+      - {value: "expense_account", label: "Expense Account"}
+      - {value: "income_account", label: "Income Account"}
+      - {value: "round_off", label: "Round Off"}
+      - {value: "temporary", label: "Temporary"}
+
+  - name: root_type
+    type: select
+    required: true
+    options:
+      - {value: "asset", label: "Asset"}
+      - {value: "liability", label: "Liability"}
+      - {value: "income", label: "Income"}
+      - {value: "expense", label: "Expense"}
+      - {value: "equity", label: "Equity"}
+
+  - name: account_currency
+    type: text
+    required: true
+    validation:
+      - type: pattern
+        value: "^[A-Z]{3}$"
+        message: "Currency must be a valid 3-letter ISO code"
+
+  - name: disabled
+    type: boolean
+    required: false
+
+  - name: freeze_account
+    type: boolean
+    required: false
+
+  - name: account
+    type: text
+    required: true
+
+  - name: debit
+    type: number
+    required: true
+    validation:
+      - type: min
+        value: 0
+        message: "Debit amount must be zero or greater"
+
+  - name: credit
+    type: number
+    required: true
+    validation:
+      - type: min
+        value: 0
+        message: "Credit amount must be zero or greater"
+
+  - name: posting_date
+    type: date
+    required: true
+
+  - name: voucher_type
+    type: text
+    required: true
+
+  - name: voucher_no
+    type: text
+    required: true
+
+  - name: party_type
+    type: select
+    required: false
+    options:
+      - {value: "customer", label: "Customer"}
+      - {value: "supplier", label: "Supplier"}
+      - {value: "employee", label: "Employee"}
+      - {value: "shareholder", label: "Shareholder"}
+
+  - name: party
+    type: text
+    required: false
+
+  - name: cost_center
+    type: text
+    required: false
+
+rules:
+  hierarchical_chart:
+    description: >
+      Chart of accounts is hierarchical. Accounts are organized in a
+      nested tree structure with group and leaf nodes. Group accounts
+      cannot have direct GL entries.
+  balanced_entries:
+    description: >
+      Total debit must equal total credit for every GL entry set
+      (voucher). Unbalanced entries are rejected.
+  cost_center_required:
+    description: >
+      Profit and Loss accounts (Income and Expense root types) require
+      a cost center to be specified for dimensional reporting.
+  party_required:
+    description: >
+      Receivable and Payable account types require party_type and party
+      to be specified for sub-ledger tracking.
+  frozen_account_protection:
+    description: >
+      Frozen accounts block all debit and credit modifications unless the
+      user has freeze override permission.
+  period_closing:
+    description: >
+      Closed accounting periods block GL posting. No entries are allowed
+      in a closed period.
+  disabled_account:
+    description: >
+      Disabled accounts cannot be used in new transactions.
+  account_deletion:
+    description: >
+      Deleting an account is only allowed when it has zero GL entries.
+
+outcomes:
+  create_account:
+    given:
+      - field: account_name
+        operator: exists
+        description: "Account name is provided"
+      - field: root_type
+        operator: in
+        value: ["asset", "liability", "income", "expense", "equity"]
+        description: "Valid root type is selected"
+    then:
+      - action: create_record
+        type: account
+        target: chart_of_accounts
+        description: "Create new account in the chart of accounts hierarchy"
+      - action: emit_event
+        event: account.created
+        payload: [account_name, account_number, root_type, parent_account]
+    result: "New account is created in the chart of accounts under the specified parent"
+
+  post_gl_entry:
+    given:
+      - field: account
+        operator: exists
+        description: "Target account is specified"
+      - "account is not frozen and not disabled"
+      - "posting date falls within an open accounting period"
+    then:
+      - action: create_record
+        type: gl_entry
+        target: gl_entries
+        description: "Create debit and credit GL entry rows ensuring total debit equals total credit"
+      - action: emit_event
+        event: gl.entry_posted
+        payload: [voucher_type, voucher_no, account, debit, credit, posting_date]
+    result: "GL entries are posted with balanced debit and credit totals"
+    error: GL_BALANCE_MISMATCH
+    transaction: true
+
+  reverse_gl_entries:
+    given:
+      - field: voucher_no
+        operator: exists
+        description: "Voucher number to reverse is specified"
+      - "original GL entries exist for the specified voucher"
+    then:
+      - action: create_record
+        type: gl_entry
+        target: gl_entries
+        description: "Create reversal entries swapping debit and credit amounts"
+      - action: emit_event
+        event: gl.entry_reversed
+        payload: [voucher_type, voucher_no, reversal_voucher_no]
+    result: "Original GL entries are reversed with offsetting debit and credit entries"
+    transaction: true
+
+  create_journal_entry:
+    given:
+      - "at least two account lines are provided"
+      - "total debit equals total credit across all lines"
+      - "all referenced accounts are active and not frozen"
+    then:
+      - action: create_record
+        type: journal_entry
+        target: journal_entry
+        description: "Create journal entry with multiple debit and credit lines"
+      - action: create_record
+        type: gl_entry
+        target: gl_entries
+        description: "Post GL entries for each journal entry line"
+      - action: emit_event
+        event: gl.entry_posted
+        payload: [voucher_type, voucher_no, posting_date, total_debit]
+    result: "Journal entry is created and GL entries are posted for all account lines"
+    error: GL_BALANCE_MISMATCH
+    transaction: true
+
+  freeze_account:
+    given:
+      - field: account_name
+        operator: exists
+        description: "Account to freeze is specified"
+      - "user has account freeze permission"
+    then:
+      - action: set_field
+        target: freeze_account
+        description: "Account freeze flag set to true"
+      - action: emit_event
+        event: account.frozen
+        payload: [account_name, account_number, frozen_by]
+    result: "Account is frozen and no further GL entries can be posted to it without override permission"
+
+errors:
+  - code: GL_BALANCE_MISMATCH
+    message: "Total debit does not equal total credit for this entry."
+    status: 400
+
+  - code: GL_ACCOUNT_FROZEN
+    message: "Cannot post to a frozen account without freeze override permission."
+    status: 403
+
+  - code: GL_PERIOD_CLOSED
+    message: "Cannot post GL entries in a closed accounting period."
+    status: 403
+
+  - code: GL_COST_CENTER_REQUIRED
+    message: "Cost center is required for profit and loss accounts."
+    status: 400
+
+events:
+  - name: gl.entry_posted
+    description: "GL entries are created for a voucher"
+    payload: [voucher_type, voucher_no, account, debit, credit, posting_date]
+
+  - name: gl.entry_reversed
+    description: "GL entries for a voucher are reversed"
+    payload: [voucher_type, voucher_no, reversal_voucher_no]
+
+  - name: account.created
+    description: "New account is added to the chart of accounts"
+    payload: [account_name, account_number, root_type, parent_account]
+
+  - name: account.frozen
+    description: "Account is frozen to prevent further postings"
+    payload: [account_name, account_number, frozen_by]
+
+related:
+  - feature: sales-purchase-invoicing
+    type: required
+    reason: "Invoice submission posts GL entries"
+  - feature: payment-processing
+    type: required
+    reason: "Payment submission posts GL entries"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERPNext"
+    tech_stack: "Python, Frappe Framework, MariaDB/PostgreSQL"

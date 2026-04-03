@@ -1,0 +1,533 @@
+# ============================================================
+# LEAD & OPPORTUNITY PIPELINE — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: lead-opportunity-pipeline
+version: "1.0.0"
+description: >
+  Lead capture, qualification, and opportunity pipeline management with
+  conversion tracking from initial contact through to customer creation.
+category: crm
+tags:
+  - lead
+  - opportunity
+  - pipeline
+  - sales
+  - qualification
+  - conversion
+
+actors:
+  - id: sales_user
+    name: Sales User
+    type: human
+    description: Captures leads, qualifies prospects, and manages opportunities
+  - id: sales_manager
+    name: Sales Manager
+    type: human
+    description: Oversees pipeline, assigns leads, and reviews conversions
+  - id: system
+    name: System
+    type: system
+    description: Auto-assigns owners, loads gravatars, syncs UTM data, and enforces uniqueness
+
+# ─── FIELDS ───────────────────────────────────────────────
+# Lead fields
+
+fields:
+  - name: first_name
+    type: text
+    label: First Name
+    required: false
+  - name: last_name
+    type: text
+    label: Last Name
+    required: false
+  - name: email_id
+    type: email
+    label: Email Address
+    required: false
+    validation:
+      - type: email
+        message: "Must be a valid email address"
+  - name: company_name
+    type: text
+    label: Company / Organization
+    required: false
+  - name: lead_status
+    type: select
+    label: Lead Status
+    required: true
+    options:
+      - {value: "Lead", label: "Lead"}
+      - {value: "Open", label: "Open"}
+      - {value: "Replied", label: "Replied"}
+      - {value: "Opportunity", label: "Opportunity"}
+      - {value: "Quotation", label: "Quotation"}
+      - {value: "Interested", label: "Interested"}
+      - {value: "Converted", label: "Converted"}
+      - {value: "Do Not Contact", label: "Do Not Contact"}
+  - name: qualification_status
+    type: select
+    label: Qualification Status
+    required: false
+    options:
+      - {value: "Unqualified", label: "Unqualified"}
+      - {value: "In Process", label: "In Process"}
+      - {value: "Qualified", label: "Qualified"}
+  - name: lead_owner
+    type: email
+    label: Lead Owner
+    required: false
+  - name: lead_type
+    type: select
+    label: Lead Type
+    required: false
+    options:
+      - {value: "Client", label: "Client"}
+      - {value: "Channel Partner", label: "Channel Partner"}
+      - {value: "Consultant", label: "Consultant"}
+  - name: source
+    type: text
+    label: Lead Source
+    required: false
+  - name: utm_source
+    type: text
+    label: UTM Source
+    required: false
+  - name: utm_medium
+    type: text
+    label: UTM Medium
+    required: false
+  - name: utm_campaign
+    type: text
+    label: UTM Campaign
+    required: false
+  - name: territory
+    type: text
+    label: Territory
+    required: false
+  - name: industry
+    type: text
+    label: Industry
+    required: false
+  - name: annual_revenue
+    type: number
+    label: Annual Revenue
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Annual revenue cannot be negative"
+  - name: mobile_no
+    type: phone
+    label: Mobile Number
+    required: false
+  - name: phone
+    type: phone
+    label: Phone
+    required: false
+  - name: disabled
+    type: boolean
+    label: Disabled
+    required: false
+  - name: unsubscribed
+    type: boolean
+    label: Unsubscribed
+    required: false
+
+  # ─── Opportunity fields ──────────────────────────────────
+  - name: opportunity_status
+    type: select
+    label: Opportunity Status
+    required: true
+    options:
+      - {value: "Open", label: "Open"}
+      - {value: "Quotation", label: "Quotation"}
+      - {value: "Converted", label: "Converted"}
+      - {value: "Lost", label: "Lost"}
+      - {value: "Replied", label: "Replied"}
+      - {value: "Closed", label: "Closed"}
+  - name: opportunity_from
+    type: select
+    label: Opportunity From
+    required: true
+    options:
+      - {value: "Lead", label: "Lead"}
+      - {value: "Customer", label: "Customer"}
+      - {value: "Prospect", label: "Prospect"}
+  - name: party_name
+    type: text
+    label: Party Name
+    required: true
+  - name: sales_stage
+    type: text
+    label: Sales Stage
+    required: false
+  - name: probability
+    type: number
+    label: Probability (%)
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Probability cannot be below 0%"
+      - type: max
+        value: 100
+        message: "Probability cannot exceed 100%"
+  - name: opportunity_amount
+    type: number
+    label: Opportunity Amount
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Amount cannot be negative"
+  - name: expected_closing
+    type: date
+    label: Expected Closing Date
+    required: false
+  - name: items
+    type: json
+    label: Opportunity Items
+    required: false
+  - name: lost_reasons
+    type: json
+    label: Lost Reasons
+    required: false
+  - name: competitors
+    type: json
+    label: Competitors
+    required: false
+  - name: contact_email
+    type: email
+    label: Contact Email
+    required: false
+  - name: contact_mobile
+    type: phone
+    label: Contact Mobile
+    required: false
+
+# ─── STATES ──────────────────────────────────────────────
+
+states:
+  field: lead_status
+  values:
+    - name: Lead
+      description: New lead captured, not yet contacted
+      initial: true
+    - name: Open
+      description: Lead has been contacted and is active
+    - name: Replied
+      description: Lead has responded to outreach
+    - name: Opportunity
+      description: Lead promoted to a sales opportunity
+    - name: Quotation
+      description: Quotation has been sent to lead
+    - name: Interested
+      description: Lead has expressed buying interest
+    - name: Converted
+      description: Lead converted to a customer
+      terminal: true
+    - name: Do Not Contact
+      description: Lead opted out or marked as non-contactable
+      terminal: true
+  transitions:
+    - from: Lead
+      to: Open
+      actor: sales_user
+      description: Sales user begins outreach to the lead
+    - from: Open
+      to: Replied
+      actor: sales_user
+      description: Lead responds to communication
+    - from: [Open, Replied, Interested]
+      to: Opportunity
+      actor: sales_user
+      description: Lead promoted to opportunity after qualification
+    - from: [Opportunity, Interested]
+      to: Quotation
+      actor: sales_user
+      description: Quotation created from opportunity
+    - from: [Open, Replied]
+      to: Interested
+      actor: sales_user
+      description: Lead expresses buying interest
+    - from: [Opportunity, Quotation, Interested]
+      to: Converted
+      actor: sales_user
+      description: Lead converted to customer record
+    - from: [Lead, Open, Replied, Interested]
+      to: Do Not Contact
+      actor: sales_user
+      description: Lead opts out or is marked non-contactable
+
+# ─── RULES ───────────────────────────────────────────────
+
+rules:
+  lead_email_uniqueness:
+    description: >
+      Email address must be unique across all leads (configurable).
+      Duplicate detection runs on create and update.
+  lead_requires_identity:
+    description: >
+      A lead must have either a person name (first_name or last_name) or a
+      company_name. Both empty is rejected.
+  lead_owner_not_lead:
+    description: >
+      Lead owner email cannot be the same as the lead's own email address
+      to prevent self-assignment.
+  lead_to_opportunity_field_mapping:
+    description: >
+      When converting a lead to an opportunity, relevant fields (name, email,
+      phone, company, source, territory) are mapped automatically.
+  opportunity_cannot_lose_with_active_quotation:
+    description: >
+      An opportunity cannot be declared lost if there is an active (non-cancelled)
+      quotation linked to it.
+  prospect_aggregation:
+    description: >
+      A prospect record aggregates multiple leads and opportunities belonging
+      to the same company for unified tracking.
+  utm_campaign_sync:
+    description: >
+      UTM campaign fields on a lead are synced to the campaign document for
+      attribution and analytics tracking.
+  gravatar_auto_load:
+    description: >
+      When an email address is set, the system attempts to load the lead's
+      profile image from a gravatar service.
+
+# ─── OUTCOMES ────────────────────────────────────────────
+
+outcomes:
+  create_lead:
+    priority: 1
+    given:
+      - "sales user provides lead details"
+      - field: email_id
+        source: input
+        operator: exists
+        description: "Email address is provided (optional but triggers uniqueness check)"
+    then:
+      - action: create_record
+        type: lead
+        description: New lead record created with captured details
+      - action: emit_event
+        event: lead.created
+        payload: [lead_id, email_id, company_name, source]
+    result: "New lead is created and visible in the pipeline"
+
+  qualify_lead:
+    priority: 2
+    given:
+      - "lead exists in Open or Replied status"
+      - "sales user assesses qualification criteria"
+    then:
+      - action: set_field
+        target: qualification_status
+        value: "Qualified"
+      - action: emit_event
+        event: lead.qualified
+        payload: [lead_id, qualification_status]
+    result: "Lead is marked as qualified and ready for opportunity conversion"
+
+  convert_to_opportunity:
+    priority: 3
+    given:
+      - "lead is in an active status (Open, Replied, or Interested)"
+      - "sales user initiates conversion"
+    then:
+      - action: create_record
+        type: opportunity
+        description: Opportunity created with fields mapped from lead
+      - action: transition_state
+        field: lead_status
+        from: Open
+        to: Opportunity
+      - action: emit_event
+        event: lead.converted
+        payload: [lead_id, opportunity_id]
+      - action: emit_event
+        event: opportunity.created
+        payload: [opportunity_id, party_name, opportunity_amount]
+    result: "Lead is converted to an opportunity with all relevant fields mapped"
+
+  create_quotation:
+    priority: 4
+    given:
+      - "opportunity is in Open or Replied status"
+      - "sales user creates a quotation from the opportunity"
+    then:
+      - action: transition_state
+        field: opportunity_status
+        from: Open
+        to: Quotation
+      - action: create_record
+        type: quotation
+        description: Quotation generated from opportunity items and party details
+    result: "Quotation is created and opportunity status updated"
+
+  declare_lost:
+    priority: 5
+    given:
+      - "opportunity is in Open or Replied status"
+      - field: opportunity_status
+        source: db
+        operator: neq
+        value: "Quotation"
+        description: "No active quotation exists for this opportunity"
+    then:
+      - action: transition_state
+        field: opportunity_status
+        from: Open
+        to: Lost
+      - action: emit_event
+        event: opportunity.lost
+        payload: [opportunity_id, lost_reasons]
+    result: "Opportunity is declared lost with reasons recorded"
+
+  convert_to_customer:
+    priority: 6
+    given:
+      - "opportunity is in Quotation or Converted status path"
+      - "sales user confirms customer creation"
+    then:
+      - action: create_record
+        type: customer
+        description: Customer record created from opportunity/lead data
+      - action: transition_state
+        field: lead_status
+        to: Converted
+      - action: emit_event
+        event: opportunity.won
+        payload: [opportunity_id, customer_id]
+    result: "Customer record created and lead/opportunity marked as converted"
+
+  # ─── Error outcomes ────────────────────────────────────
+  duplicate_email_rejected:
+    priority: 1
+    error: LEAD_DUPLICATE_EMAIL
+    given:
+      - field: email_id
+        source: input
+        operator: exists
+      - "another lead with the same email already exists"
+    then:
+      - action: notify
+        channel: ui
+        description: Show duplicate lead warning with link to existing record
+    result: "Lead creation blocked due to duplicate email"
+
+  no_name_or_company:
+    priority: 1
+    error: LEAD_NO_NAME_OR_COMPANY
+    given:
+      - field: first_name
+        source: input
+        operator: not_exists
+      - field: last_name
+        source: input
+        operator: not_exists
+      - field: company_name
+        source: input
+        operator: not_exists
+    then:
+      - action: notify
+        channel: ui
+        description: Prompt user to provide a name or company
+    result: "Lead rejected — at least a name or company is required"
+
+  owner_is_lead_rejected:
+    priority: 1
+    error: LEAD_OWNER_IS_LEAD
+    given:
+      - field: lead_owner
+        source: input
+        operator: eq
+        value: email_id
+        description: "Lead owner email matches the lead's email"
+    then:
+      - action: notify
+        channel: ui
+        description: Inform that lead owner cannot be the lead themselves
+    result: "Lead owner assignment rejected due to self-assignment"
+
+  active_quotation_blocks_lost:
+    priority: 1
+    error: OPPORTUNITY_ACTIVE_QUOTATION_EXISTS
+    given:
+      - "sales user attempts to mark opportunity as lost"
+      - "an active (non-cancelled) quotation is linked to the opportunity"
+    then:
+      - action: notify
+        channel: ui
+        description: Show that active quotation must be cancelled first
+    result: "Cannot declare opportunity lost while active quotation exists"
+
+# ─── ERRORS ──────────────────────────────────────────────
+
+errors:
+  - code: LEAD_DUPLICATE_EMAIL
+    message: A lead with this email address already exists.
+    status: 409
+  - code: LEAD_NO_NAME_OR_COMPANY
+    message: Please provide either a person name or a company name for the lead.
+    status: 400
+  - code: LEAD_OWNER_IS_LEAD
+    message: Lead owner cannot be the same person as the lead.
+    status: 400
+  - code: OPPORTUNITY_ACTIVE_QUOTATION_EXISTS
+    message: Cannot declare opportunity as lost while an active quotation exists. Cancel the quotation first.
+    status: 409
+
+# ─── EVENTS ──────────────────────────────────────────────
+
+events:
+  - name: lead.created
+    description: New lead record captured in the system
+    payload: [lead_id, email_id, company_name, source]
+  - name: lead.qualified
+    description: Lead qualification status updated
+    payload: [lead_id, qualification_status]
+  - name: lead.converted
+    description: Lead converted to an opportunity
+    payload: [lead_id, opportunity_id]
+  - name: opportunity.created
+    description: New opportunity created from lead or directly
+    payload: [opportunity_id, party_name, opportunity_amount]
+  - name: opportunity.won
+    description: Opportunity converted to a customer
+    payload: [opportunity_id, customer_id]
+  - name: opportunity.lost
+    description: Opportunity declared lost with reasons
+    payload: [opportunity_id, lost_reasons]
+
+# ─── RELATED FEATURES ───────────────────────────────────
+
+related:
+  - feature: customer-supplier-management
+    type: recommended
+    reason: Lead-to-customer conversion creates customer records managed by this feature
+  - feature: campaign-management
+    type: optional
+    reason: UTM campaign tracking and email campaigns target leads
+  - feature: contract-management
+    type: optional
+    reason: Won opportunities may result in contract creation
+
+# ─── EXTENSIONS ──────────────────────────────────────────
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERPNext"
+    tech_stack: "Python/Frappe Framework"
+    files_traced: 18
+    entry_points:
+      - "erpnext/crm/doctype/lead/lead.py"
+      - "erpnext/crm/doctype/opportunity/opportunity.py"
+      - "erpnext/crm/doctype/prospect/prospect.py"

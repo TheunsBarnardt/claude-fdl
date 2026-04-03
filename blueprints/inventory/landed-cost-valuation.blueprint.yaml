@@ -1,0 +1,317 @@
+# ============================================================
+# LANDED COST & VALUATION — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/frappe/erpnext
+# Source project: ERPNext (Python/Frappe Framework)
+# ============================================================
+
+feature: landed-cost-valuation
+version: "1.0.0"
+description: >
+  Landed cost allocation, stock reconciliation, and valuation
+  reposting. Distributes charges across receipt items, adjusts
+  stock quantities/valuations, and recalculates historical entries.
+category: inventory
+tags:
+  - landed-cost
+  - valuation
+  - stock-reconciliation
+  - repost-valuation
+  - cost-allocation
+  - inventory-adjustment
+
+fields:
+  - name: posting_date
+    type: date
+    label: Posting Date
+    required: true
+  - name: company
+    type: text
+    label: Company
+    required: true
+  - name: distribute_charges_based_on
+    type: select
+    label: Distribute Charges Based On
+    required: true
+    options:
+      - {value: "Qty", label: "Quantity"}
+      - {value: "Amount", label: "Amount"}
+      - {value: "Distribute Manually", label: "Distribute Manually"}
+    default: "Qty"
+  - name: purchase_receipts
+    type: json
+    label: Purchase Receipts
+    required: true
+  - name: items
+    type: json
+    label: Items
+    required: false
+  - name: taxes
+    type: json
+    label: Taxes and Charges
+    required: true
+  - name: vendor_invoices
+    type: json
+    label: Vendor Invoices
+    required: false
+  - name: total_taxes_and_charges
+    type: number
+    label: Total Taxes and Charges
+    required: false
+    validation:
+      - type: min
+        value: 0
+        message: "Total charges must be non-negative"
+  - name: reconciliation_posting_date
+    type: date
+    label: Reconciliation Posting Date
+    required: false
+  - name: purpose
+    type: select
+    label: Purpose
+    required: false
+    options:
+      - {value: "Opening Stock", label: "Opening Stock"}
+      - {value: "Stock Reconciliation", label: "Stock Reconciliation"}
+  - name: reconciliation_items
+    type: json
+    label: Reconciliation Items
+    required: false
+  - name: difference_amount
+    type: number
+    label: Difference Amount
+    required: false
+  - name: expense_account
+    type: text
+    label: Expense Account
+    required: false
+  - name: based_on
+    type: select
+    label: Repost Based On
+    required: false
+    options:
+      - {value: "Transaction", label: "Transaction"}
+      - {value: "Item and Warehouse", label: "Item and Warehouse"}
+  - name: voucher_type
+    type: text
+    label: Voucher Type
+    required: false
+  - name: voucher_no
+    type: text
+    label: Voucher Number
+    required: false
+  - name: repost_item_code
+    type: text
+    label: Repost Item Code
+    required: false
+  - name: repost_warehouse
+    type: text
+    label: Repost Warehouse
+    required: false
+  - name: repost_posting_date
+    type: date
+    label: Repost From Date
+    required: false
+  - name: repost_status
+    type: select
+    label: Repost Status
+    required: false
+    options:
+      - {value: "Queued", label: "Queued"}
+      - {value: "In Progress", label: "In Progress"}
+      - {value: "Completed", label: "Completed"}
+      - {value: "Failed", label: "Failed"}
+      - {value: "Skipped", label: "Skipped"}
+  - name: allow_negative_stock
+    type: boolean
+    label: Allow Negative Stock
+    required: false
+    default: false
+  - name: repost_only_accounting_ledgers
+    type: boolean
+    label: Repost Only Accounting Ledgers
+    required: false
+    default: false
+
+rules:
+  receipts_must_be_submitted:
+    description: >
+      Purchase receipt documents must be submitted (not draft or cancelled)
+      and belong to the same company as the landed cost voucher.
+  charges_distributed_proportionally:
+    description: >
+      Additional charges are distributed across receipt items proportionally
+      based on the selected method (quantity or amount).
+  total_charges_must_equal:
+    description: >
+      Total applicable charges across all items must equal the total
+      taxes and charges amount. No unallocated charges allowed.
+  vendor_invoices_non_stock:
+    description: >
+      Vendor invoices referenced must be for non-stock items only
+      (service charges, freight, etc.).
+  landed_cost_updates_valuation:
+    description: >
+      Submitting a landed cost voucher updates the item valuation rate
+      on the purchase receipt and creates corresponding GL entries.
+  reconciliation_adjusts_values:
+    description: >
+      Stock reconciliation adjusts both quantity and valuation rate
+      to target values, creating stock ledger and GL entries.
+  repost_async_processing:
+    description: >
+      Repost valuation recalculates historical stock ledger and GL
+      entries asynchronously via a background job queue.
+  repost_period_restriction:
+    description: >
+      Cannot repost valuation for dates before the last period closing
+      voucher date or frozen accounting periods.
+  repost_deduplication:
+    description: >
+      Parallel reposting requests for the same item-warehouse-date
+      combination are deduplicated to prevent conflicts.
+
+outcomes:
+  create_landed_cost:
+    given:
+      - "posting_date, company, and purchase_receipts are provided"
+      - "taxes with expense accounts and amounts are provided"
+    then:
+      - action: create_record
+        target: landed_cost_voucher
+        description: "Landed cost voucher created with receipt items fetched"
+    result: "Landed cost voucher created with items from purchase receipts"
+    error: LCV_RECEIPT_NOT_SUBMITTED
+
+  distribute_charges:
+    given:
+      - "landed cost voucher exists with items and taxes"
+      - "distribute_charges_based_on is selected"
+    then:
+      - action: set_field
+        target: items
+        description: "Applicable charges calculated per item"
+    result: "Charges distributed across items proportionally"
+    error: LCV_CHARGES_MISMATCH
+
+  update_item_valuation:
+    given:
+      - "landed cost voucher is submitted"
+      - "applicable charges are fully distributed"
+    then:
+      - action: set_field
+        target: item_valuation_rate
+        description: "Item valuation rate updated on purchase receipt"
+      - action: create_record
+        target: journal_entry
+        description: "GL entries created for valuation adjustment"
+      - action: emit_event
+        event: landed_cost.submitted
+        payload: [purchase_receipts, total_taxes_and_charges]
+      - action: emit_event
+        event: valuation.updated
+        payload: [items, new_valuation_rates]
+    result: "Item valuation updated with landed costs and GL entries posted"
+    error: LCV_WRONG_COMPANY
+
+  reconcile_stock:
+    given:
+      - "reconciliation_items with target qty and valuation_rate are provided"
+      - "expense_account is specified"
+    then:
+      - action: create_record
+        target: stock_reconciliation
+        description: "Stock reconciliation created with adjustments"
+      - action: emit_event
+        event: stock.reconciled
+        payload: [reconciliation_items, difference_amount]
+    result: "Stock quantities and valuations adjusted to target values"
+    error: RECON_SERIAL_NOT_FOUND
+
+  repost_valuation:
+    given:
+      - "based_on, posting_date, and item/warehouse or voucher are specified"
+      - "posting_date is after last period closing voucher"
+    then:
+      - action: create_record
+        target: repost_valuation_entry
+        description: "Repost job queued for async processing"
+      - action: emit_event
+        event: repost.completed
+        payload: [based_on, repost_item_code, repost_warehouse]
+        when: "repost_status == \"Completed\""
+      - action: emit_event
+        event: repost.failed
+        payload: [based_on, repost_item_code, error_message]
+        when: "repost_status == \"Failed\""
+    result: "Valuation repost queued for asynchronous recalculation"
+    error: REPOST_PERIOD_CLOSED
+
+  recalculate_gl_entries:
+    given:
+      - "repost valuation job is in progress"
+      - "stock ledger entries have been recalculated"
+    then:
+      - action: set_field
+        target: gl_entries
+        description: "GL entries recalculated to match updated valuations"
+    result: "General ledger entries recalculated to reflect corrected valuations"
+    error: REPOST_ACCOUNTING_FROZEN
+
+errors:
+  - code: LCV_RECEIPT_NOT_SUBMITTED
+    message: "One or more purchase receipts are not submitted or do not exist."
+    status: 400
+  - code: LCV_CHARGES_MISMATCH
+    message: "Total applicable charges do not equal total taxes and charges amount."
+    status: 400
+  - code: LCV_WRONG_COMPANY
+    message: "Purchase receipt does not belong to the same company as the landed cost voucher."
+    status: 400
+  - code: RECON_SERIAL_NOT_FOUND
+    message: "The specified serial number was not found in the system."
+    status: 404
+  - code: REPOST_PERIOD_CLOSED
+    message: "Cannot repost valuation for dates before the last period closing voucher."
+    status: 400
+  - code: REPOST_ACCOUNTING_FROZEN
+    message: "Cannot modify GL entries for a frozen accounting period."
+    status: 400
+
+events:
+  - name: landed_cost.submitted
+    description: Fired when a landed cost voucher is submitted
+    payload: [purchase_receipts, total_taxes_and_charges]
+  - name: valuation.updated
+    description: Fired when item valuation rates are updated
+    payload: [items, new_valuation_rates]
+  - name: stock.reconciled
+    description: Fired when stock reconciliation is completed
+    payload: [reconciliation_items, difference_amount]
+  - name: repost.completed
+    description: Fired when valuation repost completes successfully
+    payload: [based_on, repost_item_code, repost_warehouse]
+  - name: repost.failed
+    description: Fired when valuation repost fails
+    payload: [based_on, repost_item_code, error_message]
+
+related:
+  - feature: stock-entry-movements
+    type: required
+    reason: "Stock ledger entries affected by valuation changes"
+  - feature: warehouse-bin-management
+    type: required
+    reason: "Warehouse bin quantities adjusted during reconciliation"
+  - feature: general-ledger
+    type: required
+    reason: "GL entries created for all valuation changes"
+  - feature: serial-batch-tracking
+    type: optional
+    reason: "Serial numbers validated during stock reconciliation"
+
+extensions:
+  source:
+    repo: "https://github.com/frappe/erpnext"
+    project: "ERP system"
+    tech_stack: "Python/Frappe Framework"
