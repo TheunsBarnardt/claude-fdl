@@ -1,0 +1,518 @@
+# ============================================================
+# List/Queue Operations — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/redis/redis
+# Source project: Redis (C, in-memory data structure store)
+# Files traced: t_list.c, quicklist.h
+# ============================================================
+
+feature: list-queue-operations
+version: "1.0.0"
+description: Ordered collection with efficient head/tail insertion, removal, and range queries; supports blocking operations and atomic moves between lists
+category: data
+tags: [lists, queues, stacks, blocking-operations, ordered-collections]
+
+actors:
+  - id: client
+    name: Client
+    type: human
+    description: Application requesting list operations
+
+fields:
+  - name: key
+    type: text
+    description: Unique identifier for the list
+    required: true
+  - name: elements
+    type: json
+    description: Ordered array of list elements (strings or integers)
+    required: false
+  - name: length
+    type: number
+    description: Current count of elements
+    required: false
+  - name: head_index
+    type: number
+    description: Index of first element (0-based)
+    required: false
+  - name: tail_index
+    type: number
+    description: Index of last element
+    required: false
+  - name: is_blocking
+    type: boolean
+    description: Whether operation should block if list empty
+    required: false
+  - name: block_timeout_ms
+    type: number
+    description: Maximum milliseconds to wait (0 = indefinite)
+    required: false
+
+rules:
+  - List can be accessed from both ends (head and tail) in O(1) time
+  - Indices support negative values (-1 = last element, -2 = second-to-last, etc.)
+  - LTRIM removes elements from both ends simultaneously; intermediate indices unclamped
+  - Blocking operations (BLPOP, BRPOP, etc.) suspend client until data available or timeout
+  - When list becomes empty after pop/trim, key is automatically deleted
+  - LMOVE and BLMOVE atomically pop from source and push to destination
+  - Range indices clamped to valid bounds; out-of-range ranges return empty results
+  - All operations are atomic with respect to individual keys
+
+states:
+  - field: presence
+    values:
+      - value: absent
+        initial: true
+        description: Key does not exist
+      - value: present
+        description: List exists with one or more elements
+      - value: empty
+        terminal: true
+        description: List becomes empty (key auto-deleted)
+
+outcomes:
+  # PUSH OPERATIONS
+  push_to_head:
+    priority: 10
+    description: Add element(s) to head of list
+    given:
+      - "LPUSH command issued"
+      - field: elements
+        source: input
+        description: "one or more values to push"
+    then:
+      - action: set_field
+        target: elements
+        description: "add to head in order provided"
+      - action: emit_event
+        event: list.lpush
+        payload: [key, count_pushed, new_length]
+    result: "list created if absent; elements added; client receives new length"
+
+  push_to_tail:
+    priority: 11
+    description: Add element(s) to tail of list
+    given:
+      - "RPUSH command issued"
+      - field: elements
+        source: input
+    then:
+      - action: set_field
+        target: elements
+        description: "add to tail in order provided"
+      - action: emit_event
+        event: list.rpush
+        payload: [key, count_pushed, new_length]
+    result: "list created if absent; elements added; client receives new length"
+
+  push_conditional:
+    priority: 12
+    description: Add elements only if list exists
+    given:
+      - field: command
+        source: input
+        operator: in
+        value: [LPUSHX, RPUSHX]
+    then:
+      - action: set_field
+        target: elements
+        when: "list exists"
+      - action: emit_event
+        event: list.push_conditional
+        payload: [key, pushed_count, new_length]
+    result: "elements added if list present; returns 0 if key absent"
+
+  # POP OPERATIONS
+  pop_from_head:
+    priority: 20
+    description: Remove and return element(s) from head
+    given:
+      - "LPOP command issued"
+      - field: count
+        source: input
+        operator: gt
+        value: 0
+        description: "optional count parameter (default 1)"
+    then:
+      - action: set_field
+        target: elements
+        description: "remove from head"
+      - action: emit_event
+        event: list.lpop
+        payload: [key, popped_count, new_length]
+    result: "client receives single element or array of count elements (or nil if empty)"
+
+  pop_from_tail:
+    priority: 21
+    description: Remove and return element(s) from tail
+    given:
+      - "RPOP command issued"
+      - field: count
+        source: input
+        operator: gt
+        value: 0
+    then:
+      - action: set_field
+        target: elements
+        description: "remove from tail"
+      - action: emit_event
+        event: list.rpop
+        payload: [key, popped_count, new_length]
+    result: "client receives single element or array of count elements (or nil if empty)"
+
+  pop_empty_list:
+    priority: 22
+    given:
+      - field: list_length
+        source: db
+        operator: eq
+        value: 0
+    then:
+      - action: emit_event
+        event: list.pop_empty
+        payload: [key]
+    result: "client receives nil"
+
+  blocking_pop:
+    priority: 23
+    description: Wait for element(s) to become available
+    given:
+      - field: command
+        source: input
+        operator: in
+        value: [BLPOP, BRPOP, BLMOVE, BLMPOP]
+      - field: timeout_ms
+        source: input
+        operator: gte
+        value: 0
+        description: "blocking timeout (0 = indefinite)"
+      - field: list_has_data
+        source: db
+        operator: eq
+        value: false
+    then:
+      - action: transition_state
+        field: blocking_state
+        to: suspended
+        description: "client put in queue"
+      - action: emit_event
+        event: list.blocking_wait
+        payload: [key, timeout_ms, client_id]
+    result: "client blocks until data available or timeout; receives elements or nil"
+
+  blocking_pop_timeout:
+    priority: 24
+    given:
+      - field: timeout_elapsed
+        source: system
+        operator: eq
+        value: true
+      - field: no_data_arrived
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: transition_state
+        field: blocking_state
+        to: released
+      - action: emit_event
+        event: list.blocking_timeout
+        payload: [key, timeout_ms]
+    result: "client unblocked; receives nil"
+
+  # RANGE OPERATIONS
+  get_range:
+    priority: 30
+    description: Retrieve elements by index range
+    given:
+      - "LRANGE key start stop"
+      - field: start
+        source: input
+      - field: stop
+        source: input
+    then:
+      - action: emit_event
+        event: list.range_read
+        payload: [key, start, stop, elements_returned]
+    result: "array of elements from start to stop inclusive (clamped to bounds); empty array if out-of-range"
+
+  get_index:
+    priority: 31
+    description: Retrieve single element by index
+    given:
+      - "LINDEX key index"
+      - field: index
+        source: input
+    then:
+      - action: emit_event
+        event: list.index_read
+        payload: [key, index, found]
+    result: "element at index (or nil if out-of-range)"
+
+  get_length:
+    priority: 32
+    description: Get list length
+    given:
+      - "LLEN key"
+    then:
+      - action: emit_event
+        event: list.len
+        payload: [key, length]
+    result: "number of elements (0 if key absent)"
+
+  # MODIFICATION OPERATIONS
+  set_index:
+    priority: 40
+    description: Overwrite element at index
+    given:
+      - "LSET key index element"
+      - field: index
+        source: input
+        description: "must be within [0, length-1] or [-length, -1]"
+    then:
+      - action: set_field
+        target: elements
+        description: "replace at index"
+      - action: emit_event
+        event: list.set
+        payload: [key, index, new_element]
+    result: "element replaced; client receives OK"
+
+  set_out_of_range:
+    priority: 41
+    error: OUT_OF_RANGE
+    given:
+      - field: index
+        source: input
+        operator: not_in
+        value: "[valid_indices]"
+    then: []
+    result: "error returned; list unchanged"
+
+  insert_element:
+    priority: 42
+    description: Insert element before/after pivot
+    given:
+      - "LINSERT key BEFORE|AFTER pivot element"
+      - field: pivot
+        source: input
+        description: "element to find"
+      - field: pivot_found
+        source: db
+        operator: eq
+        value: true
+    then:
+      - action: set_field
+        target: elements
+        description: "insert before or after first matching pivot"
+      - action: emit_event
+        event: list.insert
+        payload: [key, direction, new_length]
+    result: "element inserted; client receives new length"
+
+  insert_pivot_not_found:
+    priority: 43
+    given:
+      - field: pivot_found
+        source: db
+        operator: eq
+        value: false
+    then:
+      - action: emit_event
+        event: list.insert_failed
+        payload: [key, pivot]
+    result: "list unchanged; client receives -1"
+
+  trim_range:
+    priority: 44
+    description: Keep only elements in range, remove rest
+    given:
+      - "LTRIM key start stop"
+      - field: start
+        source: input
+      - field: stop
+        source: input
+    then:
+      - action: set_field
+        target: elements
+        description: "remove elements outside [start, stop]"
+      - action: emit_event
+        event: list.trimmed
+        payload: [key, start, stop, removed_count]
+    result: "list trimmed; client receives OK; key deleted if empty"
+
+  remove_elements:
+    priority: 45
+    description: Remove matching elements
+    given:
+      - "LREM key count element"
+      - field: count
+        source: input
+        description: "positive=from head, negative=from tail, 0=all"
+    then:
+      - action: set_field
+        target: elements
+        description: "remove matching elements per count direction"
+      - action: emit_event
+        event: list.removed
+        payload: [key, count_removed, new_length]
+    result: "matching elements removed; client receives count removed"
+
+  find_position:
+    priority: 46
+    description: Find position(s) of element with options
+    given:
+      - "LPOS key element [RANK rank] [COUNT count] [MAXLEN len]"
+    then:
+      - action: emit_event
+        event: list.pos_search
+        payload: [key, element, rank, count, positions_found]
+    result: "single position or array of positions (or nil if not found)"
+
+  # ATOMIC MOVE
+  move_between_lists:
+    priority: 50
+    description: Atomically pop from source and push to destination
+    given:
+      - "LMOVE source destination LEFT|RIGHT LEFT|RIGHT"
+      - field: source_has_data
+        source: db
+        operator: eq
+        value: true
+    then:
+      - action: set_field
+        target: source.elements
+        description: "pop from source"
+      - action: set_field
+        target: destination.elements
+        description: "push to destination"
+      - action: emit_event
+        event: list.moved
+        payload: [source_key, destination_key, element, new_source_length, new_dest_length]
+    result: "element moved atomically; client receives moved element"
+
+  move_empty_source:
+    priority: 51
+    given:
+      - field: source_has_data
+        source: db
+        operator: eq
+        value: false
+    then:
+      - action: emit_event
+        event: list.move_failed
+        payload: [source_key]
+    result: "lists unchanged; client receives nil"
+
+  blocking_move:
+    priority: 52
+    description: Block until source has data, then move
+    given:
+      - field: command
+        source: input
+        operator: eq
+        value: BLMOVE
+      - field: source_empty
+        source: db
+        operator: eq
+        value: true
+      - field: timeout_ms
+        source: input
+        operator: gte
+        value: 0
+    then:
+      - action: transition_state
+        field: blocking_state
+        to: suspended
+      - action: emit_event
+        event: list.blocking_move
+        payload: [source_key, timeout_ms]
+    result: "client blocks until source has data or timeout; then moves and returns element"
+
+  # MULTI-KEY OPERATIONS
+  mpop_from_multiple_keys:
+    priority: 60
+    description: Pop from first non-empty list among multiple
+    given:
+      - "LMPOP numkeys key [key ...] LEFT|RIGHT [COUNT count]"
+      - field: first_non_empty
+        source: db
+        description: "first key with data"
+    then:
+      - action: set_field
+        target: first_non_empty.elements
+        description: "pop count elements from this list"
+      - action: emit_event
+        event: list.mpop
+        payload: [key_popped, count_popped, remaining_keys_checked]
+    result: "nested array [key, [elements...]] or nil if all empty"
+
+  blocking_mpop:
+    priority: 61
+    description: Block until any of multiple lists has data
+    given:
+      - field: command
+        source: input
+        operator: eq
+        value: BLMPOP
+      - field: any_nonempty
+        source: db
+        operator: eq
+        value: false
+    then:
+      - action: transition_state
+        field: blocking_state
+        to: suspended
+      - action: emit_event
+        event: list.blocking_mpop
+        payload: [keys_list, timeout_ms]
+    result: "client blocks until any key has data or timeout; then pops and returns [key, elements]"
+
+errors:
+  - code: OUT_OF_RANGE
+    message: "index is out of range"
+    user_safe: true
+  - code: WRONG_TYPE
+    message: "WRONGTYPE Operation against a key holding the wrong kind of value"
+    user_safe: true
+
+events:
+  - list.lpush
+  - list.rpush
+  - list.push_conditional
+  - list.lpop
+  - list.rpop
+  - list.pop_empty
+  - list.blocking_wait
+  - list.blocking_timeout
+  - list.range_read
+  - list.index_read
+  - list.len
+  - list.set
+  - list.insert
+  - list.trimmed
+  - list.removed
+  - list.pos_search
+  - list.moved
+  - list.blocking_move
+  - list.mpop
+  - list.blocking_mpop
+
+related:
+  - feature: string-key-value
+    type: optional
+    reason: Elements are strings or numeric values
+  - feature: multi-exec-transactions
+    type: optional
+    reason: Often used within transactions
+
+extensions:
+  source:
+    repo: "https://github.com/redis/redis"
+    project: "Redis"
+    tech_stack: "C"
+    files_traced: 2
+    entry_points:
+      - "src/t_list.c"
+      - "src/quicklist.h"

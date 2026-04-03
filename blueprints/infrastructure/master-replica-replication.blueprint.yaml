@@ -1,0 +1,439 @@
+# ============================================================
+# Master-Replica Replication — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/redis/redis
+# Source project: Redis (C, in-memory data structure store)
+# Files traced: replication.c
+# ============================================================
+
+feature: master-replica-replication
+version: "1.0.0"
+description: One-way data synchronization from master to replicas; full or partial resync with command streaming and replication backlog
+category: infrastructure
+tags: [replication, high-availability, read-scaling, data-synchronization, partial-resync]
+
+actors:
+  - id: master
+    name: Master
+    type: system
+    description: Primary instance accepting writes
+  - id: replica
+    name: Replica
+    type: system
+    description: Secondary instance receiving commands
+  - id: replication_stream
+    name: Replication Stream
+    type: system
+    description: Command log between master and replicas
+
+fields:
+  - name: repl_state
+    type: select
+    options: [connected, disconnected, syncing, sync_partial, replicating]
+    description: Replication state machine
+    required: false
+  - name: repl_id
+    type: text
+    description: "128-bit runid identifying master generation"
+    required: false
+  - name: repl_offset
+    type: number
+    description: Bytes processed in replication stream (for partial resync)
+    required: false
+  - name: repl_backlog
+    type: json
+    description: Circular buffer of recent commands (for partial resync)
+    required: false
+  - name: backlog_size_mb
+    type: number
+    description: Maximum size of replication backlog
+    required: false
+  - name: replication_lag_seconds
+    type: number
+    description: Delay between master write and replica application
+    required: false
+
+rules:
+  - Master sends ALL write commands to connected replicas
+  - Replicas apply commands in order (FIFO); cannot apply out-of-order
+  - Replicas are read-only (writes rejected or ignored)
+  - Replication is asynchronous (master doesn't wait for replica ack)
+  - Full sync copies RDB snapshot then streams commands
+  - Partial sync only sends commands within replication backlog window
+  - Replication ID identifies master generation (changes on election or failover)
+  - Replica track master offset to enable partial resync after disconnect
+  - If offset falls outside backlog window, full sync required
+  - Replication backlog is circular (overwrites old entries)
+
+states:
+  - field: master_state
+    values:
+      - value: active
+        initial: true
+        description: Master accepting writes
+  - field: replica_state
+    values:
+      - value: not_replicating
+        initial: true
+        description: Not connected to master
+      - value: connecting
+        description: TCP connection established
+      - value: syncing
+        description: Receiving RDB snapshot
+      - value: sync_partial
+        description: Receiving backlog commands after partial resync
+      - value: replicating
+        terminal: true
+        description: Streaming commands in real-time
+
+outcomes:
+  # ========== REPLICATION SETUP ==========
+
+  configure_replication:
+    priority: 10
+    description: Configure instance as replica
+    given:
+      - "REPLICAOF master_host master_port"
+      - field: master_address
+        source: input
+    then:
+      - action: transition_state
+        field: replica_state
+        to: connecting
+      - action: emit_event
+        event: replication.config_set
+        payload: [master_host, master_port]
+    result: "OK; replica begins connection to master"
+
+  stop_replication:
+    priority: 11
+    description: Promote replica to standalone
+    given:
+      - "REPLICAOF NO ONE"
+    then:
+      - action: transition_state
+        field: replica_state
+        to: not_replicating
+      - action: emit_event
+        event: replication.stopped
+        payload: []
+    result: "OK; replica becomes master (accepts writes)"
+
+  # ========== FULL SYNCHRONIZATION ==========
+
+  full_sync_rdb:
+    priority: 20
+    description: Master sends RDB snapshot for full sync
+    given:
+      - field: replica_state
+        source: db
+        operator: eq
+        value: connecting
+      - field: partial_resync_possible
+        source: computed
+        operator: eq
+        value: false
+    then:
+      - action: transition_state
+        field: replica_state
+        to: syncing
+      - action: emit_event
+        event: replication.full_sync_started
+        payload: [rdb_size, master_repl_id, offset]
+    result: "master begins sending RDB; replica loads snapshot"
+
+  full_sync_complete:
+    priority: 21
+    given:
+      - field: rdb_received
+        source: system
+        operator: eq
+        value: true
+      - field: replica_loaded_rdb
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: transition_state
+        field: replica_state
+        to: replicating
+      - action: emit_event
+        event: replication.full_sync_complete
+        payload: [total_time_ms, rdb_load_time_ms]
+    result: "replica synchronized; begins receiving command stream"
+
+  # ========== PARTIAL SYNCHRONIZATION ==========
+
+  partial_resync_request:
+    priority: 30
+    description: Replica attempts partial resync
+    given:
+      - field: replica_reconnect
+        source: system
+        operator: eq
+        value: true
+      - field: offset_in_backlog
+        source: computed
+        operator: eq
+        value: true
+    then:
+      - action: emit_event
+        event: replication.partial_resync_request
+        payload: [replica_repl_id, replica_offset]
+    result: "PSYNC repl_id offset sent to master"
+
+  partial_resync_accepted:
+    priority: 31
+    given:
+      - field: master_repl_id_matches
+        source: db
+        operator: eq
+        value: true
+      - field: replica_offset_in_backlog
+        source: db
+        operator: eq
+        value: true
+    then:
+      - action: transition_state
+        field: replica_state
+        to: sync_partial
+      - action: emit_event
+        event: replication.partial_resync_accepted
+        payload: [repl_id, backlog_start_offset]
+    result: "+CONTINUE; master sends backlog commands from offset"
+
+  partial_resync_rejected:
+    priority: 32
+    given:
+      - field: master_repl_id_mismatch
+        source: db
+        operator: eq
+        value: true
+      - any:
+          - field: replica_offset_too_old
+            source: db
+            operator: eq
+            value: true
+          - field: repl_id_changed
+            source: db
+            operator: eq
+            value: true
+    then:
+      - action: transition_state
+        field: replica_state
+        to: syncing
+      - action: emit_event
+        event: replication.full_resync_forced
+        payload: [reason]
+    result: "-FULLRESYNC; master sends full RDB"
+
+  # ========== COMMAND PROPAGATION ==========
+
+  master_write_command:
+    priority: 40
+    description: Master accepts write command
+    given:
+      - "any write command (SET, DEL, LPUSH, etc.)"
+      - field: replicas_connected
+        source: system
+        operator: gt
+        value: 0
+    then:
+      - action: emit_event
+        event: replication.command_propagated
+        payload: [command, replicas_count]
+    result: "master applies command locally and queues for replicas"
+
+  replica_receive_command:
+    priority: 41
+    description: Replica receives and applies command
+    given:
+      - field: master_sends_command
+        source: system
+    then:
+      - action: emit_event
+        event: replication.command_applied
+        payload: [command, offset_incremented]
+    result: "replica applies command to own dataset"
+
+  command_buffer_overflow:
+    priority: 42
+    description: Replication buffer grows too large
+    given:
+      - field: buffer_size_exceeds_limit
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: emit_event
+        event: replication.buffer_overflow
+        payload: [buffer_size, limit, replica_lag_seconds]
+    result: "replica disconnected if buffer exceeds limits; full resync required on reconnect"
+
+  # ========== DISCONNECT & RECONNECT ==========
+
+  replica_disconnect:
+    priority: 50
+    description: Network partition or timeout
+    given:
+      - field: network_failure
+        source: system
+    then:
+      - action: transition_state
+        field: replica_state
+        to: not_replicating
+      - action: emit_event
+        event: replication.disconnected
+        payload: [disconnect_time, offset_at_disconnect]
+    result: "replica stops receiving; master queues commands for eventual resync"
+
+  replica_reconnect:
+    priority: 51
+    description: Replica reconnects to master
+    given:
+      - field: replica_connects_again
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: transition_state
+        field: replica_state
+        to: connecting
+      - action: emit_event
+        event: replication.reconnecting
+        payload: [disconnection_duration_seconds]
+    result: "replica attempts PSYNC; full sync if backlog not available"
+
+  # ========== REPLICATION BACKLOG ==========
+
+  backlog_command_buffered:
+    priority: 60
+    description: Command added to replication backlog
+    given:
+      - field: write_command
+        source: system
+    then:
+      - action: emit_event
+        event: replication.backlog_write
+        payload: [command_size, backlog_fill_percent]
+    result: "command available for partial resync"
+
+  backlog_overwrite:
+    priority: 61
+    description: Backlog circular buffer overwrites old entry
+    given:
+      - field: backlog_full
+        source: system
+        operator: eq
+        value: true
+      - field: new_command_added
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: emit_event
+        event: replication.backlog_overwrite
+        payload: [discarded_commands_count]
+    result: "old commands discarded; replicas with those offsets must full resync"
+
+  backlog_size_configurable:
+    priority: 62
+    description: Adjust backlog size for different retention
+    given:
+      - field: repl_backlog_size
+        source: input
+        description: "in bytes (larger = longer disconnect tolerance)"
+    then:
+      - action: set_field
+        target: backlog_size_mb
+      - action: emit_event
+        event: replication.backlog_resized
+        payload: [new_size_mb, previous_size_mb]
+    result: "backlog capacity adjusted; takes effect on next command"
+
+  # ========== REPLICATION STATE INFO ==========
+
+  info_replication:
+    priority: 70
+    description: Query replication status
+    given:
+      - "INFO replication"
+    then:
+      - action: emit_event
+        event: replication.info_queried
+        payload: [role, repl_id, repl_offset, replicas_count, lag]
+    result: "master: role=master, replicas=[{ip,port,state,offset}, ...]; replica: role=slave, master={ip,port,state}"
+
+  role_command:
+    priority: 71
+    description: Get role and replication info
+    given:
+      - "ROLE command"
+    then:
+      - action: emit_event
+        event: replication.role_queried
+        payload: [role]
+    result: "master=[master, repl_offset, [[replica_ip, replica_port, replica_offset], ...]]; replica=[slave, master_ip, master_port, state, replica_offset]"
+
+  # ========== WRITE SAFETY ==========
+
+  wait_for_replicas:
+    priority: 80
+    description: Block until replicas ack
+    given:
+      - "WAIT num_replicas timeout_ms"
+      - field: num_replicas
+        source: input
+      - field: timeout_ms
+        source: input
+    then:
+      - action: emit_event
+        event: replication.wait_issued
+        payload: [num_replicas_required, timeout_ms]
+    result: "blocks until >= num_replicas have replicated offset or timeout; returns count of acks"
+
+errors:
+  - code: REPLICATION_ERROR
+    message: "Error during replication setup"
+    user_safe: true
+  - code: READONLY
+    message: "READONLY You can't write against a read only replica"
+    user_safe: true
+
+events:
+  - replication.config_set
+  - replication.stopped
+  - replication.full_sync_started
+  - replication.full_sync_complete
+  - replication.partial_resync_request
+  - replication.partial_resync_accepted
+  - replication.full_resync_forced
+  - replication.command_propagated
+  - replication.command_applied
+  - replication.buffer_overflow
+  - replication.disconnected
+  - replication.reconnecting
+  - replication.backlog_write
+  - replication.backlog_overwrite
+  - replication.backlog_resized
+  - replication.info_queried
+  - replication.role_queried
+  - replication.wait_issued
+
+related:
+  - feature: database-persistence
+    type: optional
+    reason: Replicas often serve as backup storage
+  - feature: sentinel-failover
+    type: optional
+    reason: Sentinel uses replication topology for failover
+
+extensions:
+  source:
+    repo: "https://github.com/redis/redis"
+    project: "Redis"
+    tech_stack: "C"
+    files_traced: 1
+    entry_points:
+      - "src/replication.c"

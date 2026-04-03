@@ -1,0 +1,520 @@
+# ============================================================
+# Stream Event Log — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/redis/redis
+# Source project: Redis (C, in-memory data structure store)
+# Files traced: t_stream.c, stream.h
+# ============================================================
+
+feature: stream-event-log
+version: "1.0.0"
+description: Append-only event log with monotonically increasing IDs, consumer groups for distributed processing, and automatic acknowledgment tracking
+category: data
+tags: [streams, event-log, consumer-groups, message-queue, ack-tracking, ordering]
+
+actors:
+  - id: producer
+    name: Producer
+    type: system
+    description: Application adding events to stream
+  - id: consumer
+    name: Consumer
+    type: system
+    description: Application reading events from stream
+  - id: consumer_group
+    name: Consumer Group
+    type: system
+    description: Named group tracking consumer progress and pending messages
+
+fields:
+  - name: key
+    type: text
+    description: Stream identifier
+    required: true
+  - name: entry_id
+    type: text
+    description: "Unique monotonic ID (format: milliseconds-sequence, e.g., 1526919030474-0)"
+    required: false
+  - name: fields
+    type: json
+    description: "Event data as field-value pairs"
+    required: false
+  - name: group_name
+    type: text
+    description: Consumer group identifier
+    required: false
+  - name: consumer_name
+    type: text
+    description: Consumer identifier within group
+    required: false
+  - name: pending_entries
+    type: json
+    description: "Array of [id, consumer, delivery_count, delivery_time_ms]"
+    required: false
+
+rules:
+  - Stream entry IDs are globally ordered; new IDs always > previous IDs
+  - Entry IDs auto-generated based on millisecond timestamp and sequence counter
+  - Consumer groups track position with last_id (messages after this are new)
+  - Consumer groups maintain Pending Entry List (PEL) of unacknowledged messages
+  - Messages in PEL tracked by both group and consumer (dual indexing)
+  - Idle messages in PEL can be claimed by other consumers
+  - All stream operations are atomic with respect to the stream key
+  - Entry deletion leaves tombstone (space not reclaimed)
+
+states:
+  - field: stream_state
+    values:
+      - value: absent
+        initial: true
+        description: Stream does not exist
+      - value: present
+        description: Stream has entries
+  - field: consumer_group_state
+    values:
+      - value: new
+        initial: true
+        description: Group created but no messages delivered
+      - value: active
+        description: Group actively delivering messages
+      - value: idle
+        description: No consumers active in group
+  - field: message_delivery
+    values:
+      - value: undelivered
+        initial: true
+        description: Message not yet given to consumer
+      - value: pending
+        description: Message delivered, awaiting acknowledgment
+      - value: acknowledged
+        terminal: true
+        description: Message acknowledged by consumer
+
+outcomes:
+  # ========== ADD/APPEND ==========
+
+  xadd_entry:
+    priority: 10
+    description: Add new entry with auto-generated or explicit ID
+    given:
+      - "XADD key [ID|*] field value [field value ...]"
+      - field: id_generation
+        source: input
+        description: "* = auto-generate, or explicit milliseconds-sequence"
+    then:
+      - action: set_field
+        target: entry_id
+        description: "create monotonic ID"
+      - action: set_field
+        target: fields
+        description: "store event data"
+      - action: emit_event
+        event: stream.entry_added
+        payload: [key, entry_id, field_count]
+    result: "new entry ID returned to producer"
+
+  xadd_with_trimming:
+    priority: 11
+    description: Add entry and trim stream to max length/id
+    given:
+      - "XADD with MAXLEN|MINID flag"
+      - field: trim_strategy
+        source: input
+        description: "MAXLEN (by count) or MINID (by id)"
+    then:
+      - action: set_field
+        target: entry_id
+      - action: set_field
+        target: fields
+      - action: emit_event
+        event: stream.trimmed
+        payload: [key, entries_removed, new_length]
+    result: "new entry ID; stream trimmed per strategy"
+
+  xadd_idempotent:
+    priority: 12
+    description: Add with idempotent deduplication (IDMP)
+    given:
+      - "XADD with IDMP <producer_id> <idempotent_id>"
+      - field: duplicate
+        source: db
+        operator: eq
+        value: true
+        description: "same producer_id + idempotent_id seen before"
+    then:
+      - action: emit_event
+        event: stream.duplicate_detected
+        payload: [key, producer_id, existing_id]
+    result: "existing entry ID returned (no new entry added)"
+
+  # ========== READ WITHOUT GROUPS ==========
+
+  xread_entries:
+    priority: 20
+    description: Read entries starting after given ID
+    given:
+      - "XREAD [COUNT count] STREAMS key id"
+      - field: start_id
+        source: input
+        description: "read entries after this ID"
+    then:
+      - action: emit_event
+        event: stream.read
+        payload: [key, start_id, entries_returned]
+    result: "array of entries [id, [field1, value1, ...]] or nil if empty"
+
+  xread_range:
+    priority: 21
+    description: Get entries by ID range
+    given:
+      - field: command
+        source: input
+        operator: in
+        value: [XRANGE, XREVRANGE]
+      - field: start_id
+        source: input
+      - field: end_id
+        source: input
+    then:
+      - action: emit_event
+        event: stream.range_read
+        payload: [key, start_id, end_id, entries_returned, direction]
+    result: "array of entries in range (XREVRANGE returns reverse order)"
+
+  xread_blocking:
+    priority: 22
+    description: Block until new entries arrive
+    given:
+      - "XREAD BLOCK timeout_ms ... STREAMS key id"
+      - field: timeout_ms
+        source: input
+        description: "0 = indefinite block"
+      - field: new_entries_available
+        source: system
+        operator: eq
+        value: false
+    then:
+      - action: transition_state
+        field: message_delivery
+        to: suspended
+      - action: emit_event
+        event: stream.blocking_read
+        payload: [key, timeout_ms]
+    result: "client blocks until new entries or timeout; returns entries or nil"
+
+  xlen_count:
+    priority: 23
+    description: Get stream length (non-deleted entries)
+    given:
+      - "XLEN key"
+    then:
+      - action: emit_event
+        event: stream.length_read
+        payload: [key, live_entry_count]
+    result: "number of non-deleted entries"
+
+  # ========== CONSUMER GROUPS ==========
+
+  xgroup_create:
+    priority: 30
+    description: Create consumer group
+    given:
+      - "XGROUP CREATE key group id"
+      - field: id
+        source: input
+        description: "group start position ($ = stream head, explicit id, 0-0 = from beginning)"
+    then:
+      - action: set_field
+        target: group_name
+      - action: transition_state
+        field: consumer_group_state
+        to: new
+      - action: emit_event
+        event: stream.group_created
+        payload: [key, group_name, start_id]
+    result: "OK returned; group created and ready"
+
+  xgroup_destroy:
+    priority: 31
+    description: Delete consumer group
+    given:
+      - "XGROUP DESTROY key group"
+    then:
+      - action: emit_event
+        event: stream.group_deleted
+        payload: [key, group_name]
+    result: "OK returned; group and its PEL deleted"
+
+  xgroup_setid:
+    priority: 32
+    description: Update group read position
+    given:
+      - "XGROUP SETID key group id"
+    then:
+      - action: emit_event
+        event: stream.group_position_updated
+        payload: [key, group_name, new_position]
+    result: "OK returned; future XREADGROUP starts at new position"
+
+  xgroup_createconsumer:
+    priority: 33
+    description: Explicitly create consumer in group
+    given:
+      - "XGROUP CREATECONSUMER key group consumer"
+    then:
+      - action: emit_event
+        event: stream.consumer_created
+        payload: [key, group_name, consumer_name]
+    result: "1 if new consumer created, 0 if already existed"
+
+  xgroup_delconsumer:
+    priority: 34
+    description: Remove consumer from group
+    given:
+      - "XGROUP DELCONSUMER key group consumer"
+    then:
+      - action: emit_event
+        event: stream.consumer_deleted
+        payload: [key, group_name, consumer_name, pending_entries_removed]
+    result: "count of pending entries that were removed"
+
+  xreadgroup_entries:
+    priority: 35
+    description: Read as consumer group member
+    given:
+      - "XREADGROUP GROUP group consumer STREAMS key id"
+      - field: id
+        source: input
+        description: "> = new undelivered messages, or explicit id"
+      - field: messages_available
+        source: db
+        operator: eq
+        value: true
+    then:
+      - action: set_field
+        target: pending_entries
+        description: "create NACK for each delivered message"
+      - action: transition_state
+        field: message_delivery
+        to: pending
+      - action: emit_event
+        event: stream.group_read
+        payload: [key, group_name, consumer_name, entries_delivered, nacks_created]
+    result: "array of entries with auto-added to consumer's PEL"
+
+  xreadgroup_blocking:
+    priority: 36
+    description: Block within consumer group
+    given:
+      - "XREADGROUP BLOCK timeout_ms ..."
+      - field: new_messages
+        source: db
+        operator: eq
+        value: false
+    then:
+      - action: transition_state
+        field: message_delivery
+        to: suspended
+      - action: emit_event
+        event: stream.group_blocking_read
+        payload: [key, group_name, timeout_ms]
+    result: "client blocks; returns entries or nil on timeout"
+
+  # ========== ACKNOWLEDGMENT ==========
+
+  xack_messages:
+    priority: 40
+    description: Acknowledge messages as processed
+    given:
+      - "XACK key group id [id ...]"
+      - field: ids_in_pel
+        source: db
+        description: "messages in group's PEL"
+    then:
+      - action: set_field
+        target: pending_entries
+        description: "remove from group PEL and consumer PEL"
+      - action: transition_state
+        field: message_delivery
+        to: acknowledged
+      - action: emit_event
+        event: stream.acked
+        payload: [key, group_name, acked_count]
+    result: "count of acknowledged messages (0 if already acked or not found)"
+
+  xpending_summary:
+    priority: 41
+    description: Get pending message summary
+    given:
+      - "XPENDING key group"
+    then:
+      - action: emit_event
+        event: stream.pending_summary
+        payload: [key, group_name, total_pending, first_id, last_id, per_consumer_counts]
+    result: "[total_pending, first_pending_id, last_pending_id, [[consumer, count], ...]]"
+
+  xpending_details:
+    priority: 42
+    description: Get detailed pending message info
+    given:
+      - "XPENDING key group [IDLE min_idle] start end count"
+      - field: idle_filter
+        source: input
+        description: "optional: only pending >= min_idle_ms"
+    then:
+      - action: emit_event
+        event: stream.pending_details
+        payload: [key, group_name, min_idle, start, end, entries_returned]
+    result: "array of [id, consumer, idle_ms, delivery_count]"
+
+  xclaim_messages:
+    priority: 43
+    description: Claim idle messages from other consumer
+    given:
+      - "XCLAIM key group new_consumer min_idle_ms id [id ...] [IDLE ms] [RETRYCOUNT count]"
+      - field: message_idle
+        source: db
+        operator: gte
+        value: min_idle_ms
+        description: "message in PEL and idle >= threshold"
+    then:
+      - action: set_field
+        target: pending_entries
+        description: "transfer from old consumer to new consumer"
+      - action: emit_event
+        event: stream.claimed
+        payload: [key, group_name, old_consumer, new_consumer, claimed_count, delivery_count_updated]
+    result: "array of claimed messages [id, [field1, value1, ...]] or empty if none eligible"
+
+  xautoclaim_messages:
+    priority: 44
+    description: Auto-claim idle messages with pagination
+    given:
+      - "XAUTOCLAIM key group consumer min_idle_ms start_id [COUNT count]"
+    then:
+      - action: emit_event
+        event: stream.autoclaimed
+        payload: [key, group_name, consumer, claimed_count, next_cursor]
+    result: "[cursor_id, [[id, [field, value, ...]], ...]]"
+
+  # ========== DELETION ==========
+
+  xdel_entries:
+    priority: 50
+    description: Mark entries as deleted
+    given:
+      - "XDEL key id [id ...]"
+      - field: ids_exist
+        source: db
+    then:
+      - action: emit_event
+        event: stream.deleted
+        payload: [key, deleted_count, max_deleted_id_updated]
+    result: "count of deleted entries (0 if not found)"
+
+  xtrim_entries:
+    priority: 51
+    description: Remove old entries by length or ID threshold
+    given:
+      - "XTRIM key [MAXLEN|MINID] [~] threshold [LIMIT count]"
+      - field: trim_type
+        source: input
+        description: "MAXLEN = keep N newest, MINID = keep only id >= threshold"
+    then:
+      - action: emit_event
+        event: stream.trimmed
+        payload: [key, entries_removed, new_length, strategy]
+    result: "count of trimmed entries"
+
+  # ========== INFO ==========
+
+  xinfo_stream:
+    priority: 60
+    description: Get stream metadata
+    given:
+      - "XINFO STREAM key"
+    then:
+      - action: emit_event
+        event: stream.info_read
+        payload: [key, length, first_id, last_id, entries_added, groups_count]
+    result: "stream information (length, IDs, entry count, consumer group count, etc.)"
+
+  xinfo_groups:
+    priority: 61
+    description: List consumer groups
+    given:
+      - "XINFO GROUPS key"
+    then:
+      - action: emit_event
+        event: stream.groups_listed
+        payload: [key, group_count]
+    result: "array of group info (name, consumers_count, pending_entries, last_id)"
+
+  xinfo_consumers:
+    priority: 62
+    description: List consumers in group
+    given:
+      - "XINFO CONSUMERS key group"
+    then:
+      - action: emit_event
+        event: stream.consumers_listed
+        payload: [key, group_name, consumer_count]
+    result: "array of consumer info (name, pending_count, idle_time)"
+
+errors:
+  - code: WRONGTYPE
+    message: "WRONGTYPE Operation against a key holding the wrong kind of value"
+    user_safe: true
+  - code: NOGROUP
+    message: "NOGROUP No such consumer group"
+    user_safe: true
+  - code: NOSCRIPT
+    message: "Index out of range"
+    user_safe: true
+
+events:
+  - stream.entry_added
+  - stream.trimmed
+  - stream.duplicate_detected
+  - stream.read
+  - stream.range_read
+  - stream.blocking_read
+  - stream.length_read
+  - stream.group_created
+  - stream.group_deleted
+  - stream.group_position_updated
+  - stream.consumer_created
+  - stream.consumer_deleted
+  - stream.group_read
+  - stream.group_blocking_read
+  - stream.acked
+  - stream.pending_summary
+  - stream.pending_details
+  - stream.claimed
+  - stream.autoclaimed
+  - stream.deleted
+  - stream.info_read
+  - stream.groups_listed
+  - stream.consumers_listed
+
+related:
+  - feature: pub-sub-messaging
+    type: optional
+    reason: Both provide message delivery; streams add persistence and groups
+  - feature: list-queue-operations
+    type: optional
+    reason: Streams are persistent event logs; lists are transient queues
+  - feature: key-expiration
+    type: optional
+    reason: Can trim streams by age/count
+
+extensions:
+  source:
+    repo: "https://github.com/redis/redis"
+    project: "Redis"
+    tech_stack: "C"
+    files_traced: 2
+    entry_points:
+      - "src/t_stream.c"
+      - "src/stream.h"

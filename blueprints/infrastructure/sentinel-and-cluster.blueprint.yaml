@@ -1,0 +1,482 @@
+# ============================================================
+# Sentinel and Cluster — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/redis/redis
+# Source project: Redis (C, in-memory data structure store)
+# Files traced: sentinel.c, cluster.c
+# ============================================================
+
+feature: sentinel-and-cluster
+version: "1.0.0"
+description: "Sentinel: automatic failover and monitoring; Cluster: distributed sharding across multiple nodes with gossip protocol"
+category: infrastructure
+tags: [sentinel, cluster, failover, sharding, high-availability, auto-recovery, distributed]
+
+actors:
+  - id: sentinel_instance
+    name: Sentinel
+    type: system
+    description: Monitoring and failover orchestrator
+  - id: master
+    name: Master
+    type: system
+    description: Primary node accepting writes
+  - id: replica
+    name: Replica
+    type: system
+    description: Secondary node ready for promotion
+  - id: cluster_node
+    name: Cluster Node
+    type: system
+    description: Distributed cluster participant
+  - id: sentinel_quorum
+    name: Sentinel Quorum
+    type: system
+    description: Consensus for failover decisions
+
+fields:
+  - name: sentinel_mode
+    type: boolean
+    description: Whether Sentinel is enabled
+    required: false
+  - name: cluster_mode
+    type: boolean
+    description: Whether Cluster mode is enabled
+    required: false
+  - name: master_state
+    type: select
+    options: [healthy, sdown, odown, failing_over]
+    description: Sentinel's view of master health
+    required: false
+  - name: cluster_slots
+    type: number
+    description: "Number of hash slots (16384 in cluster mode)"
+    required: false
+  - name: node_slots_owned
+    type: json
+    description: Slot ranges owned by this node
+    required: false
+  - name: sentinel_quorum_size
+    type: number
+    description: Minimum Sentinels required for quorum
+    required: false
+
+rules:
+  # SENTINEL RULES
+  - Sentinel monitors master health via PING; no response within down_after_milliseconds = SDOWN
+  - Quorum of Sentinels must agree (ODOWN) before failover begins
+  - Failover elected to one Sentinel as leader; others follow decisions
+  - During failover: replica promoted to master, other replicas reconfigured
+  - Configurations written to disk and propagated via Pub/Sub
+  - Failed master can rejoin cluster as replica after recovery
+  # CLUSTER RULES
+  - Data sharded across cluster nodes using hash slots (0-16383)
+  - Slot assignment determines which node owns which keys
+  - Replicas replicate their master's slots (same slot ranges)
+  - Multi-key operations must have all keys in same slot
+  - Cluster protocol via gossip (periodic node updates)
+  - Redirection via MOVED (permanent) or ASK (temporary)
+  - Cluster can rebalance slots (migrate data between nodes)
+
+states:
+  # SENTINEL STATES
+  - field: master_health
+    values:
+      - value: healthy
+        initial: true
+        description: Master responding to pings
+      - value: sdown
+        description: Subjective down (this Sentinel sees it down)
+      - value: odown
+        description: Objective down (quorum agrees)
+      - value: failing_over
+        description: Failover in progress
+      - value: recovered
+        terminal: true
+        description: Master recovered post-failover
+  # CLUSTER STATES
+  - field: cluster_state
+    values:
+      - value: ok
+        initial: true
+        description: All slots assigned and reachable
+      - value: fail
+        description: Some slots unreachable or unassigned
+      - value: rebalancing
+        description: Slots being migrated
+
+outcomes:
+  # ========== SENTINEL MONITORING ==========
+
+  sentinel_monitor_master:
+    priority: 10
+    description: Start monitoring master
+    given:
+      - field: sentinel_config
+        source: input
+        description: "sentinel monitor <name> <ip> <port> <quorum>"
+    then:
+      - action: emit_event
+        event: sentinel.monitoring_started
+        payload: [master_name, master_ip, master_port, quorum_size]
+    result: "Sentinel begins periodic health checks (PING, INFO)"
+
+  sentinel_health_check:
+    priority: 11
+    description: Ping master; no response = SDOWN
+    given:
+      - field: ping_no_response
+        source: system
+        description: "no PONG for down_after_milliseconds"
+    then:
+      - action: transition_state
+        field: master_health
+        to: sdown
+      - action: emit_event
+        event: sentinel.sdown_detected
+        payload: [master_name, this_sentinel_id]
+    result: "this Sentinel marks master subjectively down"
+
+  sentinel_quorum_agreement:
+    priority: 12
+    description: Other Sentinels agree master is down
+    given:
+      - field: other_sentinels_agree
+        source: system
+        operator: gte
+        value: "quorum-1"
+      - field: total_sentinels_agree
+        source: computed
+        operator: gte
+        value: quorum
+    then:
+      - action: transition_state
+        field: master_health
+        to: odown
+      - action: emit_event
+        event: sentinel.odown_detected
+        payload: [master_name, agreeing_sentinels]
+    result: "master objectively down; failover authorized"
+
+  sentinel_leader_election:
+    priority: 13
+    description: Sentinel elected as failover leader
+    given:
+      - field: odown
+        source: db
+        operator: eq
+        value: true
+      - field: leader_elected
+        source: system
+        operator: eq
+        value: this_sentinel
+    then:
+      - action: transition_state
+        field: master_health
+        to: failing_over
+      - action: emit_event
+        event: sentinel.failover_started
+        payload: [master_name, elected_sentinel_id, epoch]
+    result: "leader begins failover state machine"
+
+  sentinel_replica_selection:
+    priority: 14
+    description: Choose best replica to promote
+    given:
+      - field: replica_candidates
+        source: db
+        description: "connected replicas"
+      - field: selection_criteria
+        source: system
+        description: "priority, offset, runid"
+    then:
+      - action: emit_event
+        event: sentinel.replica_selected
+        payload: [selected_replica_id, reason]
+    result: "best replica chosen for promotion"
+
+  sentinel_promotion:
+    priority: 15
+    description: Promote replica to master
+    given:
+      - "SLAVEOF NO ONE sent to replica"
+    then:
+      - action: emit_event
+        event: sentinel.promotion_sent
+        payload: [replica_id]
+    result: "replica stops replication, becomes master"
+
+  sentinel_reconfigure_replicas:
+    priority: 16
+    description: Reconfigure other replicas
+    given:
+      - field: new_master
+        source: system
+      - field: other_replicas
+        source: system
+        operator: gt
+        value: 0
+    then:
+      - action: emit_event
+        event: sentinel.replication_updated
+        payload: [new_master_ip, new_master_port, replicas_reconfgged]
+    result: "other replicas point to new master"
+
+  sentinel_failover_complete:
+    priority: 17
+    given:
+      - field: new_master_promoted
+        source: system
+        operator: eq
+        value: true
+      - field: all_replicas_reconfigured
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: transition_state
+        field: master_health
+        to: recovered
+      - action: emit_event
+        event: sentinel.failover_complete
+        payload: [total_time_ms, new_master_epoch]
+    result: "failover complete; cluster operational with new master"
+
+  # ========== CLUSTER SHARDING ==========
+
+  cluster_node_join:
+    priority: 30
+    description: Node joins cluster
+    given:
+      - "CLUSTER MEET ip port"
+      - field: cluster_mode_enabled
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: emit_event
+        event: cluster.node_joined
+        payload: [node_ip, node_port, node_id]
+    result: "node added to cluster; gossip begins"
+
+  cluster_slot_assignment:
+    priority: 31
+    description: Assign slots to nodes
+    given:
+      - "CLUSTER ADDSLOTS slot [slot ...]"
+      - field: slots_available
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: set_field
+        target: node_slots_owned
+      - action: emit_event
+        event: cluster.slots_assigned
+        payload: [node_id, slots_assigned]
+    result: "slots now served by this node"
+
+  cluster_key_routing:
+    priority: 32
+    description: Client request routed to correct slot owner
+    given:
+      - field: key
+        source: input
+      - field: slot
+        source: computed
+        description: "CRC16(key) mod 16384"
+      - field: slot_owner
+        source: db
+    then:
+      - any:
+          - field: slot_owned_locally
+            source: computed
+            operator: eq
+            value: true
+            description: "execute command locally"
+          - field: slot_owned_elsewhere
+            source: computed
+            operator: eq
+            value: true
+            description: "send MOVED redirect"
+          - field: slot_migrating
+            source: db
+            operator: eq
+            value: true
+            description: "send ASK redirect for redirected slots"
+      - action: emit_event
+        event: cluster.request_routed
+        payload: [key, slot, destination_node_id]
+    result: "command executed on slot owner or client redirected"
+
+  cluster_moved_redirect:
+    priority: 33
+    description: Permanent redirection (slot reassigned)
+    given:
+      - field: slot_owner_changed
+        source: system
+        operator: eq
+        value: true
+    then:
+      - action: emit_event
+        event: cluster.moved
+        payload: [slot, new_owner_node]
+    result: "client receives MOVED node_ip:node_port; should update slot map"
+
+  cluster_ask_redirect:
+    priority: 34
+    description: Temporary redirection (slot being migrated)
+    given:
+      - field: slot_importing
+        source: db
+        operator: eq
+        value: true
+      - field: slot_migrating_from_other
+        source: db
+        operator: eq
+        value: true
+    then:
+      - action: emit_event
+        event: cluster.ask
+        payload: [slot, destination_node]
+    result: "client receives ASK; forward request to new node; next request goes to moved node"
+
+  cluster_slot_migration:
+    priority: 35
+    description: Move slots between nodes
+    given:
+      - "CLUSTER SETSLOT slot MIGRATING target_node_id"
+      - "target node: CLUSTER SETSLOT slot IMPORTING source_node_id"
+    then:
+      - action: emit_event
+        event: cluster.migration_started
+        payload: [slot, source_node, target_node]
+    result: "slot enters migration state; data gradually moved"
+
+  cluster_multi_key_restriction:
+    priority: 36
+    error: CROSSSLOT
+    description: Multi-key operation on different slots
+    given:
+      - field: command_touches_multiple_slots
+        source: computed
+        operator: eq
+        value: true
+    then:
+      - action: emit_event
+        event: cluster.crossslot_rejected
+        payload: [command, slots_involved]
+    result: "error returned; operation not allowed (use MGET, MSET on keys with same slot)"
+
+  # ========== CLUSTER STATE & GOSSIP ==========
+
+  cluster_state_ok:
+    priority: 40
+    description: All slots covered and reachable
+    given:
+      - field: all_slots_assigned
+        source: db
+        operator: eq
+        value: true
+      - field: all_nodes_reachable
+        source: db
+        operator: eq
+        value: true
+    then:
+      - action: transition_state
+        field: cluster_state
+        to: ok
+      - action: emit_event
+        event: cluster.healthy
+        payload: [total_slots, active_nodes]
+    result: "cluster operational"
+
+  cluster_state_fail:
+    priority: 41
+    description: Some slots unreachable
+    given:
+      - field: unreachable_slots
+        source: system
+        operator: gt
+        value: 0
+    then:
+      - action: transition_state
+        field: cluster_state
+        to: fail
+      - action: emit_event
+        event: cluster.unhealthy
+        payload: [unreachable_slots, unreachable_nodes]
+    result: "cluster enters fail state; some commands fail"
+
+  cluster_gossip_update:
+    priority: 42
+    description: Periodic gossip between nodes
+    given:
+      - "cluster tick (internal periodic task)"
+    then:
+      - action: emit_event
+        event: cluster.gossip_sent
+        payload: [target_nodes, payload_size]
+    result: "nodes exchange health/slot info; topology discovered"
+
+  cluster_info:
+    priority: 43
+    description: Query cluster state
+    given:
+      - "CLUSTER INFO"
+    then:
+      - action: emit_event
+        event: cluster.info_queried
+        payload: [state, slots_assigned, slots_ok, slots_fail, cluster_known_nodes, cluster_size]
+    result: "cluster state info: state, slots covered/ok/fail, nodes"
+
+errors:
+  - code: CLUSTER_CROSSSLOT
+    message: "CROSSSLOT Keys in request don't hash to the same slot"
+    user_safe: true
+  - code: CLUSTER_SLOT_UNOWNED
+    message: "CLUSTERDOWN The cluster is down"
+    user_safe: true
+  - code: SENTINEL_NOSCRIPT
+    message: "Sentinel command syntax error"
+    user_safe: true
+
+events:
+  - sentinel.monitoring_started
+  - sentinel.sdown_detected
+  - sentinel.odown_detected
+  - sentinel.failover_started
+  - sentinel.replica_selected
+  - sentinel.promotion_sent
+  - sentinel.replication_updated
+  - sentinel.failover_complete
+  - cluster.node_joined
+  - cluster.slots_assigned
+  - cluster.request_routed
+  - cluster.moved
+  - cluster.ask
+  - cluster.migration_started
+  - cluster.crossslot_rejected
+  - cluster.healthy
+  - cluster.unhealthy
+  - cluster.gossip_sent
+  - cluster.info_queried
+
+related:
+  - feature: master-replica-replication
+    type: required
+    reason: Sentinel monitors master-replica setup; Cluster uses replication for fault tolerance
+  - feature: database-persistence
+    type: optional
+    reason: Both use RDB snapshots for recovery
+
+extensions:
+  source:
+    repo: "https://github.com/redis/redis"
+    project: "Redis"
+    tech_stack: "C"
+    files_traced: 2
+    entry_points:
+      - "src/sentinel.c"
+      - "src/cluster.c"

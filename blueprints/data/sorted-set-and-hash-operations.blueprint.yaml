@@ -1,0 +1,512 @@
+# ============================================================
+# Sorted Sets and Hash Operations — Portable Feature Blueprint
+# FDL v0.1.0 | Blueprint v1.0.0
+# ============================================================
+# Extracted from: https://github.com/redis/redis
+# Source project: Redis (C, in-memory data structure store)
+# Files traced: t_zset.c, t_hash.c
+# ============================================================
+
+feature: sorted-set-and-hash-operations
+version: "1.0.0"
+description: Sorted collections with ranking and scoring; nested key-value maps with field-level operations and optional TTL per field
+category: data
+tags: [sorted-sets, hashes, nested-kv, scoring, field-expiration, ranking]
+
+actors:
+  - id: client
+    name: Client
+    type: human
+    description: Application requesting sorted set or hash operations
+
+fields:
+  - name: key
+    type: text
+    description: Unique identifier for the collection
+    required: true
+  - name: members
+    type: json
+    description: "For sorted sets: array of [member, score] pairs"
+    required: false
+  - name: fields
+    type: json
+    description: "For hashes: object of field->value mappings"
+    required: false
+  - name: score
+    type: number
+    description: Numeric score (for sorted sets; determines ordering)"
+    required: false
+  - name: field_ttl_ms
+    type: number
+    description: "For hashes: milliseconds until field expires"
+    required: false
+
+rules:
+  # SORTED SETS
+  - Sorted set members are unique; adding existing member updates score
+  - Scores can be equal; ties broken by lexicographic member order
+  - Scores can be negative, infinity (-inf), or +inf
+  - Range queries support inclusive and exclusive boundaries
+  - Rank is 0-based (0 = lowest score, -1 = highest score in reverse)
+  - Lex ranges require all members to have identical scores
+  # HASHES
+  - Hash fields are unique strings; updating field overwrites value
+  - Hash supports per-field TTL (field expires independently)
+  - Numeric field operations (HINCRBY) increment field values
+  - Fields are unordered unless scanning with HSCAN
+
+states:
+  - field: collection_type
+    values:
+      - value: sorted_set
+        description: Ordered by score
+      - value: hash
+        description: Key-value mappings with optional field TTL
+  - field: presence
+    values:
+      - value: absent
+        initial: true
+      - value: present
+        description: Collection exists
+      - value: empty
+        terminal: true
+
+outcomes:
+  # ======== SORTED SET OPERATIONS ========
+
+  zadd_members:
+    priority: 10
+    description: Add or update members with scores
+    given:
+      - field: command
+        source: input
+        operator: eq
+        value: ZADD
+      - field: nx_xx_compat
+        source: input
+        operator: not_in
+        value: ["NX+XX"]
+    then:
+      - action: set_field
+        target: members
+        description: "add new members or update scores"
+      - action: emit_event
+        event: zset.added
+        payload: [key, new_count, updated_count]
+    result: "new member count or changed count (with CH flag); client receives count"
+
+  zadd_incr:
+    priority: 11
+    description: Increment member score
+    given:
+      - field: incr_flag
+        source: input
+        operator: eq
+        value: INCR
+    then:
+      - action: set_field
+        target: members
+        description: "increment score (create if missing)"
+      - action: emit_event
+        event: zset.scored
+        payload: [key, member, new_score]
+    result: "new score returned (as string)"
+
+  zadd_conditional:
+    priority: 12
+    description: Add only if condition met (NX, XX, GT, LT)
+    given:
+      - field: condition
+        source: input
+        operator: in
+        value: [NX, XX, GT, LT]
+      - field: condition_met
+        source: computed
+        operator: eq
+        value: true
+    then:
+      - action: set_field
+        target: members
+      - action: emit_event
+        event: zset.conditional_add
+        payload: [key, member, score, condition]
+    result: "member added/updated if condition met; client receives count"
+
+  zrem_members:
+    priority: 13
+    description: Remove members by name
+    given:
+      - "ZREM key member [member ...]"
+    then:
+      - action: set_field
+        target: members
+        description: "remove specified members"
+      - action: emit_event
+        event: zset.removed
+        payload: [key, removed_count]
+    result: "client receives count of removed members"
+
+  zrange_by_rank:
+    priority: 20
+    description: Get members by index range
+    given:
+      - "ZRANGE key start stop [WITHSCORES]"
+      - field: range_type
+        source: input
+        operator: eq
+        value: rank
+    then:
+      - action: emit_event
+        event: zset.range_rank
+        payload: [key, start, stop, count_returned, with_scores]
+    result: "array of members (with scores if WITHSCORES); empty if out-of-range"
+
+  zrange_by_score:
+    priority: 21
+    description: Get members by score range
+    given:
+      - "ZRANGE key min max BYSCORE [WITHSCORES] [LIMIT offset count]"
+      - field: min_score
+        source: input
+      - field: max_score
+        source: input
+    then:
+      - action: emit_event
+        event: zset.range_score
+        payload: [key, min, max, count_returned, with_scores]
+    result: "array of members in score range [min, max] (exclusive with '(' prefix; handles -inf/+inf)"
+
+  zrange_by_lex:
+    priority: 22
+    description: Get members by lexicographic range (requires equal scores)
+    given:
+      - "ZRANGE key min max BYLEX [LIMIT offset count]"
+      - field: all_equal_scores
+        source: db
+        operator: eq
+        value: true
+    then:
+      - action: emit_event
+        event: zset.range_lex
+        payload: [key, min_lex, max_lex, count_returned]
+    result: "array of members in lex range [min, max] (exclusive with '(' prefix; handles -/+)"
+
+  zrank_member:
+    priority: 23
+    description: Get member rank by position
+    given:
+      - "ZRANK key member [WITHSCORE]"
+    then:
+      - action: emit_event
+        event: zset.rank
+        payload: [key, member, rank, score_optional]
+    result: "0-based rank (or nil if member absent); score included if WITHSCORE"
+
+  zscore_member:
+    priority: 24
+    description: Get member score
+    given:
+      - "ZSCORE key member"
+    then:
+      - action: emit_event
+        event: zset.score_read
+        payload: [key, member, score]
+    result: "score as string (or nil if member absent)"
+
+  zinter_sets:
+    priority: 30
+    description: Get intersection of sorted sets
+    given:
+      - "ZINTER numkeys key [key ...] [WEIGHTS weight ...] [AGGREGATE SUM|MIN|MAX]"
+      - field: weights
+        source: input
+        description: "optional multipliers per set"
+      - field: aggregate
+        source: input
+        description: "how to combine scores (default SUM)"
+    then:
+      - action: emit_event
+        event: zset.inter
+        payload: [keys, weights, aggregate, result_cardinality]
+    result: "array of members in all sets (scores combined per AGGREGATE)"
+
+  zunion_sets:
+    priority: 31
+    description: Get union of sorted sets
+    given:
+      - "ZUNION numkeys key [key ...] [WEIGHTS weight ...] [AGGREGATE SUM|MIN|MAX]"
+    then:
+      - action: emit_event
+        event: zset.union
+        payload: [keys, weights, aggregate, result_cardinality]
+    result: "array of members in any set (scores combined per AGGREGATE)"
+
+  # ======== HASH OPERATIONS ========
+
+  hset_fields:
+    priority: 40
+    description: Set one or more field-value pairs
+    given:
+      - field: command
+        source: input
+        operator: in
+        value: [HSET, HMSET]
+      - field: field_value_pairs
+        source: input
+    then:
+      - action: set_field
+        target: fields
+        description: "set or update fields"
+      - action: emit_event
+        event: hash.set
+        payload: [key, fields_added, fields_updated]
+    result: "count of new fields added (HSET) or OK (HMSET)"
+
+  hget_field:
+    priority: 41
+    description: Get single field value
+    given:
+      - "HGET key field"
+    then:
+      - action: emit_event
+        event: hash.field_read
+        payload: [key, field, found]
+    result: "field value (or nil if field absent or expired)"
+
+  hmget_fields:
+    priority: 42
+    description: Get multiple field values
+    given:
+      - "HMGET key field [field ...]"
+    then:
+      - action: emit_event
+        event: hash.multi_read
+        payload: [key, fields_requested, fields_found]
+    result: "array with value for each field (nil for missing/expired fields)"
+
+  hgetall_fields:
+    priority: 43
+    description: Get all field-value pairs
+    given:
+      - "HGETALL key"
+    then:
+      - action: emit_event
+        event: hash.all_read
+        payload: [key, field_count]
+    result: "flattened array [field1, value1, field2, value2, ...] (excludes expired fields)"
+
+  hkeys_fields:
+    priority: 44
+    description: Get all field names
+    given:
+      - "HKEYS key"
+    then:
+      - action: emit_event
+        event: hash.keys_read
+        payload: [key, field_count]
+    result: "array of all field names (excludes expired)"
+
+  hvals_values:
+    priority: 45
+    description: Get all field values
+    given:
+      - "HVALS key"
+    then:
+      - action: emit_event
+        event: hash.vals_read
+        payload: [key, value_count]
+    result: "array of all values (excludes expired fields)"
+
+  hdel_fields:
+    priority: 46
+    description: Delete fields
+    given:
+      - "HDEL key field [field ...]"
+    then:
+      - action: set_field
+        target: fields
+        description: "remove specified fields"
+      - action: emit_event
+        event: hash.deleted
+        payload: [key, deleted_count]
+    result: "count of deleted fields; hash deleted if empty"
+
+  hincrby_field:
+    priority: 47
+    description: Increment field value by integer
+    given:
+      - "HINCRBY key field increment"
+      - field: value
+        source: db
+        operator: matches
+        value: "^-?[0-9]+$"
+    then:
+      - action: set_field
+        target: fields
+        description: "increment field (create if absent)"
+      - action: emit_event
+        event: hash.incr
+        payload: [key, field, new_value]
+    result: "new field value after increment"
+
+  hincrbyfloat_field:
+    priority: 48
+    description: Increment field value by float
+    given:
+      - "HINCRBYFLOAT key field increment"
+    then:
+      - action: set_field
+        target: fields
+        description: "increment field by float"
+      - action: emit_event
+        event: hash.incrbyfloat
+        payload: [key, field, new_value]
+    result: "new field value as decimal string"
+
+  hexists_field:
+    priority: 49
+    description: Check if field exists
+    given:
+      - "HEXISTS key field"
+    then:
+      - action: emit_event
+        event: hash.exists_check
+        payload: [key, field, exists]
+    result: "1 if field exists and not expired, 0 otherwise"
+
+  hlen_hash:
+    priority: 50
+    description: Get hash field count
+    given:
+      - "HLEN key"
+    then:
+      - action: emit_event
+        event: hash.count
+        payload: [key, field_count]
+    result: "number of fields (after lazy-expiring expired fields)"
+
+  # FIELD-LEVEL TTL (Hashes)
+  hexpire_field:
+    priority: 60
+    description: Set field expiration time (seconds)
+    given:
+      - "HEXPIRE key [NX|XX|GT|LT] seconds FIELDS count field [field ...]"
+      - field: condition
+        source: input
+        description: "optional condition (NX=no-ttl, XX=has-ttl, GT/LT=compare expiry)"
+    then:
+      - action: set_field
+        target: field_ttl_ms
+        description: "set absolute expiration timestamp"
+      - action: emit_event
+        event: hash.expire_set
+        payload: [key, fields_affected, conditions_met]
+    result: "array with count of affected fields per condition"
+
+  hpexpire_field:
+    priority: 61
+    description: Set field expiration time (milliseconds)
+    given:
+      - "HPEXPIRE key [condition] milliseconds FIELDS count field [field ...]"
+    then:
+      - action: set_field
+        target: field_ttl_ms
+        description: "set absolute expiration (milliseconds precision)"
+      - action: emit_event
+        event: hash.pexpire_set
+        payload: [key, fields_affected]
+    result: "array with affected field counts"
+
+  hpersist_field:
+    priority: 62
+    description: Remove field expiration (make permanent)
+    given:
+      - "HPERSIST key FIELDS count field [field ...]"
+    then:
+      - action: set_field
+        target: field_ttl_ms
+        value: null
+        description: "remove TTL"
+      - action: emit_event
+        event: hash.persist
+        payload: [key, fields_affected]
+    result: "array with count of fields that had TTL removed"
+
+  httl_field:
+    priority: 63
+    description: Get field TTL (seconds)
+    given:
+      - "HTTL key field [field ...]"
+    then:
+      - action: emit_event
+        event: hash.ttl_read
+        payload: [key, fields, ttls]
+    result: "array of TTLs in seconds (-1=no-ttl, -2=field-absent)"
+
+  hscan_fields:
+    priority: 70
+    description: Iterate fields with cursor
+    given:
+      - "HSCAN key cursor [MATCH pattern] [COUNT count]"
+    then:
+      - action: emit_event
+        event: hash.scan
+        payload: [key, cursor, pattern]
+    result: "array [new_cursor, [field1, value1, field2, value2, ...]]"
+
+errors:
+  - code: NOT_AN_INTEGER
+    message: "hash value is not an integer"
+    user_safe: true
+  - code: WRONG_TYPE
+    message: "WRONGTYPE Operation against a key holding the wrong kind of value"
+    user_safe: true
+  - code: SYNTAX_ERROR
+    message: "syntax error in score or condition"
+    user_safe: true
+
+events:
+  - zset.added
+  - zset.conditional_add
+  - zset.removed
+  - zset.range_rank
+  - zset.range_score
+  - zset.range_lex
+  - zset.rank
+  - zset.score_read
+  - zset.inter
+  - zset.union
+  - hash.set
+  - hash.field_read
+  - hash.multi_read
+  - hash.all_read
+  - hash.keys_read
+  - hash.vals_read
+  - hash.deleted
+  - hash.incr
+  - hash.incrbyfloat
+  - hash.exists_check
+  - hash.count
+  - hash.expire_set
+  - hash.pexpire_set
+  - hash.persist
+  - hash.ttl_read
+  - hash.scan
+
+related:
+  - feature: string-key-value
+    type: optional
+    reason: Hash fields and sorted set members are strings
+  - feature: key-expiration
+    type: required
+    reason: Hashes support per-field TTL
+
+extensions:
+  source:
+    repo: "https://github.com/redis/redis"
+    project: "Redis"
+    tech_stack: "C"
+    files_traced: 2
+    entry_points:
+      - "src/t_zset.c"
+      - "src/t_hash.c"
