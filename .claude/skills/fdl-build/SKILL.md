@@ -509,6 +509,84 @@ BLUEPRINTS CREATED: 1 new blueprint
 
 ---
 
+## Phase 8: System Documentation (MANDATORY — never skip)
+
+After all code is generated and the summary is shown, produce comprehensive documentation for the entire system. This is NOT optional — every build ends with documentation.
+
+### Step 1: Create `SYSTEM.md` in the project root
+
+This is the master document. It covers:
+
+```markdown
+# {App Name} — System Documentation
+
+## Architecture Overview
+- High-level description of the system
+- Tech stack: framework, database, UI library, key packages
+- Folder structure diagram (generated from the file manifest)
+
+## Features
+For each feature, document:
+- What it does (plain English)
+- Which blueprint powered it
+- Key files generated
+- Dependencies on other features
+
+## API Endpoints
+For each route/endpoint generated:
+- Method + path (e.g., POST /api/auth/login)
+- Request body / parameters
+- Response format (success + error)
+- Authentication required? (yes/no)
+
+## Data Models
+For each model/schema created:
+- Field names, types, and constraints
+- Relationships to other models
+- Indexes (if any)
+
+## Environment Variables
+Complete list of all required env vars:
+- Variable name
+- Description
+- Example value
+- Which feature needs it
+
+## Setup Instructions
+Step-by-step instructions to get the app running:
+1. Clone / install
+2. Environment setup
+3. Database setup
+4. Run the app
+5. Verify it works
+
+## Feature Map (Blueprint Traceability)
+Table mapping every generated file back to the blueprint and outcome that produced it:
+| File | Blueprint | Outcome/Rule |
+|------|-----------|-------------|
+| src/lib/auth/login.ts | auth/login | successful_login, rate_limited |
+| ... | ... | ... |
+
+## What's NOT Included (Gaps / Skipped)
+List any features that were skipped or not covered, with notes on how to add them later.
+```
+
+### Step 2: Create `API.md` if the app has API endpoints
+
+Detailed API reference with request/response examples for every endpoint.
+
+### Step 3: Present documentation summary to the user
+
+```
+DOCUMENTATION GENERATED:
+  ✓ SYSTEM.md — Full system documentation ({N} sections)
+  ✓ API.md — API reference ({N} endpoints documented)
+
+Your app is fully documented and ready to go.
+```
+
+---
+
 ## Dynamic Blueprint Discovery (CRITICAL — never hardcode)
 
 **All blueprint matching is dynamic.** When new blueprints are added via `/fdl-create`, `/fdl-extract`, or any other means, they are automatically available to `/fdl-build` on the next run. There is NO hardcoded list of features, tags, or aliases to maintain.
@@ -683,13 +761,15 @@ Every generated file includes trace comments back to the blueprint:
 
 ## Non-Negotiable Rules
 
-1. **Security constraints are mandatory.** If a blueprint says `constant_time: true`, use bcrypt.compare — not `===`. If it says `generic_message: true`, return identical errors for wrong-user and wrong-password. No exceptions.
-2. **Every outcome must have a code path.** If the blueprint says it can happen, the generated code must handle it.
-3. **Blueprint values are authoritative.** If a blueprint says `max_attempts: 5`, use 5. Don't substitute your own values.
-4. **Never show YAML.** Everything is plain English. The user doesn't know blueprints exist.
-5. **Always explain WHY.** Every suggestion has a reason. Not "Adding tax-engine" but "Adding tax-engine because POS order lines need tax computation — without it, totals will be wrong."
-6. **Respect the user's final choices.** After warning about missing features, accept if the user says skip. Warn once, then move on. Don't nag.
-7. **Maximum 2 suggestion rounds.** Don't keep discovering new suggestions endlessly. Two rounds of the checklist, then proceed to generation.
-8. **Generate working code.** The output should run after `npm install && npm run dev` (or equivalent). Include all imports, config files, and integration glue.
-9. **Add FDL trace comments.** Every generated file has `// FDL: {feature}/{outcome}` comments for traceability.
-10. **Outcomes over flows.** When a blueprint has both outcomes and flows, generate code from outcomes. Flows are for human documentation.
+1. **PLAN BEFORE CODE — ABSOLUTE GATE.** Before writing a SINGLE line of code, you MUST: (a) read all blueprints from disk, (b) match the best ones to the user's request, (c) write a full plan with grouped suggestions (core, required, recommended, optional), (d) present missing blueprint suggestions (gaps), and (e) get explicit user approval on the plan. NO CODE until the plan is approved. This is the #1 rule.
+2. **Document the entire system at the end.** After all code is generated, produce comprehensive system documentation covering: architecture overview, all features and how they connect, API endpoints, data models, environment variables, setup instructions, and a feature map showing which blueprints powered which parts of the system.
+3. **Security constraints are mandatory.** If a blueprint says `constant_time: true`, use bcrypt.compare — not `===`. If it says `generic_message: true`, return identical errors for wrong-user and wrong-password. No exceptions.
+4. **Every outcome must have a code path.** If the blueprint says it can happen, the generated code must handle it.
+5. **Blueprint values are authoritative.** If a blueprint says `max_attempts: 5`, use 5. Don't substitute your own values.
+6. **Never show YAML.** Everything is plain English. The user doesn't know blueprints exist.
+7. **Always explain WHY.** Every suggestion has a reason. Not "Adding tax-engine" but "Adding tax-engine because POS order lines need tax computation — without it, totals will be wrong."
+8. **Respect the user's final choices.** After warning about missing features, accept if the user says skip. Warn once, then move on. Don't nag.
+9. **Maximum 2 suggestion rounds.** Don't keep discovering new suggestions endlessly. Two rounds of the checklist, then proceed to generation.
+10. **Generate working code.** The output should run after `npm install && npm run dev` (or equivalent). Include all imports, config files, and integration glue.
+11. **Add FDL trace comments.** Every generated file has `// FDL: {feature}/{outcome}` comments for traceability.
+12. **Outcomes over flows.** When a blueprint has both outcomes and flows, generate code from outcomes. Flows are for human documentation.
