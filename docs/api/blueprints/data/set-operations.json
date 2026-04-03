@@ -1,0 +1,558 @@
+{
+  "feature": "set-operations",
+  "version": "1.0.0",
+  "description": "Unordered collection of unique elements with set algebra operations (union, intersection, difference) and cardinality counting",
+  "category": "data",
+  "tags": [
+    "sets",
+    "unordered-collections",
+    "set-algebra",
+    "cardinality"
+  ],
+  "actors": [
+    {
+      "id": "client",
+      "name": "Client",
+      "type": "human",
+      "description": "Application requesting set operations"
+    }
+  ],
+  "fields": [
+    {
+      "name": "key",
+      "type": "text",
+      "description": "Unique identifier for the set",
+      "required": true
+    },
+    {
+      "name": "members",
+      "type": "json",
+      "description": "Unordered array of unique elements (strings or integers)",
+      "required": false
+    },
+    {
+      "name": "cardinality",
+      "type": "number",
+      "description": "Count of unique members",
+      "required": false
+    },
+    {
+      "name": "destination_key",
+      "type": "text",
+      "description": "Target key for store operations (SINTERSTORE, SUNIONSTORE, SDIFFSTORE)",
+      "required": false
+    }
+  ],
+  "rules": [
+    "Set elements are unique; adding duplicate element replaces (no effect on cardinality)",
+    "Set membership is unordered (no indices or ranges)",
+    "Set algebra operations (intersection, union, difference) can accept multiple source sets",
+    "Intersection of multiple sets returns elements present in ALL sets",
+    "Union of multiple sets returns elements present in ANY set",
+    "Difference of first set minus others returns elements in first but not in any other",
+    "Store variants (*STORE) create destination set atomically; overwrite if exists",
+    "All operations are atomic with respect to individual keys"
+  ],
+  "states": [
+    {
+      "field": "presence",
+      "values": [
+        {
+          "value": "absent",
+          "initial": true,
+          "description": "Key does not exist"
+        },
+        {
+          "value": "present",
+          "description": "Set exists with one or more members"
+        },
+        {
+          "value": "empty",
+          "terminal": true,
+          "description": "Set becomes empty (key auto-deleted)"
+        }
+      ]
+    }
+  ],
+  "outcomes": {
+    "add_members": {
+      "priority": 10,
+      "description": "Add one or more elements to set",
+      "given": [
+        "SADD key member [member ...]",
+        {
+          "field": "members_to_add",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "members",
+          "description": "add new members (duplicates ignored)"
+        },
+        {
+          "action": "set_field",
+          "target": "cardinality",
+          "description": "increment by count of new members"
+        },
+        {
+          "action": "emit_event",
+          "event": "set.added",
+          "payload": [
+            "key",
+            "new_members_count",
+            "total_cardinality"
+          ]
+        }
+      ],
+      "result": "set created if absent; members added; client receives count of newly added members"
+    },
+    "remove_members": {
+      "priority": 11,
+      "description": "Remove elements from set",
+      "given": [
+        "SREM key member [member ...]",
+        {
+          "field": "members_to_remove",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "members",
+          "description": "remove specified members"
+        },
+        {
+          "action": "set_field",
+          "target": "cardinality",
+          "description": "decrement by count of removed members"
+        },
+        {
+          "action": "emit_event",
+          "event": "set.removed",
+          "payload": [
+            "key",
+            "removed_count",
+            "remaining_cardinality"
+          ]
+        }
+      ],
+      "result": "members removed; client receives count of removed members; set deleted if empty"
+    },
+    "get_all_members": {
+      "priority": 20,
+      "description": "Retrieve all set members",
+      "given": [
+        "SMEMBERS key"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.members_read",
+          "payload": [
+            "key",
+            "cardinality"
+          ]
+        }
+      ],
+      "result": "unordered array of all members (empty if set absent)"
+    },
+    "check_membership": {
+      "priority": 21,
+      "description": "Check if element is member",
+      "given": [
+        "SISMEMBER key member",
+        {
+          "field": "member",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.ismember_check",
+          "payload": [
+            "key",
+            "member",
+            "is_member"
+          ]
+        }
+      ],
+      "result": "1 if member present, 0 if not"
+    },
+    "check_multiple_membership": {
+      "priority": 22,
+      "description": "Check multiple elements at once",
+      "given": [
+        "SMISMEMBER key member [member ...]",
+        {
+          "field": "members_to_check",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.mismember_check",
+          "payload": [
+            "key",
+            "members_count",
+            "matches_count"
+          ]
+        }
+      ],
+      "result": "array of 0/1 for each member (1=member present, 0=absent)"
+    },
+    "get_cardinality": {
+      "priority": 23,
+      "description": "Get set size",
+      "given": [
+        "SCARD key"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.cardinality",
+          "payload": [
+            "key",
+            "cardinality"
+          ]
+        }
+      ],
+      "result": "number of members (0 if key absent)"
+    },
+    "random_members": {
+      "priority": 24,
+      "description": "Return random element(s) from set",
+      "given": [
+        "SRANDMEMBER key [count]",
+        {
+          "field": "count",
+          "source": "input",
+          "description": "optional; default 1"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.random_draw",
+          "payload": [
+            "key",
+            "count_returned"
+          ]
+        }
+      ],
+      "result": "single member or array of members (may have duplicates if count > cardinality)"
+    },
+    "pop_random": {
+      "priority": 25,
+      "description": "Remove and return random element(s)",
+      "given": [
+        "SPOP key [count]",
+        {
+          "field": "count",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "members",
+          "description": "remove random members"
+        },
+        {
+          "action": "set_field",
+          "target": "cardinality",
+          "description": "decrement by count removed"
+        },
+        {
+          "action": "emit_event",
+          "event": "set.popped",
+          "payload": [
+            "key",
+            "count_popped",
+            "remaining_cardinality"
+          ]
+        }
+      ],
+      "result": "single member or array of members removed (no duplicates); nil if empty"
+    },
+    "move_between_sets": {
+      "priority": 26,
+      "description": "Move element from source to destination set",
+      "given": [
+        "SMOVE source destination member",
+        {
+          "field": "member_in_source",
+          "source": "db",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "source.members",
+          "description": "remove from source"
+        },
+        {
+          "action": "set_field",
+          "target": "destination.members",
+          "description": "add to destination"
+        },
+        {
+          "action": "emit_event",
+          "event": "set.moved",
+          "payload": [
+            "source",
+            "destination",
+            "member"
+          ]
+        }
+      ],
+      "result": "member moved; client receives 1 (or 0 if already in destination)"
+    },
+    "intersection": {
+      "priority": 30,
+      "description": "Get elements common to all input sets",
+      "given": [
+        "SINTER key [key ...]",
+        {
+          "field": "input_sets",
+          "source": "input",
+          "description": "multiple keys to intersect"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.intersection",
+          "payload": [
+            "keys_input",
+            "result_cardinality"
+          ]
+        }
+      ],
+      "result": "array of elements in ALL sets (empty if no common elements)"
+    },
+    "intersection_store": {
+      "priority": 31,
+      "description": "Store intersection result",
+      "given": [
+        "SINTERSTORE destination key [key ...]",
+        {
+          "field": "destination",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "destination.members",
+          "description": "set to intersection result"
+        },
+        {
+          "action": "emit_event",
+          "event": "set.intersection_stored",
+          "payload": [
+            "destination",
+            "result_cardinality"
+          ]
+        }
+      ],
+      "result": "destination set created/overwritten; client receives cardinality of result"
+    },
+    "intersection_cardinality": {
+      "priority": 32,
+      "description": "Get count of common elements without returning them",
+      "given": [
+        "SINTERCARD numkeys key [key ...] [LIMIT limit]",
+        {
+          "field": "limit",
+          "source": "input",
+          "description": "optional early termination"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.intercard",
+          "payload": [
+            "keys_input",
+            "cardinality_result"
+          ]
+        }
+      ],
+      "result": "cardinality of intersection (limited by LIMIT if provided)"
+    },
+    "union": {
+      "priority": 33,
+      "description": "Get all elements from any input set",
+      "given": [
+        "SUNION key [key ...]"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.union",
+          "payload": [
+            "keys_input",
+            "result_cardinality"
+          ]
+        }
+      ],
+      "result": "array of unique elements across all sets"
+    },
+    "union_store": {
+      "priority": 34,
+      "description": "Store union result",
+      "given": [
+        "SUNIONSTORE destination key [key ...]"
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "destination.members",
+          "description": "set to union result"
+        },
+        {
+          "action": "emit_event",
+          "event": "set.union_stored",
+          "payload": [
+            "destination",
+            "result_cardinality"
+          ]
+        }
+      ],
+      "result": "destination set created/overwritten; client receives cardinality"
+    },
+    "difference": {
+      "priority": 35,
+      "description": "Get elements in first set but not in others",
+      "given": [
+        "SDIFF key [key ...]",
+        {
+          "field": "first_key",
+          "source": "input",
+          "description": "set to subtract from"
+        },
+        {
+          "field": "other_keys",
+          "source": "input",
+          "description": "sets to subtract"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.difference",
+          "payload": [
+            "first_key",
+            "other_keys",
+            "result_cardinality"
+          ]
+        }
+      ],
+      "result": "array of elements in first set minus all others"
+    },
+    "difference_store": {
+      "priority": 36,
+      "description": "Store difference result",
+      "given": [
+        "SDIFFSTORE destination key [key ...]"
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "destination.members",
+          "description": "set to difference result"
+        },
+        {
+          "action": "emit_event",
+          "event": "set.difference_stored",
+          "payload": [
+            "destination",
+            "result_cardinality"
+          ]
+        }
+      ],
+      "result": "destination set created/overwritten; client receives cardinality"
+    },
+    "scan_members": {
+      "priority": 40,
+      "description": "Iterate members with cursor (safe for large sets)",
+      "given": [
+        "SSCAN key cursor [MATCH pattern] [COUNT count]",
+        {
+          "field": "cursor",
+          "source": "input",
+          "description": "starting cursor position"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "set.scan",
+          "payload": [
+            "key",
+            "cursor",
+            "pattern",
+            "count_returned"
+          ]
+        }
+      ],
+      "result": "array [new_cursor, [members...]] (cursor=0 when full scan complete)"
+    }
+  },
+  "errors": [
+    {
+      "code": "WRONG_TYPE",
+      "message": "WRONGTYPE Operation against a key holding the wrong kind of value",
+      "user_safe": true
+    }
+  ],
+  "events": [
+    "set.added",
+    "set.removed",
+    "set.members_read",
+    "set.ismember_check",
+    "set.mismember_check",
+    "set.cardinality",
+    "set.random_draw",
+    "set.popped",
+    "set.moved",
+    "set.intersection",
+    "set.intersection_stored",
+    "set.intercard",
+    "set.union",
+    "set.union_stored",
+    "set.difference",
+    "set.difference_stored",
+    "set.scan"
+  ],
+  "related": [
+    {
+      "feature": "string-key-value",
+      "type": "optional",
+      "reason": "Elements are strings or numeric values"
+    },
+    {
+      "feature": "sorted-set-operations",
+      "type": "optional",
+      "reason": "Sorted sets extend sets with scoring"
+    }
+  ],
+  "extensions": {
+    "source": {
+      "repo": "https://github.com/redis/redis",
+      "project": "Redis",
+      "tech_stack": "C",
+      "files_traced": 1,
+      "entry_points": [
+        "src/t_set.c"
+      ]
+    }
+  }
+}

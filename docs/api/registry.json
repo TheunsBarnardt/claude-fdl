@@ -2,10 +2,354 @@
   "$schema": "https://theunsbarnardt.github.io/claude-fdl/api/registry.json",
   "name": "Feature Definition Language (FDL) Blueprint Registry",
   "version": "1.0.0",
-  "generated": "2026-04-03T04:59:14.484Z",
-  "total": 151,
+  "generated": "2026-04-03T06:18:13.054Z",
+  "total": 163,
   "base_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints",
   "categories": {
+    "workflow": {
+      "count": 18,
+      "blueprints": [
+        {
+          "feature": "advisor-onboarding",
+          "version": "1.0.0",
+          "description": "Registration and onboarding process for independent financial advisors with CID approval and mandate signing",
+          "tags": [
+            "advisor-registration",
+            "approval-workflow",
+            "financial-services"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/advisor-onboarding.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/advisor-onboarding.blueprint.yaml"
+        },
+        {
+          "feature": "approval-chain",
+          "version": "1.0.0",
+          "description": "Multi-level approval workflow with sequential/parallel approvers, delegation, auto-approve rules, timeout escalation, and audit history.\n",
+          "tags": [
+            "approval",
+            "workflow",
+            "multi-level",
+            "delegation",
+            "escalation",
+            "audit-trail"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/approval-chain.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/approval-chain.blueprint.yaml"
+        },
+        {
+          "feature": "automation-rules",
+          "version": "1.0.0",
+          "description": "Event-driven automation engine that triggers actions based on record lifecycle events, field changes, time-based schedules, incoming messages, and external webhooks with condition filtering.\n",
+          "tags": [
+            "automation",
+            "triggers",
+            "event-driven",
+            "scheduled-actions",
+            "webhooks",
+            "workflow-engine"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/automation-rules.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/automation-rules.blueprint.yaml"
+        },
+        {
+          "feature": "bulk-operations",
+          "version": "1.0.0",
+          "description": "Batch update, delete, and export operations for large record sets with progress tracking, atomic or best-effort execution, and error logging.\n",
+          "tags": [
+            "bulk",
+            "batch-processing",
+            "mass-update",
+            "mass-delete",
+            "data-export",
+            "background-jobs",
+            "progress-tracking"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/bulk-operations.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/bulk-operations.blueprint.yaml"
+        },
+        {
+          "feature": "client-onboarding",
+          "version": "1.0.0",
+          "description": "Multi-step process for new clients to complete personal, contact, address, and employment details before account opening",
+          "tags": [
+            "onboarding",
+            "client-acquisition",
+            "financial-services"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/client-onboarding.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/client-onboarding.blueprint.yaml"
+        },
+        {
+          "feature": "expense-approval",
+          "version": "1.0.0",
+          "description": "Employee expense submission and approval workflow with multi-level authorization, reimbursement tracking, accounting journal entry generation, and payment processing.\n",
+          "tags": [
+            "expenses",
+            "approval-workflow",
+            "reimbursement",
+            "employee-expenses",
+            "accounting-integration"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/expense-approval.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/odoo-expense-approval.blueprint.yaml"
+        },
+        {
+          "feature": "lua-scripting",
+          "version": "1.0.0",
+          "description": "Server-side Lua script execution providing atomic operations, programmatic logic, and access to all Redis commands within a single round-trip",
+          "tags": [
+            "lua-scripting",
+            "server-side-execution",
+            "atomic-operations",
+            "stored-procedures"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/lua-scripting.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/lua-scripting.blueprint.yaml"
+        },
+        {
+          "feature": "multi-exec-transactions",
+          "version": "1.0.0",
+          "description": "Atomic multi-command execution with optional optimistic locking via WATCH; commands queued and executed sequentially without interruption",
+          "tags": [
+            "transactions",
+            "atomic-operations",
+            "optimistic-locking",
+            "rollback",
+            "isolation"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/multi-exec-transactions.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/multi-exec-transactions.blueprint.yaml"
+        },
+        {
+          "feature": "payload-job-queue",
+          "version": "1.0.0",
+          "description": "Built-in job queue with tasks, workflows, cron scheduling, retry with backoff, concurrency control, and sub-task orchestration",
+          "tags": [
+            "cms",
+            "jobs",
+            "queue",
+            "tasks",
+            "workflows",
+            "cron",
+            "retry",
+            "concurrency",
+            "scheduling",
+            "payload"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/payload-job-queue.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/payload-job-queue.blueprint.yaml"
+        },
+        {
+          "feature": "purchase-agreements",
+          "version": "1.0.0",
+          "description": "Purchase agreement management supporting blanket orders and calls for tender with vendor selection, purchase order generation, and supplier catalog synchronization.\n",
+          "tags": [
+            "procurement",
+            "blanket-order",
+            "call-for-tender",
+            "vendor-management",
+            "purchasing"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/purchase-agreements.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/purchase-agreements.blueprint.yaml"
+        },
+        {
+          "feature": "purchase-order-lifecycle",
+          "version": "1.0.0",
+          "description": "Purchase order lifecycle from draft through receipt and billing to completion, with supplier validation, material request tracking, warehouse bin updates, and over-receipt tolerance enforcement.\n",
+          "tags": [
+            "purchasing",
+            "procurement",
+            "order-management",
+            "goods-receipt",
+            "billing",
+            "material-request"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/purchase-order-lifecycle.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/purchase-order-lifecycle.blueprint.yaml"
+        },
+        {
+          "feature": "quotation-order-management",
+          "version": "1.0.0",
+          "description": "Sales quotation-to-order lifecycle including quote creation, PDF generation, portal sharing, digital signature, prepayment, order confirmation, and invoicing.\n",
+          "tags": [
+            "sales",
+            "quotation",
+            "order-management",
+            "invoicing",
+            "pdf-builder"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/quotation-order-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/quotation-order-management.blueprint.yaml"
+        },
+        {
+          "feature": "report-generation",
+          "version": "1.0.0",
+          "description": "Scheduled and on-demand report generation with PDF, Excel, and CSV output, background processing, caching, email delivery, and cron scheduling.\n",
+          "tags": [
+            "reports",
+            "pdf",
+            "excel",
+            "csv",
+            "scheduled-jobs",
+            "data-export",
+            "background-processing"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/report-generation.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/report-generation.blueprint.yaml"
+        },
+        {
+          "feature": "sales-order-lifecycle",
+          "version": "1.0.0",
+          "description": "Sales order lifecycle from draft through delivery and billing to completion, with credit limits, blanket orders, stock reservation, and auto-status.\n",
+          "tags": [
+            "sales",
+            "order-management",
+            "delivery",
+            "billing",
+            "credit-limit",
+            "stock-reservation"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/sales-order-lifecycle.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/sales-order-lifecycle.blueprint.yaml"
+        },
+        {
+          "feature": "scheduling-calendar",
+          "version": "1.0.0",
+          "description": "Calendar event management with bookings, availability tracking, recurring events (RRULE), conflict detection, timezone-aware storage, and configurable time slot granularity.\n",
+          "tags": [
+            "calendar",
+            "scheduling",
+            "events",
+            "bookings",
+            "availability",
+            "recurring",
+            "timezone"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/scheduling-calendar.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/scheduling-calendar.blueprint.yaml"
+        },
+        {
+          "feature": "state-machine",
+          "version": "1.0.0",
+          "description": "Generic state machine engine with named states, guarded transitions, entry/exit actions, history tracking, and lifecycle validation rules.\n",
+          "tags": [
+            "state-machine",
+            "finite-automaton",
+            "workflow-engine",
+            "lifecycle-management",
+            "transitions",
+            "event-driven"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/state-machine.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/state-machine.blueprint.yaml"
+        },
+        {
+          "feature": "support-tickets-sla",
+          "version": "1.0.0",
+          "description": "Support ticket management with SLA tracking, priority-based response/resolution deadlines, working hours calculation with holiday exclusions, and warranty claim handling.\n",
+          "tags": [
+            "support",
+            "tickets",
+            "sla",
+            "issue-tracking",
+            "warranty",
+            "customer-service",
+            "helpdesk"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/support-tickets-sla.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/support-tickets-sla.blueprint.yaml"
+        },
+        {
+          "feature": "task-management",
+          "version": "1.0.0",
+          "description": "Task lifecycle management with kanban board, subtask hierarchies, dependency tracking, priority-based scheduling, and workload balancing across assignees.\n",
+          "tags": [
+            "tasks",
+            "kanban",
+            "project-management",
+            "subtasks",
+            "dependencies",
+            "workload"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/task-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/task-management.blueprint.yaml"
+        }
+      ]
+    },
+    "quality": {
+      "count": 3,
+      "blueprints": [
+        {
+          "feature": "maintenance-scheduling",
+          "version": "1.0.0",
+          "description": "Maintenance scheduling and visit management with auto-generated visit dates, holiday avoidance, calendar events, and warranty status tracking for customer equipment.\n",
+          "tags": [
+            "maintenance-schedule",
+            "maintenance-visit",
+            "preventive-maintenance",
+            "warranty",
+            "calendar-events",
+            "field-service"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/maintenance-scheduling.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/maintenance-scheduling.blueprint.yaml"
+        },
+        {
+          "feature": "quality-inspection",
+          "version": "1.0.0",
+          "description": "Quality inspection for incoming, outgoing, and in-process materials with numeric range checks, formula-based acceptance criteria, and template-driven reading parameters.\n",
+          "tags": [
+            "quality-inspection",
+            "incoming-inspection",
+            "outgoing-inspection",
+            "quality-control",
+            "acceptance-criteria",
+            "manufacturing"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/quality-inspection.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/quality-inspection.blueprint.yaml"
+        },
+        {
+          "feature": "quality-management-system",
+          "version": "1.0.0",
+          "description": "Quality management with goals, periodic reviews, hierarchical procedures, feedback collection, and corrective/preventive action tracking for continuous improvement.\n",
+          "tags": [
+            "quality-management",
+            "quality-goals",
+            "quality-review",
+            "quality-procedures",
+            "corrective-action",
+            "preventive-action",
+            "feedback",
+            "continuous-improvement"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/quality-management-system.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/quality-management-system.blueprint.yaml"
+        }
+      ]
+    },
+    "project": {
+      "count": 1,
+      "blueprints": [
+        {
+          "feature": "project-task-management",
+          "version": "1.0.0",
+          "description": "Project and task management with hierarchical tasks, dependency tracking, milestones, templates, and timesheet-based billable time tracking. Progress auto-calculated from tasks.\n",
+          "tags": [
+            "project",
+            "task",
+            "timesheet",
+            "milestone",
+            "dependency",
+            "billing",
+            "time-tracking"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/project/project-task-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/project/project-task-management.blueprint.yaml"
+        }
+      ]
+    },
     "trading": {
       "count": 1,
       "blueprints": [
@@ -344,302 +688,6 @@
         }
       ]
     },
-    "workflow": {
-      "count": 16,
-      "blueprints": [
-        {
-          "feature": "advisor-onboarding",
-          "version": "1.0.0",
-          "description": "Registration and onboarding process for independent financial advisors with CID approval and mandate signing",
-          "tags": [
-            "advisor-registration",
-            "approval-workflow",
-            "financial-services"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/advisor-onboarding.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/advisor-onboarding.blueprint.yaml"
-        },
-        {
-          "feature": "approval-chain",
-          "version": "1.0.0",
-          "description": "Multi-level approval workflow with sequential/parallel approvers, delegation, auto-approve rules, timeout escalation, and audit history.\n",
-          "tags": [
-            "approval",
-            "workflow",
-            "multi-level",
-            "delegation",
-            "escalation",
-            "audit-trail"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/approval-chain.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/approval-chain.blueprint.yaml"
-        },
-        {
-          "feature": "automation-rules",
-          "version": "1.0.0",
-          "description": "Event-driven automation engine that triggers actions based on record lifecycle events, field changes, time-based schedules, incoming messages, and external webhooks with condition filtering.\n",
-          "tags": [
-            "automation",
-            "triggers",
-            "event-driven",
-            "scheduled-actions",
-            "webhooks",
-            "workflow-engine"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/automation-rules.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/automation-rules.blueprint.yaml"
-        },
-        {
-          "feature": "bulk-operations",
-          "version": "1.0.0",
-          "description": "Batch update, delete, and export operations for large record sets with progress tracking, atomic or best-effort execution, and error logging.\n",
-          "tags": [
-            "bulk",
-            "batch-processing",
-            "mass-update",
-            "mass-delete",
-            "data-export",
-            "background-jobs",
-            "progress-tracking"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/bulk-operations.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/bulk-operations.blueprint.yaml"
-        },
-        {
-          "feature": "client-onboarding",
-          "version": "1.0.0",
-          "description": "Multi-step process for new clients to complete personal, contact, address, and employment details before account opening",
-          "tags": [
-            "onboarding",
-            "client-acquisition",
-            "financial-services"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/client-onboarding.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/client-onboarding.blueprint.yaml"
-        },
-        {
-          "feature": "expense-approval",
-          "version": "1.0.0",
-          "description": "Employee expense submission and approval workflow with multi-level authorization, reimbursement tracking, accounting journal entry generation, and payment processing.\n",
-          "tags": [
-            "expenses",
-            "approval-workflow",
-            "reimbursement",
-            "employee-expenses",
-            "accounting-integration"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/expense-approval.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/odoo-expense-approval.blueprint.yaml"
-        },
-        {
-          "feature": "payload-job-queue",
-          "version": "1.0.0",
-          "description": "Built-in job queue with tasks, workflows, cron scheduling, retry with backoff, concurrency control, and sub-task orchestration",
-          "tags": [
-            "cms",
-            "jobs",
-            "queue",
-            "tasks",
-            "workflows",
-            "cron",
-            "retry",
-            "concurrency",
-            "scheduling",
-            "payload"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/payload-job-queue.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/payload-job-queue.blueprint.yaml"
-        },
-        {
-          "feature": "purchase-agreements",
-          "version": "1.0.0",
-          "description": "Purchase agreement management supporting blanket orders and calls for tender with vendor selection, purchase order generation, and supplier catalog synchronization.\n",
-          "tags": [
-            "procurement",
-            "blanket-order",
-            "call-for-tender",
-            "vendor-management",
-            "purchasing"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/purchase-agreements.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/purchase-agreements.blueprint.yaml"
-        },
-        {
-          "feature": "purchase-order-lifecycle",
-          "version": "1.0.0",
-          "description": "Purchase order lifecycle from draft through receipt and billing to completion, with supplier validation, material request tracking, warehouse bin updates, and over-receipt tolerance enforcement.\n",
-          "tags": [
-            "purchasing",
-            "procurement",
-            "order-management",
-            "goods-receipt",
-            "billing",
-            "material-request"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/purchase-order-lifecycle.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/purchase-order-lifecycle.blueprint.yaml"
-        },
-        {
-          "feature": "quotation-order-management",
-          "version": "1.0.0",
-          "description": "Sales quotation-to-order lifecycle including quote creation, PDF generation, portal sharing, digital signature, prepayment, order confirmation, and invoicing.\n",
-          "tags": [
-            "sales",
-            "quotation",
-            "order-management",
-            "invoicing",
-            "pdf-builder"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/quotation-order-management.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/quotation-order-management.blueprint.yaml"
-        },
-        {
-          "feature": "report-generation",
-          "version": "1.0.0",
-          "description": "Scheduled and on-demand report generation with PDF, Excel, and CSV output, background processing, caching, email delivery, and cron scheduling.\n",
-          "tags": [
-            "reports",
-            "pdf",
-            "excel",
-            "csv",
-            "scheduled-jobs",
-            "data-export",
-            "background-processing"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/report-generation.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/report-generation.blueprint.yaml"
-        },
-        {
-          "feature": "sales-order-lifecycle",
-          "version": "1.0.0",
-          "description": "Sales order lifecycle from draft through delivery and billing to completion, with credit limits, blanket orders, stock reservation, and auto-status.\n",
-          "tags": [
-            "sales",
-            "order-management",
-            "delivery",
-            "billing",
-            "credit-limit",
-            "stock-reservation"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/sales-order-lifecycle.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/sales-order-lifecycle.blueprint.yaml"
-        },
-        {
-          "feature": "scheduling-calendar",
-          "version": "1.0.0",
-          "description": "Calendar event management with bookings, availability tracking, recurring events (RRULE), conflict detection, timezone-aware storage, and configurable time slot granularity.\n",
-          "tags": [
-            "calendar",
-            "scheduling",
-            "events",
-            "bookings",
-            "availability",
-            "recurring",
-            "timezone"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/scheduling-calendar.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/scheduling-calendar.blueprint.yaml"
-        },
-        {
-          "feature": "state-machine",
-          "version": "1.0.0",
-          "description": "Generic state machine engine with named states, guarded transitions, entry/exit actions, history tracking, and lifecycle validation rules.\n",
-          "tags": [
-            "state-machine",
-            "finite-automaton",
-            "workflow-engine",
-            "lifecycle-management",
-            "transitions",
-            "event-driven"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/state-machine.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/state-machine.blueprint.yaml"
-        },
-        {
-          "feature": "support-tickets-sla",
-          "version": "1.0.0",
-          "description": "Support ticket management with SLA tracking, priority-based response/resolution deadlines, working hours calculation with holiday exclusions, and warranty claim handling.\n",
-          "tags": [
-            "support",
-            "tickets",
-            "sla",
-            "issue-tracking",
-            "warranty",
-            "customer-service",
-            "helpdesk"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/support-tickets-sla.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/support-tickets-sla.blueprint.yaml"
-        },
-        {
-          "feature": "task-management",
-          "version": "1.0.0",
-          "description": "Task lifecycle management with kanban board, subtask hierarchies, dependency tracking, priority-based scheduling, and workload balancing across assignees.\n",
-          "tags": [
-            "tasks",
-            "kanban",
-            "project-management",
-            "subtasks",
-            "dependencies",
-            "workload"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/workflow/task-management.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/workflow/task-management.blueprint.yaml"
-        }
-      ]
-    },
-    "quality": {
-      "count": 3,
-      "blueprints": [
-        {
-          "feature": "maintenance-scheduling",
-          "version": "1.0.0",
-          "description": "Maintenance scheduling and visit management with auto-generated visit dates, holiday avoidance, calendar events, and warranty status tracking for customer equipment.\n",
-          "tags": [
-            "maintenance-schedule",
-            "maintenance-visit",
-            "preventive-maintenance",
-            "warranty",
-            "calendar-events",
-            "field-service"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/maintenance-scheduling.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/maintenance-scheduling.blueprint.yaml"
-        },
-        {
-          "feature": "quality-inspection",
-          "version": "1.0.0",
-          "description": "Quality inspection for incoming, outgoing, and in-process materials with numeric range checks, formula-based acceptance criteria, and template-driven reading parameters.\n",
-          "tags": [
-            "quality-inspection",
-            "incoming-inspection",
-            "outgoing-inspection",
-            "quality-control",
-            "acceptance-criteria",
-            "manufacturing"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/quality-inspection.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/quality-inspection.blueprint.yaml"
-        },
-        {
-          "feature": "quality-management-system",
-          "version": "1.0.0",
-          "description": "Quality management with goals, periodic reviews, hierarchical procedures, feedback collection, and corrective/preventive action tracking for continuous improvement.\n",
-          "tags": [
-            "quality-management",
-            "quality-goals",
-            "quality-review",
-            "quality-procedures",
-            "corrective-action",
-            "preventive-action",
-            "feedback",
-            "continuous-improvement"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/quality/quality-management-system.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/quality/quality-management-system.blueprint.yaml"
-        }
-      ]
-    },
     "procurement": {
       "count": 1,
       "blueprints": [
@@ -656,27 +704,6 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/procurement/supplier-scorecard.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/procurement/supplier-scorecard.blueprint.yaml"
-        }
-      ]
-    },
-    "project": {
-      "count": 1,
-      "blueprints": [
-        {
-          "feature": "project-task-management",
-          "version": "1.0.0",
-          "description": "Project and task management with hierarchical tasks, dependency tracking, milestones, templates, and timesheet-based billable time tracking. Progress auto-calculated from tasks.\n",
-          "tags": [
-            "project",
-            "task",
-            "timesheet",
-            "milestone",
-            "dependency",
-            "billing",
-            "time-tracking"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/project/project-task-management.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/project/project-task-management.blueprint.yaml"
         }
       ]
     },
@@ -1027,6 +1054,68 @@
         }
       ]
     },
+    "manufacturing": {
+      "count": 4,
+      "blueprints": [
+        {
+          "feature": "bill-of-materials",
+          "version": "1.0.0",
+          "description": "Hierarchical bill of materials defining raw materials, operations, and costs required to manufacture a finished good, with multi-level explosion and cost propagation.\n",
+          "tags": [
+            "bom",
+            "manufacturing",
+            "raw-materials",
+            "cost-estimation",
+            "production"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/manufacturing/bill-of-materials.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/manufacturing/bill-of-materials.blueprint.yaml"
+        },
+        {
+          "feature": "production-planning",
+          "version": "1.0.0",
+          "description": "Production planning tool that consolidates demand from sales orders and material requests, explodes multi-level BOMs, and generates work orders and procurement requests for manufacturing.\n",
+          "tags": [
+            "production-planning",
+            "mrp",
+            "demand-planning",
+            "manufacturing",
+            "material-requirements"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/manufacturing/production-planning.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/manufacturing/production-planning.blueprint.yaml"
+        },
+        {
+          "feature": "subcontracting",
+          "version": "1.0.0",
+          "description": "Subcontracting workflow for outsourcing manufacturing to suppliers, including raw material dispatch, finished goods receipt, quality inspection, rejection handling, and cost tracking.\n",
+          "tags": [
+            "subcontracting",
+            "outsourced-manufacturing",
+            "supplier",
+            "contract-manufacturing",
+            "procurement"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/manufacturing/subcontracting.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/manufacturing/subcontracting.blueprint.yaml"
+        },
+        {
+          "feature": "work-orders-job-cards",
+          "version": "1.0.0",
+          "description": "Work order execution and job card tracking for manufacturing operations, including material transfers, time logging, sequential operation control, and production completion.\n",
+          "tags": [
+            "work-order",
+            "job-card",
+            "production",
+            "manufacturing",
+            "shop-floor",
+            "time-tracking"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/manufacturing/work-orders-job-cards.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/manufacturing/work-orders-job-cards.blueprint.yaml"
+        }
+      ]
+    },
     "inventory": {
       "count": 5,
       "blueprints": [
@@ -1108,70 +1197,8 @@
         }
       ]
     },
-    "manufacturing": {
-      "count": 4,
-      "blueprints": [
-        {
-          "feature": "bill-of-materials",
-          "version": "1.0.0",
-          "description": "Hierarchical bill of materials defining raw materials, operations, and costs required to manufacture a finished good, with multi-level explosion and cost propagation.\n",
-          "tags": [
-            "bom",
-            "manufacturing",
-            "raw-materials",
-            "cost-estimation",
-            "production"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/manufacturing/bill-of-materials.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/manufacturing/bill-of-materials.blueprint.yaml"
-        },
-        {
-          "feature": "production-planning",
-          "version": "1.0.0",
-          "description": "Production planning tool that consolidates demand from sales orders and material requests, explodes multi-level BOMs, and generates work orders and procurement requests for manufacturing.\n",
-          "tags": [
-            "production-planning",
-            "mrp",
-            "demand-planning",
-            "manufacturing",
-            "material-requirements"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/manufacturing/production-planning.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/manufacturing/production-planning.blueprint.yaml"
-        },
-        {
-          "feature": "subcontracting",
-          "version": "1.0.0",
-          "description": "Subcontracting workflow for outsourcing manufacturing to suppliers, including raw material dispatch, finished goods receipt, quality inspection, rejection handling, and cost tracking.\n",
-          "tags": [
-            "subcontracting",
-            "outsourced-manufacturing",
-            "supplier",
-            "contract-manufacturing",
-            "procurement"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/manufacturing/subcontracting.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/manufacturing/subcontracting.blueprint.yaml"
-        },
-        {
-          "feature": "work-orders-job-cards",
-          "version": "1.0.0",
-          "description": "Work order execution and job card tracking for manufacturing operations, including material transfers, time logging, sequential operation control, and production completion.\n",
-          "tags": [
-            "work-order",
-            "job-card",
-            "production",
-            "manufacturing",
-            "shop-floor",
-            "time-tracking"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/manufacturing/work-orders-job-cards.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/manufacturing/work-orders-job-cards.blueprint.yaml"
-        }
-      ]
-    },
     "integration": {
-      "count": 19,
+      "count": 21,
       "blueprints": [
         {
           "feature": "api-gateway",
@@ -1276,6 +1303,22 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/clearing-house-request-to-pay.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/chp-request-to-pay.blueprint.yaml"
+        },
+        {
+          "feature": "dataverse-client",
+          "version": "1.0.0",
+          "description": "Enterprise service client for connecting to Microsoft Dataverse, managing authentication, executing CRUD operations on entities, batch processing, and discovery of available organizations",
+          "tags": [
+            "crm",
+            "cloud",
+            "dataverse",
+            "enterprise",
+            "entity-management",
+            "async-first",
+            "sdk"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/dataverse-client.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/dataverse-client.blueprint.yaml"
         },
         {
           "feature": "email-service",
@@ -1419,6 +1462,20 @@
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/prisma-cli.blueprint.yaml"
         },
         {
+          "feature": "pub-sub-messaging",
+          "version": "1.0.0",
+          "description": "Real-time fire-and-forget message broadcasting with direct channel subscriptions and pattern-based subscriptions; sharded variant for cluster deployments",
+          "tags": [
+            "pub-sub",
+            "real-time-messaging",
+            "broadcast",
+            "pattern-matching",
+            "no-persistence"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/integration/pub-sub-messaging.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/integration/pub-sub-messaging.blueprint.yaml"
+        },
+        {
           "feature": "stablecoin-wallet-api",
           "version": "1.0.0",
           "description": "Stablecoin wallet infrastructure API — multi-chain wallets, addresses, deposits, withdrawals, swaps, gateway, checkout, and fiat offramp",
@@ -1452,7 +1509,7 @@
       ]
     },
     "infrastructure": {
-      "count": 3,
+      "count": 6,
       "blueprints": [
         {
           "feature": "caching",
@@ -1486,6 +1543,35 @@
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/infrastructure/cloud-storage.blueprint.yaml"
         },
         {
+          "feature": "database-persistence",
+          "version": "1.0.0",
+          "description": "Data durability via RDB snapshots and/or AOF journaling; recover to point-in-time or exact command sequence after crash",
+          "tags": [
+            "persistence",
+            "durability",
+            "rdb-snapshots",
+            "aof-journal",
+            "crash-recovery",
+            "backup"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/infrastructure/database-persistence.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/infrastructure/database-persistence.blueprint.yaml"
+        },
+        {
+          "feature": "master-replica-replication",
+          "version": "1.0.0",
+          "description": "One-way data synchronization from master to replicas; full or partial resync with command streaming and replication backlog",
+          "tags": [
+            "replication",
+            "high-availability",
+            "read-scaling",
+            "data-synchronization",
+            "partial-resync"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/infrastructure/master-replica-replication.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/infrastructure/master-replica-replication.blueprint.yaml"
+        },
+        {
           "feature": "message-queue",
           "version": "1.0.0",
           "description": "Process asynchronous jobs and events through a provider-agnostic message queue supporting publish, subscribe, acknowledge, retry with backoff, and dead-letter queues",
@@ -1499,11 +1585,89 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/infrastructure/message-queue.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/infrastructure/message-queue.blueprint.yaml"
+        },
+        {
+          "feature": "sentinel-and-cluster",
+          "version": "1.0.0",
+          "description": "Sentinel: automatic failover and monitoring; Cluster: distributed sharding across multiple nodes with gossip protocol",
+          "tags": [
+            "sentinel",
+            "cluster",
+            "failover",
+            "sharding",
+            "high-availability",
+            "auto-recovery",
+            "distributed"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/infrastructure/sentinel-and-cluster.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/infrastructure/sentinel-and-cluster.blueprint.yaml"
+        }
+      ]
+    },
+    "crm": {
+      "count": 4,
+      "blueprints": [
+        {
+          "feature": "appointment-booking",
+          "version": "1.0.0",
+          "description": "Self-service appointment scheduling with availability slot management, email verification, agent assignment, and calendar event integration.\n",
+          "tags": [
+            "appointment",
+            "scheduling",
+            "booking",
+            "calendar",
+            "self-service"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/appointment-booking.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/appointment-booking.blueprint.yaml"
+        },
+        {
+          "feature": "campaign-management",
+          "version": "1.0.0",
+          "description": "Marketing campaign definition and email drip campaign execution with scheduled delivery, recipient tracking, and unsubscribe management.\n",
+          "tags": [
+            "campaign",
+            "email-marketing",
+            "drip-sequence",
+            "marketing",
+            "automation"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/campaign-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/campaign-management.blueprint.yaml"
+        },
+        {
+          "feature": "contract-management",
+          "version": "1.0.0",
+          "description": "Contract lifecycle management with signing workflow, date-driven status transitions, fulfilment tracking, and template-based term generation.\n",
+          "tags": [
+            "contract",
+            "agreement",
+            "fulfilment",
+            "signing",
+            "compliance"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/contract-management.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/contract-management.blueprint.yaml"
+        },
+        {
+          "feature": "lead-opportunity-pipeline",
+          "version": "1.0.0",
+          "description": "Lead capture, qualification, and opportunity pipeline management with conversion tracking from initial contact through to customer creation.\n",
+          "tags": [
+            "lead",
+            "opportunity",
+            "pipeline",
+            "sales",
+            "qualification",
+            "conversion"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/lead-opportunity-pipeline.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/lead-opportunity-pipeline.blueprint.yaml"
         }
       ]
     },
     "data": {
-      "count": 30,
+      "count": 35,
       "blueprints": [
         {
           "feature": "bank-reconciliation",
@@ -1670,6 +1834,20 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/general-ledger.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/general-ledger.blueprint.yaml"
+        },
+        {
+          "feature": "list-queue-operations",
+          "version": "1.0.0",
+          "description": "Ordered collection with efficient head/tail insertion, removal, and range queries; supports blocking operations and atomic moves between lists",
+          "tags": [
+            "lists",
+            "queues",
+            "stacks",
+            "blocking-operations",
+            "ordered-collections"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/list-queue-operations.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/list-queue-operations.blueprint.yaml"
         },
         {
           "feature": "openclaw-session-management",
@@ -1902,6 +2080,19 @@
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/search-and-filtering.blueprint.yaml"
         },
         {
+          "feature": "set-operations",
+          "version": "1.0.0",
+          "description": "Unordered collection of unique elements with set algebra operations (union, intersection, difference) and cardinality counting",
+          "tags": [
+            "sets",
+            "unordered-collections",
+            "set-algebra",
+            "cardinality"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/set-operations.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/set-operations.blueprint.yaml"
+        },
+        {
           "feature": "soft-delete",
           "version": "1.0.0",
           "description": "Trash/archive/restore pattern with soft deletion, configurable retention periods, automatic purging, and cascade rules for related records",
@@ -1916,6 +2107,49 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/soft-delete.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/soft-delete.blueprint.yaml"
+        },
+        {
+          "feature": "sorted-set-and-hash-operations",
+          "version": "1.0.0",
+          "description": "Sorted collections with ranking and scoring; nested key-value maps with field-level operations and optional TTL per field",
+          "tags": [
+            "sorted-sets",
+            "hashes",
+            "nested-kv",
+            "scoring",
+            "field-expiration",
+            "ranking"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/sorted-set-and-hash-operations.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/sorted-set-and-hash-operations.blueprint.yaml"
+        },
+        {
+          "feature": "stream-event-log",
+          "version": "1.0.0",
+          "description": "Append-only event log with monotonically increasing IDs, consumer groups for distributed processing, and automatic acknowledgment tracking",
+          "tags": [
+            "streams",
+            "event-log",
+            "consumer-groups",
+            "message-queue",
+            "ack-tracking",
+            "ordering"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/stream-event-log.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/stream-event-log.blueprint.yaml"
+        },
+        {
+          "feature": "string-key-value",
+          "version": "1.0.0",
+          "description": "Store and retrieve arbitrary-length string values with atomic increment, decrement, append, and range operations",
+          "tags": [
+            "strings",
+            "key-value",
+            "atomic-operations",
+            "numeric-operations"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/string-key-value.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/string-key-value.blueprint.yaml"
         },
         {
           "feature": "tagging-categorization",
@@ -1959,6 +2193,41 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/data/undo-redo.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/data/undo-redo.blueprint.yaml"
+        }
+      ]
+    },
+    "asset": {
+      "count": 2,
+      "blueprints": [
+        {
+          "feature": "asset-maintenance-repairs",
+          "version": "1.0.0",
+          "description": "Asset maintenance scheduling and repair management with preventive and corrective tasks, repair cost capitalization, and stock consumption tracking for parts used during repairs.\n",
+          "tags": [
+            "asset-maintenance",
+            "preventive-maintenance",
+            "corrective-maintenance",
+            "repair",
+            "maintenance-log",
+            "asset-lifecycle"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/asset/asset-maintenance-repairs.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/asset/asset-maintenance-repairs.blueprint.yaml"
+        },
+        {
+          "feature": "fixed-asset-lifecycle",
+          "version": "1.0.0",
+          "description": "Fixed asset lifecycle management covering registration, multi-book depreciation, asset movements, value adjustments, disposal, and capitalization with automatic GL entries.\n",
+          "tags": [
+            "fixed-asset",
+            "depreciation",
+            "asset-movement",
+            "capitalization",
+            "finance-books",
+            "general-ledger"
+          ],
+          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/asset/fixed-asset-lifecycle.json",
+          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/asset/fixed-asset-lifecycle.blueprint.yaml"
         }
       ]
     },
@@ -2155,103 +2424,6 @@
           ],
           "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/auth/single-sign-on.json",
           "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/auth/single-sign-on.blueprint.yaml"
-        }
-      ]
-    },
-    "asset": {
-      "count": 2,
-      "blueprints": [
-        {
-          "feature": "asset-maintenance-repairs",
-          "version": "1.0.0",
-          "description": "Asset maintenance scheduling and repair management with preventive and corrective tasks, repair cost capitalization, and stock consumption tracking for parts used during repairs.\n",
-          "tags": [
-            "asset-maintenance",
-            "preventive-maintenance",
-            "corrective-maintenance",
-            "repair",
-            "maintenance-log",
-            "asset-lifecycle"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/asset/asset-maintenance-repairs.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/asset/asset-maintenance-repairs.blueprint.yaml"
-        },
-        {
-          "feature": "fixed-asset-lifecycle",
-          "version": "1.0.0",
-          "description": "Fixed asset lifecycle management covering registration, multi-book depreciation, asset movements, value adjustments, disposal, and capitalization with automatic GL entries.\n",
-          "tags": [
-            "fixed-asset",
-            "depreciation",
-            "asset-movement",
-            "capitalization",
-            "finance-books",
-            "general-ledger"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/asset/fixed-asset-lifecycle.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/asset/fixed-asset-lifecycle.blueprint.yaml"
-        }
-      ]
-    },
-    "crm": {
-      "count": 4,
-      "blueprints": [
-        {
-          "feature": "appointment-booking",
-          "version": "1.0.0",
-          "description": "Self-service appointment scheduling with availability slot management, email verification, agent assignment, and calendar event integration.\n",
-          "tags": [
-            "appointment",
-            "scheduling",
-            "booking",
-            "calendar",
-            "self-service"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/appointment-booking.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/appointment-booking.blueprint.yaml"
-        },
-        {
-          "feature": "campaign-management",
-          "version": "1.0.0",
-          "description": "Marketing campaign definition and email drip campaign execution with scheduled delivery, recipient tracking, and unsubscribe management.\n",
-          "tags": [
-            "campaign",
-            "email-marketing",
-            "drip-sequence",
-            "marketing",
-            "automation"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/campaign-management.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/campaign-management.blueprint.yaml"
-        },
-        {
-          "feature": "contract-management",
-          "version": "1.0.0",
-          "description": "Contract lifecycle management with signing workflow, date-driven status transitions, fulfilment tracking, and template-based term generation.\n",
-          "tags": [
-            "contract",
-            "agreement",
-            "fulfilment",
-            "signing",
-            "compliance"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/contract-management.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/contract-management.blueprint.yaml"
-        },
-        {
-          "feature": "lead-opportunity-pipeline",
-          "version": "1.0.0",
-          "description": "Lead capture, qualification, and opportunity pipeline management with conversion tracking from initial contact through to customer creation.\n",
-          "tags": [
-            "lead",
-            "opportunity",
-            "pipeline",
-            "sales",
-            "qualification",
-            "conversion"
-          ],
-          "api_url": "https://theunsbarnardt.github.io/claude-fdl/api/blueprints/crm/lead-opportunity-pipeline.json",
-          "yaml_url": "https://raw.githubusercontent.com/TheunsBarnardt/claude-fdl/master/blueprints/crm/lead-opportunity-pipeline.blueprint.yaml"
         }
       ]
     },

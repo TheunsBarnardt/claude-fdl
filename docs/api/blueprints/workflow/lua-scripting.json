@@ -1,0 +1,680 @@
+{
+  "feature": "lua-scripting",
+  "version": "1.0.0",
+  "description": "Server-side Lua script execution providing atomic operations, programmatic logic, and access to all Redis commands within a single round-trip",
+  "category": "workflow",
+  "tags": [
+    "lua-scripting",
+    "server-side-execution",
+    "atomic-operations",
+    "stored-procedures"
+  ],
+  "actors": [
+    {
+      "id": "client",
+      "name": "Client",
+      "type": "human",
+      "description": "Application sending scripts to execute"
+    }
+  ],
+  "fields": [
+    {
+      "name": "script_source",
+      "type": "text",
+      "description": "Lua code to execute",
+      "required": false
+    },
+    {
+      "name": "script_sha",
+      "type": "text",
+      "description": "SHA1 digest of script (40 hex chars)",
+      "required": false
+    },
+    {
+      "name": "num_keys",
+      "type": "number",
+      "description": "Count of Redis key arguments",
+      "required": false
+    },
+    {
+      "name": "keys_array",
+      "type": "json",
+      "description": "KEYS[1..N] accessible in script",
+      "required": false
+    },
+    {
+      "name": "argv_array",
+      "type": "json",
+      "description": "ARGV[1..N] accessible in script",
+      "required": false
+    },
+    {
+      "name": "script_result",
+      "type": "text",
+      "description": "Return value from script",
+      "required": false
+    },
+    {
+      "name": "execution_time_ms",
+      "type": "number",
+      "description": "Time spent executing script",
+      "required": false
+    }
+  ],
+  "rules": [
+    "Scripts execute atomically; no other commands interleave during execution",
+    "Script has access to all Redis commands via redis.call() or redis.pcall()",
+    "redis.call() raises error if command fails; redis.pcall() returns error table",
+    "Scripts are sandboxed; no file I/O, network access, or dangerous Lua operations",
+    "Replicas execute scripts read-only (writes not allowed on replicas)",
+    "Scripts are cached by SHA1; same script executed multiple times via EVALSHA",
+    "Script cache persists for server lifetime or until FLUSHDB/FLUSHALL",
+    "Numeric types preserved; float operations return integers where possible",
+    "Long-running scripts can be SCRIPT KILL if timeout exceeded"
+  ],
+  "states": [
+    {
+      "field": "script_state",
+      "values": [
+        {
+          "value": "not_cached",
+          "initial": true,
+          "description": "Script not yet cached"
+        },
+        {
+          "value": "cached",
+          "description": "Script stored by SHA1"
+        },
+        {
+          "value": "executing",
+          "description": "Script currently running"
+        },
+        {
+          "value": "completed",
+          "terminal": true,
+          "description": "Execution finished with result"
+        }
+      ]
+    }
+  ],
+  "outcomes": {
+    "eval_inline_script": {
+      "priority": 10,
+      "description": "Execute script inline",
+      "given": [
+        "EVAL script numkeys [key ...] [arg ...]",
+        {
+          "field": "script",
+          "source": "input"
+        },
+        {
+          "field": "numkeys",
+          "source": "input",
+          "description": "count of keys (determines KEYS/ARGV split)"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "script_source"
+        },
+        {
+          "action": "set_field",
+          "target": "keys_array",
+          "description": "first numkeys arguments"
+        },
+        {
+          "action": "set_field",
+          "target": "argv_array",
+          "description": "remaining arguments"
+        },
+        {
+          "action": "transition_state",
+          "field": "script_state",
+          "to": "executing"
+        },
+        {
+          "action": "emit_event",
+          "event": "script.executed",
+          "payload": [
+            "script_hash",
+            "keys_count",
+            "argv_count",
+            "execution_time_ms"
+          ]
+        }
+      ],
+      "result": "script result returned (value, error, or nil)"
+    },
+    "evalsha_cached": {
+      "priority": 11,
+      "description": "Execute cached script by SHA1",
+      "given": [
+        "EVALSHA sha1 numkeys [key ...] [arg ...]",
+        {
+          "field": "script_cached",
+          "source": "db",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "keys_array"
+        },
+        {
+          "action": "set_field",
+          "target": "argv_array"
+        },
+        {
+          "action": "transition_state",
+          "field": "script_state",
+          "to": "executing"
+        },
+        {
+          "action": "emit_event",
+          "event": "script.executed_cached",
+          "payload": [
+            "sha1",
+            "keys_count",
+            "argv_count"
+          ]
+        }
+      ],
+      "result": "script result returned"
+    },
+    "evalsha_not_found": {
+      "priority": 12,
+      "error": "NOSCRIPT",
+      "given": [
+        {
+          "field": "script_cached",
+          "source": "db",
+          "operator": "eq",
+          "value": false
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.not_found",
+          "payload": [
+            "sha1"
+          ]
+        }
+      ],
+      "result": "NOSCRIPT error returned; client can retry with EVAL"
+    },
+    "script_result_string": {
+      "priority": 13,
+      "description": "Script returns string value",
+      "given": [
+        {
+          "field": "script_returns",
+          "source": "computed",
+          "operator": "eq",
+          "value": "string"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "script_result"
+        },
+        {
+          "action": "emit_event",
+          "event": "script.result_string",
+          "payload": [
+            "result"
+          ]
+        }
+      ],
+      "result": "string value returned to client"
+    },
+    "script_result_number": {
+      "priority": 14,
+      "description": "Script returns numeric value",
+      "given": [
+        {
+          "field": "script_returns",
+          "source": "computed",
+          "operator": "eq",
+          "value": "number"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "script_result"
+        },
+        {
+          "action": "emit_event",
+          "event": "script.result_number",
+          "payload": [
+            "result"
+          ]
+        }
+      ],
+      "result": "number value returned"
+    },
+    "script_result_array": {
+      "priority": 15,
+      "description": "Script returns array/table",
+      "given": [
+        {
+          "field": "script_returns",
+          "source": "computed",
+          "operator": "eq",
+          "value": "table"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.result_array",
+          "payload": [
+            "array_length"
+          ]
+        }
+      ],
+      "result": "array returned with nested structures preserved"
+    },
+    "script_result_error": {
+      "priority": 16,
+      "description": "Script returns error via redis.error_reply()",
+      "given": [
+        "redis.error_reply('message')"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.result_error",
+          "payload": [
+            "error_message"
+          ]
+        }
+      ],
+      "result": "error returned to client"
+    },
+    "script_runtime_error": {
+      "priority": 17,
+      "error": "SCRIPT_ERROR",
+      "description": "Script execution fails (Lua error)",
+      "given": [
+        {
+          "field": "lua_error",
+          "source": "computed",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.runtime_error",
+          "payload": [
+            "error_message",
+            "line_number"
+          ]
+        }
+      ],
+      "result": "error returned; database unchanged"
+    },
+    "script_redis_error": {
+      "priority": 18,
+      "description": "Redis command within script fails with redis.call()",
+      "given": [
+        "redis.call() fails"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.redis_call_error",
+          "payload": [
+            "command",
+            "error_message"
+          ]
+        }
+      ],
+      "result": "error returned; script aborted; database unchanged (atomic)"
+    },
+    "script_redis_error_handled": {
+      "priority": 19,
+      "description": "Redis command fails but caught with redis.pcall()",
+      "given": [
+        "redis.pcall() returns error"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.redis_pcall_error",
+          "payload": [
+            "command",
+            "error_table"
+          ]
+        }
+      ],
+      "result": "error table passed to Lua; script continues"
+    },
+    "script_call_redis_command": {
+      "priority": 20,
+      "description": "Execute Redis command from within script",
+      "given": [
+        "redis.call('SET', 'key', 'value') or redis.pcall(...)"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.redis_command_executed",
+          "payload": [
+            "command",
+            "args"
+          ]
+        }
+      ],
+      "result": "command executes atomically; result returned to script"
+    },
+    "script_load": {
+      "priority": 30,
+      "description": "Pre-load script into cache",
+      "given": [
+        "SCRIPT LOAD script",
+        {
+          "field": "script",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "script_sha",
+          "description": "compute SHA1 digest"
+        },
+        {
+          "action": "set_field",
+          "target": "script_state",
+          "value": "cached"
+        },
+        {
+          "action": "emit_event",
+          "event": "script.loaded",
+          "payload": [
+            "sha1"
+          ]
+        }
+      ],
+      "result": "SHA1 digest returned (can later use with EVALSHA)"
+    },
+    "script_exists": {
+      "priority": 31,
+      "description": "Check if scripts are cached",
+      "given": [
+        "SCRIPT EXISTS sha1 [sha1 ...]",
+        {
+          "field": "shas",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.exists_checked",
+          "payload": [
+            "shas_count",
+            "cached_count"
+          ]
+        }
+      ],
+      "result": "array of 0/1 for each SHA (1=cached, 0=not found)"
+    },
+    "script_flush": {
+      "priority": 32,
+      "description": "Clear script cache",
+      "given": [
+        "SCRIPT FLUSH [ASYNC|SYNC]",
+        {
+          "field": "mode",
+          "source": "input",
+          "description": "ASYNC=non-blocking, SYNC=blocking"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "script_state",
+          "value": "not_cached"
+        },
+        {
+          "action": "emit_event",
+          "event": "script.cache_flushed",
+          "payload": [
+            "cache_size_freed",
+            "mode"
+          ]
+        }
+      ],
+      "result": "OK returned; all cached scripts deleted"
+    },
+    "script_kill": {
+      "priority": 33,
+      "description": "Terminate long-running script",
+      "given": [
+        "SCRIPT KILL",
+        {
+          "field": "script_executing",
+          "source": "system",
+          "operator": "eq",
+          "value": true
+        },
+        {
+          "field": "execution_time_exceeds_timeout",
+          "source": "system",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.killed",
+          "payload": [
+            "execution_time_ms"
+          ]
+        }
+      ],
+      "result": "script terminated; OK returned (or error if cannot kill)"
+    },
+    "script_call_denied": {
+      "priority": 34,
+      "error": "SCRIPT_KILLED",
+      "given": [
+        {
+          "field": "script_killed_mid_execution",
+          "source": "system",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.call_denied",
+          "payload": [
+            "reason"
+          ]
+        }
+      ],
+      "result": "redis.call() rejects further execution; SCRIPT KILL succeeded"
+    },
+    "sandbox_no_file_io": {
+      "priority": 40,
+      "error": "SCRIPT_ERROR",
+      "description": "File I/O operations blocked",
+      "given": [
+        "io.open(), os.execute(), etc."
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.sandbox_violation",
+          "payload": [
+            "operation",
+            "reason"
+          ]
+        }
+      ],
+      "result": "error returned; script aborted"
+    },
+    "sandbox_no_network": {
+      "priority": 41,
+      "description": "Network operations blocked",
+      "given": [
+        "socket.connect(), etc."
+      ],
+      "then": [],
+      "result": "error returned"
+    },
+    "sandbox_allowed_functions": {
+      "priority": 42,
+      "description": "Standard library functions available",
+      "given": [
+        {
+          "field": "allowed_libs",
+          "source": "system",
+          "operator": "in",
+          "value": [
+            "table",
+            "string",
+            "math",
+            "cjson"
+          ]
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.stdlib_used",
+          "payload": [
+            "library_name"
+          ]
+        }
+      ],
+      "result": "library functions execute normally"
+    },
+    "script_all_or_nothing": {
+      "priority": 50,
+      "description": "Script atomicity guarantee",
+      "given": [
+        "script with multiple redis.call()",
+        {
+          "field": "first_command_succeeds",
+          "source": "system",
+          "operator": "eq",
+          "value": true
+        },
+        {
+          "field": "second_command_fails",
+          "source": "system",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.atomic_abort",
+          "payload": [
+            "failed_command_index"
+          ]
+        }
+      ],
+      "result": "first command's effects remain (NOT transactional); script aborted at failure"
+    },
+    "script_isolation": {
+      "priority": 51,
+      "description": "Script sees consistent database state",
+      "given": [
+        "script execution in progress",
+        {
+          "field": "other_client_modifies_key",
+          "source": "system",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "script.isolation_maintained",
+          "payload": []
+        }
+      ],
+      "result": "script doesn't see other client's modification (changes applied after script completes)"
+    }
+  },
+  "errors": [
+    {
+      "code": "NOSCRIPT",
+      "message": "NOSCRIPT No matching script. Please use EVAL.",
+      "user_safe": true
+    },
+    {
+      "code": "SCRIPT_ERROR",
+      "message": "ERR Error running script: <details>",
+      "user_safe": true
+    },
+    {
+      "code": "SCRIPT_KILLED",
+      "message": "SCRIPT KILLED Script killed by user with SCRIPT KILL...",
+      "user_safe": true
+    }
+  ],
+  "events": [
+    "script.executed",
+    "script.executed_cached",
+    "script.not_found",
+    "script.result_string",
+    "script.result_number",
+    "script.result_array",
+    "script.result_error",
+    "script.runtime_error",
+    "script.redis_call_error",
+    "script.redis_pcall_error",
+    "script.redis_command_executed",
+    "script.loaded",
+    "script.exists_checked",
+    "script.cache_flushed",
+    "script.killed",
+    "script.call_denied",
+    "script.sandbox_violation",
+    "script.stdlib_used",
+    "script.atomic_abort",
+    "script.isolation_maintained"
+  ],
+  "related": [
+    {
+      "feature": "multi-exec-transactions",
+      "type": "optional",
+      "reason": "Both provide atomicity; scripting is more powerful for complex logic"
+    },
+    {
+      "feature": "string-key-value",
+      "type": "optional",
+      "reason": "Scripts often operate on string keys"
+    }
+  ],
+  "extensions": {
+    "source": {
+      "repo": "https://github.com/redis/redis",
+      "project": "Redis",
+      "tech_stack": "C",
+      "files_traced": 3,
+      "entry_points": [
+        "src/eval.c",
+        "src/script.c",
+        "src/script_lua.c"
+      ]
+    }
+  }
+}

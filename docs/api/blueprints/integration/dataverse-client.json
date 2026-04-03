@@ -1,0 +1,1239 @@
+{
+  "feature": "dataverse-client",
+  "version": "1.0.0",
+  "description": "Enterprise service client for connecting to Microsoft Dataverse, managing authentication, executing CRUD operations on entities, batch processing, and discovery of available organizations",
+  "category": "integration",
+  "tags": [
+    "crm",
+    "cloud",
+    "dataverse",
+    "enterprise",
+    "entity-management",
+    "async-first",
+    "sdk"
+  ],
+  "actors": [
+    {
+      "id": "client_application",
+      "name": "Client Application",
+      "type": "system",
+      "description": "The consuming .NET application that needs to interact with Dataverse"
+    },
+    {
+      "id": "dataverse_service",
+      "name": "Dataverse Service",
+      "type": "external",
+      "description": "Microsoft Dataverse cloud service providing entity storage, querying, and operations"
+    },
+    {
+      "id": "authentication_service",
+      "name": "Authentication Service",
+      "type": "external",
+      "description": "Azure AD / MSAL for token generation and management (OAuth, Client Secret, Certificate)"
+    },
+    {
+      "id": "discovery_service",
+      "name": "Discovery Service",
+      "type": "external",
+      "description": "Dataverse organization discovery endpoint for listing available instances"
+    }
+  ],
+  "fields": [
+    {
+      "name": "service_uri",
+      "type": "url",
+      "required": true,
+      "label": "Dataverse Instance URL"
+    },
+    {
+      "name": "authentication_type",
+      "type": "select",
+      "required": true,
+      "label": "Authentication Type",
+      "options": [
+        {
+          "value": "oauth",
+          "label": "OAuth (Recommended for Cloud)"
+        },
+        {
+          "value": "client_secret",
+          "label": "Client Secret"
+        },
+        {
+          "value": "certificate",
+          "label": "Certificate"
+        },
+        {
+          "value": "active_directory",
+          "label": "Active Directory (On-Premises)"
+        },
+        {
+          "value": "token_provider",
+          "label": "Custom Token Provider"
+        }
+      ]
+    },
+    {
+      "name": "username",
+      "type": "email",
+      "required": false,
+      "label": "Username"
+    },
+    {
+      "name": "password",
+      "type": "password",
+      "required": false,
+      "label": "Password"
+    },
+    {
+      "name": "client_id",
+      "type": "text",
+      "required": true,
+      "label": "Client / Application ID"
+    },
+    {
+      "name": "client_secret",
+      "type": "password",
+      "required": false,
+      "label": "Client Secret"
+    },
+    {
+      "name": "redirect_uri",
+      "type": "url",
+      "required": false,
+      "label": "Redirect URI"
+    },
+    {
+      "name": "prompt_behavior",
+      "type": "select",
+      "required": false,
+      "label": "Login Prompt",
+      "options": [
+        {
+          "value": "auto",
+          "label": "Auto"
+        },
+        {
+          "value": "always",
+          "label": "Always Prompt"
+        },
+        {
+          "value": "never",
+          "label": "Never"
+        },
+        {
+          "value": "select_account",
+          "label": "Select Account"
+        }
+      ]
+    },
+    {
+      "name": "certificate_thumbprint",
+      "type": "text",
+      "required": false,
+      "label": "Certificate Thumbprint"
+    },
+    {
+      "name": "certificate_store_name",
+      "type": "select",
+      "required": false,
+      "label": "Certificate Store",
+      "options": [
+        {
+          "value": "current_user",
+          "label": "Current User"
+        },
+        {
+          "value": "local_machine",
+          "label": "Local Machine"
+        }
+      ]
+    },
+    {
+      "name": "token_cache_path",
+      "type": "text",
+      "required": false,
+      "label": "Token Cache Path"
+    },
+    {
+      "name": "access_token_provider",
+      "type": "text",
+      "required": false,
+      "label": "Token Provider Function"
+    },
+    {
+      "name": "custom_headers_provider",
+      "type": "text",
+      "required": false,
+      "label": "Custom Headers Function"
+    },
+    {
+      "name": "domain",
+      "type": "text",
+      "required": false,
+      "label": "Windows Domain"
+    },
+    {
+      "name": "home_realm_uri",
+      "type": "url",
+      "required": false,
+      "label": "Home Realm URI"
+    },
+    {
+      "name": "use_current_user",
+      "type": "boolean",
+      "required": false,
+      "label": "Use Current Windows User"
+    },
+    {
+      "name": "skip_discovery",
+      "type": "boolean",
+      "required": false,
+      "label": "Skip Organization Discovery"
+    },
+    {
+      "name": "require_unique_instance",
+      "type": "boolean",
+      "required": false,
+      "label": "Require Unique Instance"
+    },
+    {
+      "name": "batch_id",
+      "type": "text",
+      "required": false,
+      "label": "Batch ID"
+    },
+    {
+      "name": "batch_return_results",
+      "type": "boolean",
+      "required": false,
+      "label": "Batch Return Results"
+    },
+    {
+      "name": "batch_continue_on_error",
+      "type": "boolean",
+      "required": false,
+      "label": "Batch Continue on Error"
+    },
+    {
+      "name": "entity_name",
+      "type": "text",
+      "required": false,
+      "label": "Entity Name"
+    },
+    {
+      "name": "record_id",
+      "type": "text",
+      "required": false,
+      "label": "Record ID (GUID)"
+    },
+    {
+      "name": "columns_to_retrieve",
+      "type": "text",
+      "required": false,
+      "label": "Columns to Retrieve"
+    },
+    {
+      "name": "filter_criteria",
+      "type": "text",
+      "required": false,
+      "label": "Filter Criteria"
+    },
+    {
+      "name": "sort_order",
+      "type": "text",
+      "required": false,
+      "label": "Sort Order"
+    },
+    {
+      "name": "page_size",
+      "type": "number",
+      "required": false,
+      "label": "Page Size"
+    },
+    {
+      "name": "relationship_name",
+      "type": "text",
+      "required": false,
+      "label": "Relationship Name"
+    },
+    {
+      "name": "related_entity_ids",
+      "type": "text",
+      "required": false,
+      "label": "Related Entity IDs"
+    },
+    {
+      "name": "request_body",
+      "type": "json",
+      "required": false,
+      "label": "Request Body"
+    },
+    {
+      "name": "response_body",
+      "type": "json",
+      "required": false,
+      "label": "Response Body"
+    },
+    {
+      "name": "http_method",
+      "type": "select",
+      "required": false,
+      "label": "HTTP Method",
+      "options": [
+        {
+          "value": "get",
+          "label": "GET"
+        },
+        {
+          "value": "post",
+          "label": "POST"
+        },
+        {
+          "value": "put",
+          "label": "PUT"
+        },
+        {
+          "value": "patch",
+          "label": "PATCH"
+        },
+        {
+          "value": "delete",
+          "label": "DELETE"
+        }
+      ]
+    },
+    {
+      "name": "query_string",
+      "type": "text",
+      "required": false,
+      "label": "Query String"
+    },
+    {
+      "name": "custom_headers",
+      "type": "json",
+      "required": false,
+      "label": "Custom Headers"
+    },
+    {
+      "name": "enable_logging",
+      "type": "boolean",
+      "required": false,
+      "label": "Enable Logging"
+    },
+    {
+      "name": "log_file_path",
+      "type": "text",
+      "required": false,
+      "label": "Log File Path"
+    },
+    {
+      "name": "in_memory_logging",
+      "type": "boolean",
+      "required": false,
+      "label": "In-Memory Logging"
+    },
+    {
+      "name": "log_retention_minutes",
+      "type": "number",
+      "required": false,
+      "label": "Log Retention (Minutes)"
+    },
+    {
+      "name": "msal_log_pii",
+      "type": "boolean",
+      "required": false,
+      "label": "Log PII in MSAL"
+    }
+  ],
+  "states": {
+    "connection_state": {
+      "field": "connection_state",
+      "values": [
+        {
+          "value": "disconnected",
+          "initial": true
+        },
+        {
+          "value": "connecting"
+        },
+        {
+          "value": "authenticated"
+        },
+        {
+          "value": "connection_failed"
+        },
+        {
+          "value": "disposed"
+        }
+      ]
+    }
+  },
+  "rules": {
+    "security": {
+      "authentication": [
+        "OAuth is the recommended authentication type for cloud (Dataverse online) scenarios",
+        "Client Secret and Certificate auth are suitable for service-to-service scenarios",
+        "Interactive username/password auth is supported for user-interactive applications",
+        "Active Directory auth is limited to on-premises Dataverse deployments",
+        "Token cache must be stored securely (file permissions: 0600 / owner-only access)",
+        "Client secrets must never be hardcoded; use environment variables or secure vaults",
+        "Certificate-based auth requires the certificate private key to be available locally"
+      ],
+      "rate_limiting": [
+        "Dataverse enforces API throttling (429 Too Many Requests) when request volume exceeds service limits",
+        "Default retry logic includes exponential backoff for concurrency throttling",
+        "Affinity cookie (enabled by default) improves throttling by routing requests to consistent node",
+        "Disable affinity cookie only when required by load balancing scenarios"
+      ],
+      "input_validation": [
+        "Entity names must be valid logical names (checked against metadata)",
+        "Record IDs must be valid GUIDs (validated at SDK level)",
+        "Column names must exist in entity schema or 'all' wildcard can be used",
+        "Relationship names must exist in organization metadata",
+        "Filter criteria must be valid OData or FetchXml syntax"
+      ]
+    },
+    "reliability": {
+      "retry_behavior": [
+        "Default max retry count: 10 (configurable)",
+        "Default retry delay: 5 seconds between attempts (configurable)",
+        "Exponential backoff can be enabled for throttling scenarios",
+        "Retries occur automatically for transient failures (network timeouts, service throttling)",
+        "Non-transient errors (invalid credentials, record not found) do not retry"
+      ],
+      "batch_constraints": [
+        "Maximum 5,000 requests per batch",
+        "Maximum 50,000 concurrent batches",
+        "Single batch request limit: 10 MB payload",
+        "Batch response includes individual request results; failures do not rollback entire batch unless transaction: true",
+        "Continue-on-error flag allows batch to proceed if individual requests fail"
+      ],
+      "connection_pooling": [
+        "By default, service clients are pooled and reused within the same process",
+        "Setting require_unique_instance: true creates a new client instance (useful for multi-user scenarios)",
+        "Each connection maintains its own authentication state and caching"
+      ]
+    },
+    "observability": {
+      "logging": [
+        "TraceLogger captures all SDK operations (connection, auth, API calls, errors)",
+        "In-memory log collection must be explicitly enabled (can impact memory)",
+        "Log files are rotated based on size and retention policy",
+        "PII logging is disabled by default (enable only in development)"
+      ]
+    }
+  },
+  "sla": {
+    "connection_timeout": {
+      "max_duration": "30 seconds"
+    },
+    "msal_token_timeout": {
+      "max_duration": "30 seconds"
+    },
+    "msal_retries": {
+      "max_attempts": 3
+    },
+    "api_operation_retries": {
+      "max_attempts": 10
+    },
+    "log_retention": {
+      "max_duration": "5 minutes"
+    }
+  },
+  "outcomes": {
+    "establish_connection": {
+      "priority": 1,
+      "given": [
+        {
+          "field": "service_uri",
+          "source": "input",
+          "operator": "exists"
+        },
+        {
+          "field": "authentication_type",
+          "source": "input",
+          "operator": "exists"
+        },
+        {
+          "field": "client_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "transition_state",
+          "field": "connection_state",
+          "from": "disconnected",
+          "to": "authenticated"
+        },
+        {
+          "action": "emit_event",
+          "event": "connection.established",
+          "payload": [
+            "service_uri",
+            "organization_id",
+            "organization_name"
+          ]
+        }
+      ],
+      "result": "Service client connected and authenticated to Dataverse"
+    },
+    "connection_failed": {
+      "priority": 2,
+      "error": "CONNECTION_FAILED",
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "connection_failed"
+        }
+      ],
+      "result": "Connection attempt failed due to invalid credentials or network issue"
+    },
+    "discover_organizations": {
+      "priority": 3,
+      "given": [
+        {
+          "field": "authentication_type",
+          "source": "input",
+          "operator": "exists"
+        },
+        {
+          "field": "client_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "discovery.completed",
+          "payload": [
+            "organization_count"
+          ]
+        }
+      ],
+      "result": "List of available Dataverse organizations returned with metadata"
+    },
+    "create_record": {
+      "priority": 10,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "entity_name",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "create_record",
+          "type": "entity",
+          "target": "entity_record"
+        },
+        {
+          "action": "emit_event",
+          "event": "record.created",
+          "payload": [
+            "entity_name",
+            "record_id"
+          ]
+        }
+      ],
+      "result": "New record created; record ID returned"
+    },
+    "retrieve_record": {
+      "priority": 11,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "entity_name",
+          "source": "input",
+          "operator": "exists"
+        },
+        {
+          "field": "record_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "record.retrieved",
+          "payload": [
+            "entity_name",
+            "record_id"
+          ]
+        }
+      ],
+      "result": "Entity record returned with specified columns"
+    },
+    "query_records": {
+      "priority": 12,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "entity_name",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "records.queried",
+          "payload": [
+            "entity_name",
+            "result_count"
+          ]
+        }
+      ],
+      "result": "Entity collection returned with matching records"
+    },
+    "update_record": {
+      "priority": 13,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "record_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "record.updated",
+          "payload": [
+            "entity_name",
+            "record_id"
+          ]
+        }
+      ],
+      "result": "Record updated successfully"
+    },
+    "delete_record": {
+      "priority": 14,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "record_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "delete_record",
+          "type": "entity",
+          "target": "entity_record"
+        },
+        {
+          "action": "emit_event",
+          "event": "record.deleted",
+          "payload": [
+            "entity_name",
+            "record_id"
+          ]
+        }
+      ],
+      "result": "Record deleted successfully"
+    },
+    "record_not_found": {
+      "priority": 15,
+      "error": "RECORD_NOT_FOUND",
+      "given": [
+        {
+          "field": "record_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "result": "Record with specified ID not found"
+    },
+    "insufficient_permissions": {
+      "priority": 16,
+      "error": "INSUFFICIENT_PERMISSIONS",
+      "result": "Operation denied due to insufficient permissions"
+    },
+    "associate_entities": {
+      "priority": 20,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "relationship_name",
+          "source": "input",
+          "operator": "exists"
+        },
+        {
+          "field": "record_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "entities.associated",
+          "payload": [
+            "relationship_name",
+            "entity_id"
+          ]
+        }
+      ],
+      "result": "Entities associated successfully via relationship"
+    },
+    "disassociate_entities": {
+      "priority": 21,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "relationship_name",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "entities.disassociated",
+          "payload": [
+            "relationship_name",
+            "entity_id"
+          ]
+        }
+      ],
+      "result": "Association removed successfully"
+    },
+    "relationship_not_found": {
+      "priority": 22,
+      "error": "RELATIONSHIP_NOT_FOUND",
+      "given": [
+        {
+          "field": "relationship_name",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "result": "Relationship not found in organization metadata"
+    },
+    "execute_batch": {
+      "priority": 30,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "batch_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "batch.execution.completed",
+          "payload": [
+            "batch_id",
+            "successful_count",
+            "failed_count"
+          ]
+        }
+      ],
+      "result": "Batch results returned with individual request status"
+    },
+    "batch_limit_exceeded": {
+      "priority": 31,
+      "error": "BATCH_LIMIT_EXCEEDED",
+      "given": [
+        {
+          "field": "batch_id",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "result": "Batch size exceeds maximum (5000 requests per batch)"
+    },
+    "execute_organization_request": {
+      "priority": 40,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "organization.request.executed",
+          "payload": [
+            "request_type"
+          ]
+        }
+      ],
+      "result": "Organization request executed and response returned"
+    },
+    "execute_web_request": {
+      "priority": 50,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        },
+        {
+          "field": "http_method",
+          "source": "input",
+          "operator": "exists"
+        },
+        {
+          "field": "query_string",
+          "source": "input",
+          "operator": "exists"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "web.request.executed",
+          "payload": [
+            "http_method",
+            "endpoint"
+          ]
+        }
+      ],
+      "result": "HTTP response returned from Web API"
+    },
+    "rate_limited": {
+      "priority": 51,
+      "error": "RATE_LIMITED",
+      "given": [
+        "Dataverse throttling limit exceeded"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "throttling.detected",
+          "payload": [
+            "retry_after_seconds"
+          ]
+        }
+      ],
+      "result": "Request failed with 429 Too Many Requests"
+    },
+    "retrieve_connection_metadata": {
+      "priority": 60,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        }
+      ],
+      "result": "Organization metadata returned (name, ID, version)"
+    },
+    "clone_connection": {
+      "priority": 61,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        }
+      ],
+      "then": [
+        {
+          "action": "create_record",
+          "type": "service_client",
+          "target": "service_client_instance"
+        }
+      ],
+      "result": "New service client instance created with same configuration"
+    },
+    "dispose_connection": {
+      "priority": 62,
+      "given": [
+        {
+          "field": "connection_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "authenticated"
+        }
+      ],
+      "then": [
+        {
+          "action": "transition_state",
+          "field": "connection_state",
+          "from": "authenticated",
+          "to": "disposed"
+        }
+      ],
+      "result": "Service client disposed and resources released"
+    }
+  },
+  "errors": [
+    {
+      "code": "CONNECTION_FAILED",
+      "status": 500,
+      "message": "Failed to establish connection to Dataverse. Check service URI, credentials, and network connectivity."
+    },
+    {
+      "code": "AUTHENTICATION_FAILED",
+      "status": 401,
+      "message": "Authentication failed. Verify credentials, client ID, client secret, or certificate."
+    },
+    {
+      "code": "INVALID_CREDENTIALS",
+      "status": 401,
+      "message": "Provided credentials are invalid or expired."
+    },
+    {
+      "code": "RATE_LIMITED",
+      "status": 429,
+      "message": "Dataverse service throttling limit exceeded. Retry after specified delay."
+    },
+    {
+      "code": "RECORD_NOT_FOUND",
+      "status": 404,
+      "message": "Entity record with specified ID not found."
+    },
+    {
+      "code": "INSUFFICIENT_PERMISSIONS",
+      "status": 403,
+      "message": "User lacks required permissions for this operation."
+    },
+    {
+      "code": "INVALID_ENTITY_NAME",
+      "status": 400,
+      "message": "Specified entity name is not valid or does not exist in organization."
+    },
+    {
+      "code": "INVALID_COLUMN_NAME",
+      "status": 400,
+      "message": "Specified column/attribute name does not exist in entity schema."
+    },
+    {
+      "code": "INVALID_QUERY",
+      "status": 400,
+      "message": "Query criteria is malformed or invalid OData/FetchXml syntax."
+    },
+    {
+      "code": "RELATIONSHIP_NOT_FOUND",
+      "status": 404,
+      "message": "Specified relationship does not exist in organization metadata."
+    },
+    {
+      "code": "BATCH_PARTIAL_FAILURE",
+      "status": 400,
+      "message": "One or more requests in batch failed while continue-on-error was false."
+    },
+    {
+      "code": "BATCH_LIMIT_EXCEEDED",
+      "status": 400,
+      "message": "Batch size exceeds 5000 requests or concurrent batch limit exceeded."
+    },
+    {
+      "code": "ORGANIZATION_REQUEST_FAILED",
+      "status": 400,
+      "message": "Organization request is invalid or not supported."
+    },
+    {
+      "code": "DISCOVERY_FAILED",
+      "status": 500,
+      "message": "Organization discovery failed. Verify discovery service endpoint and credentials."
+    },
+    {
+      "code": "NETWORK_TIMEOUT",
+      "status": 500,
+      "message": "Network timeout while communicating with Dataverse. Check connectivity."
+    },
+    {
+      "code": "INVALID_TOKEN",
+      "status": 401,
+      "message": "Provided access token is invalid or expired."
+    },
+    {
+      "code": "MSAL_TIMEOUT",
+      "status": 500,
+      "message": "Azure AD token acquisition timed out after 30 seconds."
+    },
+    {
+      "code": "CERTIFICATE_NOT_FOUND",
+      "status": 400,
+      "message": "Certificate with specified thumbprint not found in Windows certificate store."
+    }
+  ],
+  "events": [
+    {
+      "name": "connection.initiated",
+      "description": "Service client initialization started",
+      "payload": [
+        "service_uri",
+        "authentication_type"
+      ]
+    },
+    {
+      "name": "connection.established",
+      "description": "Successfully connected and authenticated to Dataverse",
+      "payload": [
+        "service_uri",
+        "organization_id",
+        "organization_name"
+      ]
+    },
+    {
+      "name": "connection.failed",
+      "description": "Connection attempt failed",
+      "payload": [
+        "error_code",
+        "error_message"
+      ]
+    },
+    {
+      "name": "connection.disposed",
+      "description": "Service client connection closed and resources released",
+      "payload": [
+        "timestamp"
+      ]
+    },
+    {
+      "name": "discovery.started",
+      "description": "Organization discovery operation initiated",
+      "payload": [
+        "discovery_uri"
+      ]
+    },
+    {
+      "name": "discovery.completed",
+      "description": "Organization discovery completed",
+      "payload": [
+        "organization_count"
+      ]
+    },
+    {
+      "name": "record.created",
+      "description": "Entity record successfully created",
+      "payload": [
+        "entity_name",
+        "record_id",
+        "created_timestamp"
+      ]
+    },
+    {
+      "name": "record.retrieved",
+      "description": "Entity record successfully retrieved",
+      "payload": [
+        "entity_name",
+        "record_id",
+        "column_count"
+      ]
+    },
+    {
+      "name": "records.queried",
+      "description": "Multiple records retrieved via query",
+      "payload": [
+        "entity_name",
+        "filter_criteria",
+        "result_count",
+        "page_size"
+      ]
+    },
+    {
+      "name": "record.updated",
+      "description": "Entity record successfully updated",
+      "payload": [
+        "entity_name",
+        "record_id",
+        "updated_fields"
+      ]
+    },
+    {
+      "name": "record.deleted",
+      "description": "Entity record successfully deleted",
+      "payload": [
+        "entity_name",
+        "record_id"
+      ]
+    },
+    {
+      "name": "entities.associated",
+      "description": "Two entities associated via relationship",
+      "payload": [
+        "relationship_name",
+        "entity_id",
+        "related_entity_count"
+      ]
+    },
+    {
+      "name": "entities.disassociated",
+      "description": "Association between entities removed",
+      "payload": [
+        "relationship_name",
+        "entity_id"
+      ]
+    },
+    {
+      "name": "batch.created",
+      "description": "Batch operation created and ready for requests",
+      "payload": [
+        "batch_id",
+        "batch_name"
+      ]
+    },
+    {
+      "name": "batch.execution.started",
+      "description": "Batch execution initiated",
+      "payload": [
+        "batch_id",
+        "request_count"
+      ]
+    },
+    {
+      "name": "batch.execution.completed",
+      "description": "Batch execution finished",
+      "payload": [
+        "batch_id",
+        "successful_count",
+        "failed_count"
+      ]
+    },
+    {
+      "name": "organization.request.executed",
+      "description": "Organization-level request executed",
+      "payload": [
+        "request_type",
+        "request_status"
+      ]
+    },
+    {
+      "name": "web.request.executed",
+      "description": "Raw HTTP request to Web API executed",
+      "payload": [
+        "http_method",
+        "endpoint",
+        "http_status"
+      ]
+    },
+    {
+      "name": "throttling.detected",
+      "description": "Dataverse throttling limit detected",
+      "payload": [
+        "retry_after_seconds",
+        "current_request_rate"
+      ]
+    },
+    {
+      "name": "authentication.token.refreshed",
+      "description": "OAuth access token refreshed",
+      "payload": [
+        "token_expiry"
+      ]
+    },
+    {
+      "name": "logging.enabled",
+      "description": "Trace logging started",
+      "payload": [
+        "log_file_path"
+      ]
+    }
+  ],
+  "related": [
+    {
+      "feature": "api-query-builder",
+      "type": "recommended",
+      "reason": "Build OData and FetchXml queries for complex filtering"
+    },
+    {
+      "feature": "data-migration-tools",
+      "type": "optional",
+      "reason": "Export/import entity data using Service Client"
+    },
+    {
+      "feature": "plugin-development",
+      "type": "optional",
+      "reason": "Service Client used in Dataverse plugins and custom workflows"
+    },
+    {
+      "feature": "webhook-integration",
+      "type": "optional",
+      "reason": "Receive Dataverse events and respond via Service Client"
+    }
+  ],
+  "extensions": {
+    "tech_stack": {
+      "language": "C#",
+      "frameworks": [
+        ".NET Framework 4.6.2, 4.7.2, 4.8",
+        ".NET Core 3.0, 3.1",
+        ".NET 5.0, 6.0"
+      ],
+      "api_protocol": "SOAP + REST (Dataverse Web API)",
+      "authentication": "Azure AD (MSAL), certificates, basic auth",
+      "orm": "None (SDK wraps raw entity/message objects)",
+      "underlying_sdk": "Microsoft.Xrm.Sdk, Microsoft.Xrm.Sdk.Discovery",
+      "async_support": "Full async/await with CancellationToken"
+    },
+    "nuget_packages": [
+      "Microsoft.PowerPlatform.Dataverse.Client (current)",
+      "Microsoft.PowerPlatform.Dataverse.Client.Dynamics (deprecated)",
+      "Microsoft.Xrm.Sdk (underlying)",
+      "Microsoft.Xrm.Sdk.Discovery (organization discovery)"
+    ],
+    "deployment_targets": [
+      "ASP.NET Core web applications",
+      "Azure Functions (serverless)",
+      "Azure App Services",
+      "Console applications",
+      "Windows Services",
+      "WPF/WinForms desktop applications",
+      "Linux containers (with .NET 5+ and limitations on interactive auth)"
+    ]
+  }
+}

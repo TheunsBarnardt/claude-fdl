@@ -1,0 +1,726 @@
+{
+  "feature": "string-key-value",
+  "version": "1.0.0",
+  "description": "Store and retrieve arbitrary-length string values with atomic increment, decrement, append, and range operations",
+  "category": "data",
+  "tags": [
+    "strings",
+    "key-value",
+    "atomic-operations",
+    "numeric-operations"
+  ],
+  "actors": [
+    {
+      "id": "client",
+      "name": "Client",
+      "type": "human",
+      "description": "Application requesting string operations"
+    }
+  ],
+  "fields": [
+    {
+      "name": "key",
+      "type": "text",
+      "description": "Unique identifier for the string",
+      "required": true
+    },
+    {
+      "name": "value",
+      "type": "text",
+      "description": "String data (stored as-is or internally optimized as integer when parseable)",
+      "required": false
+    },
+    {
+      "name": "ttl_milliseconds",
+      "type": "number",
+      "description": "Time-to-live before auto-expiration (optional)",
+      "required": false
+    },
+    {
+      "name": "is_numeric",
+      "type": "boolean",
+      "description": "Internal hint—value can be represented as 64-bit signed integer",
+      "required": false
+    },
+    {
+      "name": "old_value",
+      "type": "text",
+      "description": "Value before modification (for atomic operations)",
+      "required": false
+    },
+    {
+      "name": "encoding",
+      "type": "select",
+      "options": [
+        "raw",
+        "integer",
+        "embedded"
+      ],
+      "description": "Internal storage format—transparent to user but affects performance",
+      "required": false
+    }
+  ],
+  "rules": [
+    "String size cannot exceed 512 MB (configurable via proto_max_bulk_len)",
+    "Numeric operations (INCR, DECR) require value to be a valid 64-bit signed integer; otherwise fail with syntax error",
+    "Increment/decrement values must fit in [-2^63, 2^63-1]; overflow checked and rejected with error",
+    "Floating-point increment (INCRBYFLOAT) parsed as long double; operations returning NaN or Infinity fail",
+    "APPEND and SETRANGE extend string with zero-padding if needed; SETRANGE with negative offset rejected",
+    "All operations are atomic—no partial states visible to concurrent clients",
+    "SET with NX (if-not-exists) and XX (if-exists) conditions are mutually exclusive"
+  ],
+  "states": [
+    {
+      "field": "existence",
+      "values": [
+        {
+          "value": "absent",
+          "initial": true,
+          "description": "Key does not exist"
+        },
+        {
+          "value": "present",
+          "description": "Key exists with string value"
+        },
+        {
+          "value": "expired",
+          "terminal": true,
+          "description": "TTL elapsed; key auto-deleted"
+        }
+      ]
+    },
+    {
+      "field": "modification",
+      "values": [
+        {
+          "value": "unmodified",
+          "initial": true
+        },
+        {
+          "value": "recently_modified",
+          "description": "Value changed in current transaction/command"
+        }
+      ]
+    }
+  ],
+  "outcomes": {
+    "read_existing_string": {
+      "priority": 1,
+      "description": "Retrieve existing string value",
+      "given": [
+        "key exists and has string value",
+        "key is not expired"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.read",
+          "payload": [
+            "key",
+            "length"
+          ]
+        }
+      ],
+      "result": "client receives full string value"
+    },
+    "read_missing_key": {
+      "priority": 2,
+      "description": "Attempt to read non-existent key",
+      "given": [
+        "key does not exist"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.miss",
+          "payload": [
+            "key"
+          ]
+        }
+      ],
+      "result": "client receives null/nil"
+    },
+    "read_with_ttl_modification": {
+      "priority": 3,
+      "description": "Read value and optionally modify or check TTL",
+      "given": [
+        "key exists with string value",
+        "GETEX command with optional expiry flags"
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "ttl_milliseconds",
+          "when": "EX|PX|EXAT|PXAT flag provided",
+          "description": "set new TTL on read"
+        },
+        {
+          "action": "set_field",
+          "target": "ttl_milliseconds",
+          "value": null,
+          "when": "PERSIST flag provided",
+          "description": "remove TTL on read"
+        },
+        {
+          "action": "emit_event",
+          "event": "string.getex",
+          "payload": [
+            "key",
+            "ttl_modified"
+          ]
+        }
+      ],
+      "result": "client receives string value; TTL optionally modified"
+    },
+    "set_or_overwrite": {
+      "priority": 10,
+      "description": "Set value unconditionally, overwriting if exists",
+      "given": [
+        "SET command issued"
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "value",
+          "description": "store new value"
+        },
+        {
+          "action": "set_field",
+          "target": "ttl_milliseconds",
+          "value": null,
+          "when": "no KEEPTTL flag",
+          "description": "discard old TTL unless KEEPTTL"
+        },
+        {
+          "action": "set_field",
+          "target": "is_numeric",
+          "description": "evaluate if value parseable as integer for optimization"
+        },
+        {
+          "action": "emit_event",
+          "event": "string.set",
+          "payload": [
+            "key",
+            "new_length",
+            "encoding_chosen"
+          ]
+        }
+      ],
+      "result": "key now holds new value; client receives OK"
+    },
+    "set_with_conditions": {
+      "priority": 11,
+      "description": "SET only if condition met (NX, XX, or equality check)",
+      "given": [
+        {
+          "field": "condition_type",
+          "source": "input",
+          "operator": "in",
+          "value": [
+            "NX",
+            "XX",
+            "IFEQ",
+            "IFNE",
+            "IFDEQ",
+            "IFDNE"
+          ],
+          "description": "Conditional set flags"
+        },
+        {
+          "field": "condition_met",
+          "source": "computed",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "value",
+          "description": "store new value"
+        },
+        {
+          "action": "emit_event",
+          "event": "string.set_conditional",
+          "payload": [
+            "key",
+            "condition_type",
+            "result"
+          ]
+        }
+      ],
+      "result": "value set and OK returned; or nil if condition not met"
+    },
+    "set_with_ttl": {
+      "priority": 12,
+      "description": "Set value with immediate expiration time",
+      "given": [
+        "SET with EX|PX|EXAT|PXAT flag"
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "value"
+        },
+        {
+          "action": "set_field",
+          "target": "ttl_milliseconds",
+          "description": "calculate absolute expiration time"
+        },
+        {
+          "action": "emit_event",
+          "event": "string.set_expiring",
+          "payload": [
+            "key",
+            "ttl_milliseconds"
+          ]
+        }
+      ],
+      "result": "key set with expiration; expires at specified time"
+    },
+    "conditional_set_fails": {
+      "priority": 13,
+      "error": "CONDITION_NOT_MET",
+      "given": [
+        "SET with NX|XX|IFEQ|IFNE condition",
+        {
+          "field": "condition_met",
+          "source": "computed",
+          "operator": "eq",
+          "value": false
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.set_rejected",
+          "payload": [
+            "key",
+            "condition_type"
+          ]
+        }
+      ],
+      "result": "value unchanged; client receives nil"
+    },
+    "append_to_string": {
+      "priority": 20,
+      "description": "Append suffix to existing or missing string",
+      "given": [
+        "APPEND command",
+        {
+          "field": "value",
+          "source": "input",
+          "description": "suffix to append"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "value",
+          "description": "concatenate suffix to end"
+        },
+        {
+          "action": "emit_event",
+          "event": "string.appended",
+          "payload": [
+            "key",
+            "appended_length",
+            "total_length"
+          ]
+        }
+      ],
+      "result": "string extended; client receives new total length"
+    },
+    "get_substring": {
+      "priority": 21,
+      "description": "Extract substring by start/end indices",
+      "given": [
+        "GETRANGE key start end",
+        {
+          "field": "start",
+          "source": "input",
+          "operator": "gte",
+          "value": "-2^31"
+        },
+        {
+          "field": "end",
+          "source": "input",
+          "operator": "lte",
+          "value": "2^31-1"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.range_read",
+          "payload": [
+            "key",
+            "start",
+            "end",
+            "extracted_length"
+          ]
+        }
+      ],
+      "result": "substring from start to end inclusive (0-indexed, supports negative indices); empty string if range out of bounds"
+    },
+    "set_substring": {
+      "priority": 22,
+      "description": "Overwrite portion of string starting at offset",
+      "given": [
+        "SETRANGE key offset value",
+        {
+          "field": "offset",
+          "source": "input",
+          "operator": "gte",
+          "value": 0
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "value",
+          "description": "overwrite starting at offset; zero-pad if needed"
+        },
+        {
+          "action": "emit_event",
+          "event": "string.range_written",
+          "payload": [
+            "key",
+            "offset",
+            "written_length",
+            "new_total_length"
+          ]
+        }
+      ],
+      "result": "string modified; client receives new total length"
+    },
+    "setrange_with_invalid_offset": {
+      "priority": 23,
+      "error": "INVALID_OFFSET",
+      "given": [
+        "SETRANGE with negative offset"
+      ],
+      "then": [],
+      "result": "error returned; string unchanged"
+    },
+    "increment_integer": {
+      "priority": 30,
+      "description": "Increment numeric string value by integer amount",
+      "given": [
+        "INCR, INCRBY, or DECR command",
+        {
+          "field": "value",
+          "source": "db",
+          "operator": "matches",
+          "value": "^-?[0-9]{1,19}$",
+          "description": "value is valid 64-bit signed integer"
+        },
+        {
+          "field": "increment_amount",
+          "source": "computed",
+          "description": "change is within [-2^63, 2^63-1] range"
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "value",
+          "description": "increment or decrement value"
+        },
+        {
+          "action": "emit_event",
+          "event": "string.incr",
+          "payload": [
+            "key",
+            "operation",
+            "amount",
+            "new_value"
+          ]
+        }
+      ],
+      "result": "client receives new numeric value"
+    },
+    "increment_non_numeric": {
+      "priority": 31,
+      "error": "NOT_AN_INTEGER",
+      "given": [
+        {
+          "field": "value",
+          "source": "db",
+          "operator": "not_matches",
+          "value": "^-?[0-9]{1,19}$",
+          "description": "value is not a valid integer"
+        }
+      ],
+      "then": [],
+      "result": "error returned; value unchanged"
+    },
+    "increment_overflow": {
+      "priority": 32,
+      "error": "INCREMENT_OVERFLOW",
+      "given": [
+        {
+          "field": "would_overflow",
+          "source": "computed",
+          "operator": "eq",
+          "value": true,
+          "description": "increment would exceed 64-bit bounds"
+        }
+      ],
+      "then": [],
+      "result": "error returned; value unchanged"
+    },
+    "increment_float": {
+      "priority": 33,
+      "description": "Increment numeric string by floating-point amount",
+      "given": [
+        "INCRBYFLOAT command",
+        {
+          "field": "value",
+          "source": "db",
+          "description": "interpreted as long double"
+        },
+        {
+          "field": "result",
+          "source": "computed",
+          "operator": "not_in",
+          "value": [
+            "NaN",
+            "Infinity"
+          ]
+        }
+      ],
+      "then": [
+        {
+          "action": "set_field",
+          "target": "value",
+          "description": "increment by float; store as formatted decimal string"
+        },
+        {
+          "action": "emit_event",
+          "event": "string.incrbyfloat",
+          "payload": [
+            "key",
+            "amount",
+            "new_value"
+          ]
+        }
+      ],
+      "result": "client receives new value as decimal string"
+    },
+    "increment_float_invalid": {
+      "priority": 34,
+      "error": "FLOAT_INVALID",
+      "given": [
+        {
+          "field": "result",
+          "source": "computed",
+          "operator": "in",
+          "value": [
+            "NaN",
+            "Infinity"
+          ]
+        }
+      ],
+      "then": [],
+      "result": "error returned; value unchanged"
+    },
+    "getset_atomically": {
+      "priority": 40,
+      "description": "Atomically retrieve old value and set new value",
+      "given": [
+        "GETSET or SET with GET flag"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.getset",
+          "payload": [
+            "key",
+            "old_value",
+            "new_value"
+          ]
+        }
+      ],
+      "result": "old value returned to client; new value now stored"
+    },
+    "getdel_atomically": {
+      "priority": 41,
+      "description": "Atomically retrieve value and delete key",
+      "given": [
+        "GETDEL command"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.getdel",
+          "payload": [
+            "key",
+            "deleted_value"
+          ]
+        },
+        {
+          "action": "transition_state",
+          "field": "existence",
+          "from": "present",
+          "to": "absent"
+        }
+      ],
+      "result": "value returned to client; key deleted"
+    },
+    "mget_multiple_keys": {
+      "priority": 50,
+      "description": "Retrieve multiple values in single request",
+      "given": [
+        "MGET key1 [key2 ...]"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.mget",
+          "payload": [
+            "keys_count",
+            "results_count"
+          ]
+        }
+      ],
+      "result": "array returned with value for each key (nil for missing or non-string keys)"
+    },
+    "mset_multiple_keys": {
+      "priority": 51,
+      "description": "Set multiple key-value pairs atomically",
+      "given": [
+        "MSET key1 value1 [key2 value2 ...]"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.mset",
+          "payload": [
+            "pairs_count"
+          ]
+        }
+      ],
+      "result": "all keys set; client receives OK"
+    },
+    "msetnx_conditional_bulk": {
+      "priority": 52,
+      "description": "Set multiple pairs only if ALL keys absent",
+      "given": [
+        "MSETNX key1 value1 [key2 value2 ...]",
+        {
+          "field": "all_keys_absent",
+          "source": "db",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.msetnx_success",
+          "payload": [
+            "pairs_set_count"
+          ]
+        }
+      ],
+      "result": "all keys set; client receives 1"
+    },
+    "msetnx_condition_fails": {
+      "priority": 53,
+      "error": "KEY_EXISTS",
+      "given": [
+        {
+          "field": "all_keys_absent",
+          "source": "db",
+          "operator": "eq",
+          "value": false
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "string.msetnx_rejected",
+          "payload": [
+            "keys_skipped"
+          ]
+        }
+      ],
+      "result": "no keys set; client receives 0"
+    }
+  },
+  "errors": [
+    {
+      "code": "NOT_AN_INTEGER",
+      "message": "value is not an integer or out of range",
+      "user_safe": true
+    },
+    {
+      "code": "INCREMENT_OVERFLOW",
+      "message": "increment or decrement would overflow",
+      "user_safe": true
+    },
+    {
+      "code": "CONDITION_NOT_MET",
+      "message": "SET condition not met (returned as nil, not error)",
+      "user_safe": true
+    },
+    {
+      "code": "INVALID_OFFSET",
+      "message": "offset is out of range",
+      "user_safe": true
+    },
+    {
+      "code": "STRING_TOO_LARGE",
+      "message": "string exceeds maximum allowed size",
+      "user_safe": true
+    },
+    {
+      "code": "FLOAT_INVALID",
+      "message": "float increment resulted in NaN or Infinity",
+      "user_safe": true
+    }
+  ],
+  "events": [
+    "string.read",
+    "string.miss",
+    "string.set",
+    "string.set_conditional",
+    "string.set_expiring",
+    "string.appended",
+    "string.range_read",
+    "string.range_written",
+    "string.incr",
+    "string.incrbyfloat",
+    "string.getset",
+    "string.getdel",
+    "string.mget",
+    "string.mset",
+    "string.msetnx_success",
+    "string.msetnx_rejected"
+  ],
+  "related": [
+    {
+      "feature": "key-expiration",
+      "type": "required",
+      "reason": "TTL support integrated into string operations"
+    },
+    {
+      "feature": "multi-exec-transactions",
+      "type": "optional",
+      "reason": "Multiple string commands often wrapped in transactions"
+    }
+  ],
+  "extensions": {
+    "source": {
+      "repo": "https://github.com/redis/redis",
+      "project": "Redis",
+      "tech_stack": "C",
+      "files_traced": 2,
+      "entry_points": [
+        "src/t_string.c",
+        "src/server.c"
+      ]
+    }
+  }
+}

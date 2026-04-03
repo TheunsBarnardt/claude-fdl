@@ -1,0 +1,581 @@
+{
+  "feature": "pub-sub-messaging",
+  "version": "1.0.0",
+  "description": "Real-time fire-and-forget message broadcasting with direct channel subscriptions and pattern-based subscriptions; sharded variant for cluster deployments",
+  "category": "integration",
+  "tags": [
+    "pub-sub",
+    "real-time-messaging",
+    "broadcast",
+    "pattern-matching",
+    "no-persistence"
+  ],
+  "actors": [
+    {
+      "id": "publisher",
+      "name": "Publisher",
+      "type": "system",
+      "description": "Sends messages to channels"
+    },
+    {
+      "id": "subscriber",
+      "name": "Subscriber",
+      "type": "system",
+      "description": "Receives messages from subscribed channels"
+    },
+    {
+      "id": "global_pubsub",
+      "name": "Global Pub/Sub",
+      "type": "system",
+      "description": "Global message broker (non-sharded)"
+    },
+    {
+      "id": "sharded_pubsub",
+      "name": "Sharded Pub/Sub",
+      "type": "system",
+      "description": "Per-shard message broker (cluster mode)"
+    }
+  ],
+  "fields": [
+    {
+      "name": "channel_name",
+      "type": "text",
+      "description": "Channel identifier (e.g., news, notifications.user.123)",
+      "required": true
+    },
+    {
+      "name": "pattern",
+      "type": "text",
+      "description": "Glob pattern for subscriptions (e.g., news.*, user.*)",
+      "required": false
+    },
+    {
+      "name": "message",
+      "type": "text",
+      "description": "Message content to publish",
+      "required": false
+    },
+    {
+      "name": "subscriber_count",
+      "type": "number",
+      "description": "Count of direct subscribers to channel",
+      "required": false
+    },
+    {
+      "name": "pattern_subscriber_count",
+      "type": "number",
+      "description": "Count of pattern subscribers matching channel",
+      "required": false
+    }
+  ],
+  "rules": [
+    "Messages are fire-and-forget (no persistence, no replay)",
+    "Subscribers must be connected when message published to receive it",
+    "Offline subscribers miss all messages published while disconnected",
+    "No message ordering guarantee across multiple subscribers",
+    "Subscriber enters \"subscription mode\" and can only use subscription commands",
+    "Pattern subscriptions use glob matching (* = any, ? = single char, [abc] = set)",
+    "Sharded pub/sub messages routed by slot (like hash sharding)",
+    "Sharded pub/sub only reaches nodes owning the shard",
+    "Subscriber can have multiple channel and pattern subscriptions",
+    "Unsubscribe with empty list = unsubscribe from all"
+  ],
+  "states": [
+    {
+      "field": "subscriber_state",
+      "values": [
+        {
+          "value": "not_subscribed",
+          "initial": true,
+          "description": "Client in normal mode, can execute any command"
+        },
+        {
+          "value": "subscribed",
+          "description": "Client in subscription mode, only subscription commands allowed"
+        },
+        {
+          "value": "connected",
+          "description": "Subscriber waiting for messages"
+        }
+      ]
+    }
+  ],
+  "outcomes": {
+    "publish_message": {
+      "priority": 10,
+      "description": "Send message to channel",
+      "given": [
+        "PUBLISH channel message",
+        {
+          "field": "channel",
+          "source": "input"
+        },
+        {
+          "field": "message",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.message_published",
+          "payload": [
+            "channel",
+            "message",
+            "subscriber_count",
+            "pattern_subscriber_count"
+          ]
+        }
+      ],
+      "result": "client receives count of subscribers that received the message"
+    },
+    "publish_no_subscribers": {
+      "priority": 11,
+      "given": [
+        {
+          "field": "subscriber_count",
+          "source": "db",
+          "operator": "eq",
+          "value": 0
+        },
+        {
+          "field": "pattern_subscriber_count",
+          "source": "db",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.published_to_empty",
+          "payload": [
+            "channel"
+          ]
+        }
+      ],
+      "result": "message discarded; client receives 0"
+    },
+    "sharded_publish": {
+      "priority": 12,
+      "description": "Publish to shard channel (cluster mode)",
+      "given": [
+        "SPUBLISH shard_channel message",
+        {
+          "field": "shard_owned_by_this_node",
+          "source": "system",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.sharded_published",
+          "payload": [
+            "shard_channel",
+            "message",
+            "subscribers_on_this_shard"
+          ]
+        }
+      ],
+      "result": "count of subscribers on this shard that received message"
+    },
+    "subscribe_to_channels": {
+      "priority": 20,
+      "description": "Subscribe to one or more channels",
+      "given": [
+        "SUBSCRIBE channel [channel ...]",
+        {
+          "field": "channels",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "transition_state",
+          "field": "subscriber_state",
+          "to": "subscribed"
+        },
+        {
+          "action": "emit_event",
+          "event": "pubsub.subscribed",
+          "payload": [
+            "channels",
+            "total_subscriptions"
+          ]
+        }
+      ],
+      "result": "client enters subscription mode; receives subscription confirmation; starts receiving messages"
+    },
+    "subscribe_pattern": {
+      "priority": 21,
+      "description": "Subscribe to channels matching pattern",
+      "given": [
+        "PSUBSCRIBE pattern [pattern ...]",
+        {
+          "field": "patterns",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "transition_state",
+          "field": "subscriber_state",
+          "to": "subscribed"
+        },
+        {
+          "action": "emit_event",
+          "event": "pubsub.pattern_subscribed",
+          "payload": [
+            "patterns",
+            "total_subscriptions"
+          ]
+        }
+      ],
+      "result": "client enters subscription mode; receives pattern subscription confirmation"
+    },
+    "receive_message": {
+      "priority": 22,
+      "description": "Receive message from subscribed channel",
+      "given": [
+        {
+          "field": "message_published",
+          "source": "system",
+          "description": "message published to subscribed channel"
+        },
+        {
+          "field": "subscriber_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "subscribed"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.message_received",
+          "payload": [
+            "channel_or_pattern",
+            "message",
+            "subscription_type"
+          ]
+        }
+      ],
+      "result": "message delivered to subscriber in format [type, channel/pattern, message]"
+    },
+    "receive_pattern_match": {
+      "priority": 23,
+      "description": "Receive message via pattern subscription",
+      "given": [
+        {
+          "field": "channel_matches_pattern",
+          "source": "system",
+          "operator": "eq",
+          "value": true
+        },
+        {
+          "field": "pattern_subscribed",
+          "source": "db",
+          "operator": "eq",
+          "value": true
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.pattern_message_received",
+          "payload": [
+            "pattern",
+            "actual_channel",
+            "message"
+          ]
+        }
+      ],
+      "result": "message delivered in format [ptype, pattern, channel, message]"
+    },
+    "sharded_subscribe": {
+      "priority": 24,
+      "description": "Subscribe to shard channel",
+      "given": [
+        "SSUBSCRIBE shard_channel [shard_channel ...]"
+      ],
+      "then": [
+        {
+          "action": "transition_state",
+          "field": "subscriber_state",
+          "to": "subscribed"
+        },
+        {
+          "action": "emit_event",
+          "event": "pubsub.sharded_subscribed",
+          "payload": [
+            "shard_channels"
+          ]
+        }
+      ],
+      "result": "client enters subscription mode; receives shard channel confirmations"
+    },
+    "unsubscribe_from_channels": {
+      "priority": 30,
+      "description": "Stop subscribing to channels",
+      "given": [
+        "UNSUBSCRIBE [channel ...]",
+        {
+          "field": "channels",
+          "source": "input",
+          "description": "empty = unsubscribe from all channels"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.unsubscribed",
+          "payload": [
+            "channels",
+            "remaining_subscriptions"
+          ]
+        }
+      ],
+      "result": "receives unsubscription confirmations; client exits subscription mode if no subscriptions remain"
+    },
+    "unsubscribe_from_patterns": {
+      "priority": 31,
+      "description": "Stop subscribing to patterns",
+      "given": [
+        "PUNSUBSCRIBE [pattern ...]",
+        {
+          "field": "patterns",
+          "source": "input"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.pattern_unsubscribed",
+          "payload": [
+            "patterns",
+            "remaining_subscriptions"
+          ]
+        }
+      ],
+      "result": "receives unsubscription confirmations; exits subscription mode if no subscriptions remain"
+    },
+    "exit_subscription_mode": {
+      "priority": 32,
+      "given": [
+        {
+          "field": "remaining_subscriptions",
+          "source": "computed",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "then": [
+        {
+          "action": "transition_state",
+          "field": "subscriber_state",
+          "to": "not_subscribed"
+        },
+        {
+          "action": "emit_event",
+          "event": "pubsub.mode_exited",
+          "payload": []
+        }
+      ],
+      "result": "subscriber back in normal mode; can execute non-pub/sub commands"
+    },
+    "sharded_unsubscribe": {
+      "priority": 33,
+      "description": "Stop subscribing to shard channels",
+      "given": [
+        "SUNSUBSCRIBE [shard_channel ...]"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.sharded_unsubscribed",
+          "payload": [
+            "shard_channels",
+            "remaining"
+          ]
+        }
+      ],
+      "result": "unsubscription confirmations"
+    },
+    "command_in_subscription_mode": {
+      "priority": 40,
+      "error": "SUBSCRIPTION_MODE",
+      "description": "Attempt non-pub/sub command while subscribed",
+      "given": [
+        {
+          "field": "subscriber_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "subscribed"
+        },
+        {
+          "field": "command",
+          "source": "input",
+          "operator": "not_in",
+          "value": [
+            "SUBSCRIBE",
+            "PSUBSCRIBE",
+            "UNSUBSCRIBE",
+            "PUNSUBSCRIBE",
+            "PING",
+            "QUIT",
+            "HELLO",
+            "RESET"
+          ]
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.invalid_command",
+          "payload": [
+            "command"
+          ]
+        }
+      ],
+      "result": "error returned; command not executed; subscription mode unchanged"
+    },
+    "ping_while_subscribed": {
+      "priority": 41,
+      "description": "PING allowed in subscription mode",
+      "given": [
+        {
+          "field": "subscriber_state",
+          "source": "db",
+          "operator": "eq",
+          "value": "subscribed"
+        },
+        "PING [message]"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.pong",
+          "payload": [
+            "message_optional"
+          ]
+        }
+      ],
+      "result": "[pong, message-or-nil]"
+    },
+    "pubsub_channels": {
+      "priority": 50,
+      "description": "List active channels",
+      "given": [
+        "PUBSUB CHANNELS [pattern]",
+        {
+          "field": "pattern",
+          "source": "input",
+          "description": "optional glob pattern filter"
+        }
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.channels_listed",
+          "payload": [
+            "pattern_filter",
+            "channels_count",
+            "matching_channels"
+          ]
+        }
+      ],
+      "result": "array of active channel names (with subscribers)"
+    },
+    "pubsub_numsub": {
+      "priority": 51,
+      "description": "Get subscriber count per channel",
+      "given": [
+        "PUBSUB NUMSUB channel [channel ...]"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.numsub_queried",
+          "payload": [
+            "channels_requested",
+            "subscriber_counts"
+          ]
+        }
+      ],
+      "result": "flattened array [channel1, count1, channel2, count2, ...]"
+    },
+    "pubsub_numpat": {
+      "priority": 52,
+      "description": "Get total pattern subscription count",
+      "given": [
+        "PUBSUB NUMPAT"
+      ],
+      "then": [
+        {
+          "action": "emit_event",
+          "event": "pubsub.numpat_queried",
+          "payload": [
+            "pattern_subscription_count"
+          ]
+        }
+      ],
+      "result": "total count of pattern subscriptions across all clients"
+    }
+  },
+  "errors": [
+    {
+      "code": "SUBSCRIPTION_MODE",
+      "message": "only (P)SUBSCRIBE / (P)UNSUBSCRIBE / PING / QUIT allowed in this context",
+      "user_safe": true
+    },
+    {
+      "code": "WRONG_TYPE",
+      "message": "WRONGTYPE Operation against a key holding the wrong kind of value",
+      "user_safe": true
+    }
+  ],
+  "events": [
+    "pubsub.message_published",
+    "pubsub.published_to_empty",
+    "pubsub.sharded_published",
+    "pubsub.subscribed",
+    "pubsub.pattern_subscribed",
+    "pubsub.message_received",
+    "pubsub.pattern_message_received",
+    "pubsub.sharded_subscribed",
+    "pubsub.unsubscribed",
+    "pubsub.pattern_unsubscribed",
+    "pubsub.mode_exited",
+    "pubsub.sharded_unsubscribed",
+    "pubsub.invalid_command",
+    "pubsub.pong",
+    "pubsub.channels_listed",
+    "pubsub.numsub_queried",
+    "pubsub.numpat_queried"
+  ],
+  "related": [
+    {
+      "feature": "stream-event-log",
+      "type": "optional",
+      "reason": "Both deliver messages; Pub/Sub is ephemeral, Streams are persistent"
+    },
+    {
+      "feature": "message-queue",
+      "type": "optional",
+      "reason": "Pub/Sub is broadcast (no ack), message queues have ack and guaranteed delivery"
+    }
+  ],
+  "extensions": {
+    "source": {
+      "repo": "https://github.com/redis/redis",
+      "project": "Redis",
+      "tech_stack": "C",
+      "files_traced": 1,
+      "entry_points": [
+        "src/pubsub.c"
+      ]
+    }
+  }
+}
